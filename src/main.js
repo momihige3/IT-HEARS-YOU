@@ -3,18 +3,19 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (s) => document.querySelector(s);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x020403);
-scene.fog = new THREE.FogExp2(0x030504, 0.032);
+scene.background = new THREE.Color(0x060906);
+scene.fog = new THREE.FogExp2(0x080b08, 0.022);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, .05, 100);
 camera.position.set(0, 1.68, 24);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .72;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 $('#game').append(renderer.domElement);
 const controls = new PointerLockControls(camera, document.body);
+controls.pointerSpeed = .45;
 
-const state = { started:false, ended:false, hidden:false, key:false, flashlight:true, battery:100, detection:0, alert:'UNNOTICED', moveMode:'WALKING', noise:0, nearLocker:null, bob:0 };
+const state = { started:false, ended:false, hidden:false, key:false, flashlight:true, battery:100, detection:0, alert:'UNNOTICED', moveMode:'WALKING', noise:0, nearLocker:null, bob:0, settingsOpen:false };
 const keys = {}; const colliders=[]; const lockers=[];
 
 const mat = (color, rough=.82, metal=.05) => new THREE.MeshStandardMaterial({ color, roughness:rough, metalness:metal });
@@ -32,9 +33,10 @@ for(const x of [-2.9,-2.55]){ const pipe=new THREE.Mesh(new THREE.CylinderGeomet
 // Sickly ceiling lights
 for(let z=-24;z<=24;z+=12){
   box(0,4.02,z,1.5,.1,.35,mat(0x9eaa8e,.3));
-  const l=new THREE.PointLight(z===0?0x9bac83:0xb0b993,8,11,2);l.position.set(0,3.83,z);l.castShadow=false; scene.add(l);
+  const l=new THREE.PointLight(z===0?0xaaba94:0xc0c8a6,14,15,1.65);l.position.set(0,3.83,z);l.castShadow=false; scene.add(l);
 }
-scene.add(new THREE.HemisphereLight(0x263127,0x030303,.13));
+scene.add(new THREE.HemisphereLight(0x617062,0x0b0e0b,.48));
+scene.add(new THREE.AmbientLight(0x29322b,.34));
 
 function makeLocker(x,z,side){
   const group=new THREE.Group(); const body=box(0,0,0,1.05,2.45,.82,metalMat); scene.remove(body);group.add(body);
@@ -66,28 +68,33 @@ const eyeMat=new THREE.MeshBasicMaterial({color:0xa51c15});for(const x of [-.1,.
 enemy.position.set(0,0,-8);scene.add(enemy);
 const enemyData={dir:1,speed:1.15,lastSeen:null};
 
-// Procedural ambience: no downloaded audio assets needed.
+// Procedural ambience and spatial footsteps: no downloaded audio assets needed.
 let audio=null;
 function initAudio(){
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-  const ctx=new AC(),master=ctx.createGain();master.gain.value=.28;master.connect(ctx.destination);
-  const hum=ctx.createOscillator(),humGain=ctx.createGain();hum.type='sawtooth';hum.frequency.value=48;humGain.gain.value=.025;hum.connect(humGain).connect(master);hum.start();
-  const lfo=ctx.createOscillator(),lfoGain=ctx.createGain();lfo.frequency.value=.17;lfoGain.gain.value=.012;lfo.connect(lfoGain).connect(humGain.gain);lfo.start();
+  const ctx=new AC(),master=ctx.createGain();master.gain.value=.34;master.connect(ctx.destination);
+  const hum=ctx.createOscillator(),humGain=ctx.createGain();hum.type='sawtooth';hum.frequency.value=48;humGain.gain.value=.018;hum.connect(humGain).connect(master);hum.start();
+  const lfo=ctx.createOscillator(),lfoGain=ctx.createGain();lfo.frequency.value=.17;lfoGain.gain.value=.009;lfo.connect(lfoGain).connect(humGain.gain);lfo.start();
   const near=ctx.createOscillator(),nearGain=ctx.createGain();near.type='sine';near.frequency.value=31;nearGain.gain.value=0;near.connect(nearGain).connect(master);near.start();
-  audio={ctx,master,nearGain,nextStep:0,nextBeat:0};
+  const noiseBuffer=ctx.createBuffer(1,ctx.sampleRate*.12,ctx.sampleRate);const data=noiseBuffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*(1-i/data.length);
+  audio={ctx,master,nearGain,noiseBuffer,nextStep:0,nextEnemyStep:0,nextBeat:0};
 }
 function thump(volume=.12,frequency=72){
-  if(!audio)return;const {ctx,master}=audio,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(frequency,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(38,ctx.currentTime+.13);g.gain.setValueAtTime(volume,ctx.currentTime);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.16);o.connect(g).connect(master);o.start();o.stop(ctx.currentTime+.18);
+  if(!audio)return;const {ctx,master}=audio,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(frequency,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(38,ctx.currentTime+.13);g.gain.setValueAtTime(volume,ctx.currentTime);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.2);o.connect(g).connect(master);o.start();o.stop(ctx.currentTime+.22);
+}
+function playFootstep(volume,pitch=1,pan=0){
+  if(!audio||volume<=.004)return;const {ctx,master,noiseBuffer}=audio,src=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();src.buffer=noiseBuffer;src.playbackRate.value=pitch;filter.type='lowpass';filter.frequency.value=430*pitch;filter.Q.value=.8;gain.gain.setValueAtTime(volume,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.13);src.connect(filter).connect(gain);if(ctx.createStereoPanner){const p=ctx.createStereoPanner();p.pan.value=THREE.MathUtils.clamp(pan,-1,1);gain.connect(p).connect(master);}else gain.connect(master);src.start();
 }
 function updateAudio(time){
-  if(!audio)return;const dist=enemy.position.distanceTo(camera.position),near=state.hidden&&dist<6;audio.nearGain.gain.setTargetAtTime(near?.16:0,audio.ctx.currentTime,.15);
-  const moving=state.noise>0&&!state.hidden;if(moving&&time>audio.nextStep){thump(state.moveMode==='RUNNING'?.2:state.moveMode==='CROUCHING'?.045:.1,58);audio.nextStep=time+(state.moveMode==='RUNNING'?.28:state.moveMode==='CROUCHING'?.7:.46);}
-  if(near&&time>audio.nextBeat){thump(.23,88);setTimeout(()=>thump(.16,76),125);audio.nextBeat=time+Math.max(.5,dist*.13);}
+  if(!audio)return;const dist=enemy.position.distanceTo(camera.position),proximity=THREE.MathUtils.clamp(1-dist/14,0,1);audio.nearGain.gain.setTargetAtTime(proximity*.055,audio.ctx.currentTime,.18);
+  const moving=state.noise>0&&!state.hidden;if(moving&&time>audio.nextStep){playFootstep(state.moveMode==='RUNNING'?.34:state.moveMode==='CROUCHING'?.075:.19,state.moveMode==='RUNNING'?1.22:1,0);audio.nextStep=time+(state.moveMode==='RUNNING'?.27:state.moveMode==='CROUCHING'?.68:.44);}
+  if(time>audio.nextEnemyStep){camera.getWorldDirection(forward);forward.y=0;forward.normalize();const camRight=new THREE.Vector3().crossVectors(forward,camera.up).normalize(),enemyDir=new THREE.Vector3().subVectors(enemy.position,camera.position).normalize(),pan=camRight.dot(enemyDir);playFootstep(proximity*.48,.64,pan);audio.nextEnemyStep=time+(enemyData.speed>1.5?.38:.58);}
+  if(proximity>.08&&time>audio.nextBeat){const beatVolume=.035+proximity*.34;thump(beatVolume,82+proximity*18);setTimeout(()=>thump(beatVolume*.72,72+proximity*12),105);audio.nextBeat=time+THREE.MathUtils.lerp(1.22,.38,proximity);}
 }
 
 // Flashlight
-const flashlight=new THREE.SpotLight(0xe8ecd8,40,22,Math.PI/8,.58,1.45);flashlight.castShadow=true;flashlight.shadow.mapSize.set(512,512);scene.add(flashlight);scene.add(flashlight.target);
-const fillLight=new THREE.PointLight(0xcbd5c1,.75,3);scene.add(fillLight);
+const flashlight=new THREE.SpotLight(0xf2f0dc,56,25,Math.PI/9,.48,1.35);flashlight.castShadow=true;flashlight.shadow.mapSize.set(512,512);scene.add(flashlight);scene.add(flashlight.target);
+const fillLight=new THREE.PointLight(0xcbd5c1,.22,2.2);scene.add(fillLight);
 
 function canMoveTo(x,z){ if(x<-3.62||x>3.62||z<-29.2||z>29.2)return false;return !colliders.some(c=>Math.abs(x-c.x)<c.hw+.26&&Math.abs(z-c.z)<c.hz+.26); }
 function showToast(text){const t=$('#toast');t.textContent=text;t.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>t.classList.remove('show'),2100);}
@@ -99,10 +106,18 @@ function interact(){
 }
 function endGame(win){state.ended=true;controls.unlock();$('#message-kicker').textContent=win?'YOU MADE IT OUT':'IT FOUND YOU';$('#message-title').textContent=win?'ESCAPED':'CAUGHT';$('#message-body').textContent=win?'背後で、まだ何かが扉を叩いている。':'速すぎた。うるさすぎた。もう一度、静かに。';$('#message-screen').classList.add('visible');}
 
-$('#start-button').addEventListener('click',()=>{state.started=true;initAudio();$('#start-screen').classList.remove('visible');controls.lock();});
+function openSettings(){state.settingsOpen=true;$('#settings-screen').classList.add('visible');$('#settings-close').textContent=state.started?'ゲームに戻る':'閉じる';$('#settings-quit').disabled=!state.started;if(controls.isLocked)controls.unlock();}
+function closeSettings(){state.settingsOpen=false;$('#settings-screen').classList.remove('visible');if(state.started&&!state.ended)controls.lock(true);}
+const sensitivitySlider=$('#sensitivity-slider');
+sensitivitySlider.addEventListener('input',()=>{const value=Number(sensitivitySlider.value);controls.pointerSpeed=value/100;$('#sensitivity-value').textContent=String(value);localStorage.setItem('mouseSensitivity',String(value));});
+const savedSensitivity=Number(localStorage.getItem('mouseSensitivity'));if(savedSensitivity>=15&&savedSensitivity<=120){sensitivitySlider.value=String(savedSensitivity);sensitivitySlider.dispatchEvent(new Event('input'));}
+$('#settings-button').addEventListener('click',openSettings);$('#settings-close').addEventListener('click',closeSettings);
+$('#settings-quit').addEventListener('click',()=>location.reload());
+controls.addEventListener('unlock',()=>{if(state.started&&!state.ended&&!state.settingsOpen)openSettings();});
+$('#start-button').addEventListener('click',()=>{state.started=true;initAudio();$('#start-screen').classList.remove('visible');controls.lock(true);});
 $('#restart-button').addEventListener('click',()=>location.reload());
-renderer.domElement.addEventListener('click',()=>{if(state.started&&!state.ended&&!controls.isLocked)controls.lock();});
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'&&!e.repeat)interact();if(e.code==='KeyF'&&!e.repeat){state.flashlight=!state.flashlight;showToast(state.flashlight?'懐中電灯 ON':'懐中電灯 OFF');}});
+renderer.domElement.addEventListener('click',()=>{if(state.started&&!state.ended&&!state.settingsOpen&&!controls.isLocked)controls.lock(true);});
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state.started&&!state.ended&&!e.repeat){state.settingsOpen?closeSettings():openSettings();}if(e.code==='KeyE'&&!e.repeat)interact();if(e.code==='KeyF'&&!e.repeat){state.flashlight=!state.flashlight;showToast(state.flashlight?'懐中電灯 ON':'懐中電灯 OFF');}});
 addEventListener('keyup',e=>keys[e.code]=false);
 
 const clock=new THREE.Clock(); const forward=new THREE.Vector3(), right=new THREE.Vector3(), move=new THREE.Vector3(), toPlayer=new THREE.Vector3();
@@ -149,7 +164,7 @@ function updateHUD(){
 }
 function updateLight(time){
   flashlight.visible=state.flashlight&&!state.hidden;fillLight.visible=flashlight.visible;camera.getWorldDirection(forward);flashlight.position.copy(camera.position);flashlight.position.addScaledVector(forward,.12);flashlight.target.position.copy(camera.position).addScaledVector(forward,8);fillLight.position.copy(camera.position);
-  flashlight.intensity=(Math.random()<.006?9:40)*(state.battery<15?(.55+Math.sin(time*17)*.35):1);
+  flashlight.intensity=(Math.random()<.006?12:56)*(state.battery<15?(.55+Math.sin(time*17)*.35):1);
   keyGroup.rotation.y=time*.9;keyGroup.position.y=1.12+Math.sin(time*2)*.06;
 }
 function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04),time=clock.elapsedTime;if(state.started&&!state.ended){updatePlayer(dt,time);updateEnemy(dt,time);updateInteraction();updateHUD();updateLight(time);updateAudio(time);}renderer.render(scene,camera);}

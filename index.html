@@ -46,13 +46,30 @@
           <p class="eyebrow">A FIRST-PERSON HORROR EXPERIENCE</p>
           <h1>IT<br><em>HEARS</em><br>YOU</h1>
           <p class="tagline">静かに。ここでは、足音が命取りになる。</p>
-          <button id="start-button"><span>ENTER THE HALLWAY</span><small>クリックして開始</small></button>
+          <div class="start-actions">
+            <button id="start-button"><span>ENTER THE HALLWAY</span><small>クリックして開始</small></button>
+            <button id="settings-button" class="secondary-button">SETTINGS</button>
+          </div>
           <div class="controls">
             <span><b>WASD</b> 移動</span><span><b>MOUSE</b> 視点</span><span><b>SHIFT</b> 走る</span>
             <span><b>CTRL</b> しゃがむ</span><span><b>E</b> 調べる / 隠れる</span><span><b>F</b> ライト</span>
           </div>
         </div>
         <div class="version">HEADPHONES RECOMMENDED <i></i> v1.0</div>
+      </section>
+
+      <section id="settings-screen" class="screen settings-screen">
+        <div class="settings-card">
+          <p class="eyebrow">CONTROL SETTINGS</p>
+          <h2>SETTINGS</h2>
+          <label for="sensitivity-slider">
+            <span>マウス感度</span><output id="sensitivity-value">45</output>
+          </label>
+          <input id="sensitivity-slider" type="range" min="15" max="120" step="5" value="45" />
+          <p class="setting-note">マウス加速を使わない、一定速度の視点操作です。</p>
+          <button id="settings-close">ゲームに戻る</button>
+          <button id="settings-quit" class="danger-button">ゲームを終了してタイトルへ</button>
+        </div>
       </section>
 
       <section id="message-screen" class="screen">

@@ -47,14 +47,27 @@ kbd { border:1px solid #657269; padding:3px 6px; font:10px 'Share Tech Mono'; co
 h1 { font-size:clamp(76px, 11vw, 145px); line-height:.7; letter-spacing:-.025em; margin:0; color:#ced4d0; text-shadow:0 3px 22px #000; }
 h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.45); }
 .tagline { margin:33px 0 24px; letter-spacing:.12em; color:#929a94; }
-#start-button, #restart-button { position:relative; min-width:270px; padding:14px 26px; color:#dbe0dc; background:rgba(112,128,117,.1); border:1px solid #5f6b64; cursor:pointer; text-align:left; letter-spacing:.12em; transition:.2s; }
-#start-button:hover, #restart-button:hover { background:rgba(141,160,148,.2); border-color:#9eaea4; }
+#start-button, #restart-button, #settings-close, .secondary-button { position:relative; min-width:270px; padding:14px 26px; color:#dbe0dc; background:rgba(112,128,117,.1); border:1px solid #5f6b64; cursor:pointer; text-align:left; letter-spacing:.12em; transition:.2s; }
+#start-button:hover, #restart-button:hover, #settings-close:hover, .secondary-button:hover { background:rgba(141,160,148,.2); border-color:#9eaea4; }
 #start-button small { float:right; margin-top:4px; letter-spacing:.05em; }
+.start-actions { display:flex; gap:10px; align-items:stretch; }
+.start-actions .secondary-button { min-width:auto; padding-inline:18px; color:#8e9992; font:10px 'Share Tech Mono'; }
 .controls { margin-top:28px; display:grid; grid-template-columns:repeat(3, auto); width:500px; gap:9px 20px; color:#68716c; font-size:11px; letter-spacing:.08em; }
 .controls b { color:#a4aea8; font-family:'Share Tech Mono'; margin-right:5px; }
 .version { position:absolute; right:30px; bottom:24px; color:#4f5953; font:9px 'Share Tech Mono'; letter-spacing:.14em; }
 .version i { display:inline-block;width:3px;height:3px;border-radius:50%;background:#7a1917;margin:0 8px; }
 .message-card { max-width:520px;text-align:center; }.message-card h2 { font-size:64px; letter-spacing:.12em; margin:8px 0; }.message-card p { color:#8c9690;letter-spacing:.1em; }.message-card button { text-align:center;margin-top:20px; }
+.settings-screen { z-index:24; background:rgba(2,4,3,.92); }
+.settings-card { width:min(440px,86vw); padding:34px 38px; border:1px solid #38433c; background:linear-gradient(145deg,rgba(17,23,19,.98),rgba(5,8,6,.98)); box-shadow:0 24px 80px #000; }
+.settings-card h2 { margin:0 0 35px; font-size:46px; letter-spacing:.13em; }
+.settings-card label { display:flex; justify-content:space-between; color:#b6c0ba; letter-spacing:.12em; }
+.settings-card output { font:14px 'Share Tech Mono'; color:#d3ddd6; }
+.settings-card input[type="range"] { width:100%; margin:18px 0 10px; accent-color:#8fa198; cursor:pointer; }
+.setting-note { margin:0 0 28px; color:#69746d; font-size:12px; letter-spacing:.05em; }
+.settings-card #settings-close { width:100%; text-align:center; }
+.danger-button { width:100%; margin-top:10px; padding:11px 20px; border:1px solid #5e2926; background:rgba(92,24,20,.12); color:#b96a63; font:11px 'Share Tech Mono'; letter-spacing:.1em; cursor:pointer; transition:.2s; }
+.danger-button:hover { border-color:#a34840; background:rgba(130,32,26,.24); color:#e08a82; }
+.danger-button:disabled { display:none; }
 #toast { position:fixed; z-index:12; left:50%; top:23%; transform:translate(-50%,-10px); opacity:0; padding:9px 18px; border-left:2px solid #9caaa1; background:rgba(5,8,6,.7); font:12px 'Share Tech Mono'; letter-spacing:.12em; transition:.3s; }
 #toast.show { opacity:1; transform:translate(-50%,0); }
 @media(max-width:650px){ #hud{inset:18px 16px auto}.status-cluster{width:190px}.objective strong{font-size:13px}#bottom-hud{inset:auto 16px 18px}.controls{width:100%;grid-template-columns:1fr 1fr}.title-block{width:88vw} }
