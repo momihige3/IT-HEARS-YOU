@@ -35,6 +35,7 @@ const state = {
   currentLocker: null,
   lockerYaw: 0,
   settingsOpen: false,
+  allowExit: false,
   bob: 0,
 };
 
@@ -556,7 +557,10 @@ if (savedSensitivity >= 15 && savedSensitivity <= 120) {
 
 $('#settings-button').addEventListener('click', openSettings);
 $('#settings-close').addEventListener('click', closeSettings);
-$('#settings-quit').addEventListener('click', () => location.reload());
+$('#settings-quit').addEventListener('click', () => {
+  state.allowExit = true;
+  location.reload();
+});
 controls.addEventListener('unlock', () => {
   if (state.started && !state.ended && !state.settingsOpen) openSettings();
 });
@@ -566,15 +570,17 @@ $('#start-button').addEventListener('click', () => {
   $('#start-screen').classList.remove('visible');
   lockPointer();
 });
-$('#restart-button').addEventListener('click', () => location.reload());
+$('#restart-button').addEventListener('click', () => {
+  state.allowExit = true;
+  location.reload();
+});
 renderer.domElement.addEventListener('click', () => {
   if (state.started && !state.ended && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
 addEventListener('keydown', (event) => {
-  const browserShortcutKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyP', 'KeyR'];
-  if (state.started && !state.ended && (event.ctrlKey || event.metaKey) && browserShortcutKeys.includes(event.code)) {
-    event.preventDefault();
-  }
+  if (state.started && !state.ended && (event.ctrlKey || event.metaKey)) event.preventDefault();
+}, { capture: true });
+addEventListener('keydown', (event) => {
   keys[event.code] = true;
   if (event.code === 'Escape' && state.started && !state.ended && !event.repeat) {
     if (state.settingsOpen) closeSettings();
@@ -587,6 +593,12 @@ addEventListener('keydown', (event) => {
   }
 });
 addEventListener('keyup', (event) => { keys[event.code] = false; });
+addEventListener('beforeunload', (event) => {
+  if (state.started && !state.ended && !state.allowExit) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
 
 const clock = new THREE.Clock();
 const forward = new THREE.Vector3();
@@ -635,7 +647,7 @@ function updateLockerView() {
   const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   camera.position.copy(inside);
   const delta = Math.atan2(Math.sin(camera.rotation.y - state.lockerYaw), Math.cos(camera.rotation.y - state.lockerYaw));
-  camera.rotation.y = state.lockerYaw + THREE.MathUtils.clamp(delta, -1.55, 1.55);
+  camera.rotation.y = state.lockerYaw + THREE.MathUtils.clamp(delta, -1.7, 1.7);
   camera.rotation.x = 0;
   camera.rotation.z = 0;
 }
