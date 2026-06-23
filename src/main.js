@@ -378,10 +378,10 @@ function playFootstep(volume, pitch = 1, pan = 0) {
 }
 
 function emitPlayerSound(strength) {
-  const event = { x: camera.position.x, z: camera.position.z, strength, age: 0, life: 2.4 };
+  const hearingRadius = 3.5 + strength * 0.2;
+  const event = { x: camera.position.x, z: camera.position.z, strength, hearingRadius, age: 0, life: 2.4 };
   soundEvents.push(event);
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
-  const hearingRadius = 3.5 + strength * 0.2;
   if (distance <= hearingRadius && state.alert !== 'HUNTING') {
     setEnemyDestination(event.x, event.z, 'INVESTIGATING');
     enemyData.investigateUntil = clock.elapsedTime + 3.5 + strength * 0.025;
@@ -457,7 +457,7 @@ function enterLocker(locker) {
   state.hidden = true;
   state.currentLocker = locker;
   document.body.classList.add('hidden-in-locker');
-  const inside = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.32));
+  const inside = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 4));
   camera.position.copy(inside);
   camera.lookAt(lookTarget);
@@ -556,6 +556,10 @@ renderer.domElement.addEventListener('click', () => {
   if (state.started && !state.ended && !state.settingsOpen && !controls.isLocked) controls.lock(true);
 });
 addEventListener('keydown', (event) => {
+  const browserShortcutKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyP', 'KeyR'];
+  if (state.started && !state.ended && (event.ctrlKey || event.metaKey) && browserShortcutKeys.includes(event.code)) {
+    event.preventDefault();
+  }
   keys[event.code] = true;
   if (event.code === 'Escape' && state.started && !state.ended && !event.repeat) {
     if (state.settingsOpen) closeSettings();
@@ -613,10 +617,10 @@ function updatePlayer(dt) {
 
 function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
-  const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.32));
+  const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   camera.position.copy(inside);
   const delta = Math.atan2(Math.sin(camera.rotation.y - state.lockerYaw), Math.cos(camera.rotation.y - state.lockerYaw));
-  camera.rotation.y = state.lockerYaw + THREE.MathUtils.clamp(delta, -1.18, 1.18);
+  camera.rotation.y = state.lockerYaw + THREE.MathUtils.clamp(delta, -1.55, 1.55);
   camera.rotation.x = 0;
   camera.rotation.z = 0;
 }
@@ -761,8 +765,9 @@ function updateRadar(dt, time) {
     const progress = event.age / event.life;
     radar.strokeStyle = `rgba(225,181,78,${1 - progress})`;
     radar.lineWidth = 1.5;
+    const hearingRadiusPixels = event.hearingRadius * 4.1;
     radar.beginPath();
-    radar.arc(p.x, p.y, 3 + progress * (8 + event.strength * 0.12), 0, Math.PI * 2);
+    radar.arc(p.x, p.y, 2 + progress * hearingRadiusPixels, 0, Math.PI * 2);
     radar.stroke();
   }
 
