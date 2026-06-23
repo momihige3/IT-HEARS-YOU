@@ -289,6 +289,9 @@ const enemyData = {
   searchUntil: 0,
   lookAroundUntil: 0,
   lookBaseYaw: 0,
+  coverCheckIndex: -1,
+  coverCheckSuccess: false,
+  nextCoverCheckAt: 0,
 };
 
 function nearestNode(x, z) {
@@ -531,7 +534,7 @@ function emitPlayerSound(strength, baseHearingRadius) {
     const firstReaction = enemyData.mode !== 'INVESTIGATING';
     setEnemyDestination(event.x, event.z, 'INVESTIGATING');
     enemyData.investigateUntil = now + 3.5 + strength * 0.025;
-    enemyData.searchUntil = now + 10;
+    enemyData.searchUntil = now + 16;
     enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
     if (firstReaction) enemyData.pauseUntil = now + 0.7;
   }
@@ -708,6 +711,9 @@ function respawnPlayer() {
     searchUntil: 0,
     lookAroundUntil: 0,
     lookBaseYaw: 0,
+    coverCheckIndex: -1,
+    coverCheckSuccess: false,
+    nextCoverCheckAt: 0,
   });
   soundEvents.length = 0;
   chooseRandomEnemyRoute();
@@ -962,6 +968,20 @@ function updateEnemy(dt, time) {
   const facing = enemyForward.dot(toPlayer.clone().normalize());
   const exitGraceActive = time < state.lockerExitGraceUntil;
   const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
+  const nearbySharedCover = !state.hidden && !exitGraceActive && enemyData.mode === 'SEARCHING'
+    ? coverPoints.findIndex((cover) =>
+      Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
+      && Math.hypot(enemy.position.x - cover.x, enemy.position.z - cover.z) < 2.45)
+    : -1;
+  if (nearbySharedCover >= 0 && (nearbySharedCover !== enemyData.coverCheckIndex || time >= enemyData.nextCoverCheckAt)) {
+    enemyData.coverCheckIndex = nearbySharedCover;
+    enemyData.coverCheckSuccess = Math.random() < 0.45 + enemyData.alertMemory * 0.35;
+    enemyData.nextCoverCheckAt = time + 3;
+  } else if (nearbySharedCover < 0) {
+    enemyData.coverCheckIndex = -1;
+    enemyData.coverCheckSuccess = false;
+  }
+  const checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess;
 
   if (visible) {
     state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
@@ -974,13 +994,20 @@ function updateEnemy(dt, time) {
     const calmRate = Math.max(0.65, baseCalmRate * (1 - enemyData.alertMemory * 0.82));
     state.detection -= calmRate * dt;
   }
+  if (checkingSameCover) state.detection += (72 + enemyData.alertMemory * 35) * dt;
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
   if (!state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
 
+  if (visible && state.detection <= 70) {
+    setEnemyDestination(camera.position.x, camera.position.z, 'INVESTIGATING');
+    enemyData.investigateUntil = time + 2.2;
+    enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, state.detection > 25 ? 3.15 : 2.35);
+  }
+
   if (enemyData.mode === 'INVESTIGATING' && time - enemyData.lastHeardAt > 0.85 && enemyData.path.length === 0) {
     enemyData.mode = 'SEARCHING';
-    enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 7);
+    enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 12);
     enemyData.lookBaseYaw = enemy.rotation.y;
     enemyData.lookAroundUntil = time + 1.1;
   }
@@ -1038,7 +1065,9 @@ function updateEnemy(dt, time) {
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
-  if (distance < 0.82 && !state.hidden) startCaughtCutscene();
+  const clearAtCloseRange = distance < 1.45 && hasLineOfSight(enemyEye, playerEye);
+  const fullyDetected = state.detection >= 99.5 && (visible || checkingSameCover);
+  if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
 }
 
 function updateInteraction() {
