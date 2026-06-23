@@ -23,6 +23,8 @@ controls.pointerSpeed = 0.45;
 const state = {
   started: false,
   ended: false,
+  caught: false,
+  caughtAt: 0,
   hidden: false,
   key: false,
   flashlight: true,
@@ -42,6 +44,14 @@ const state = {
 };
 
 const keys = {};
+const mobileInput = {
+  active: matchMedia('(hover: none) and (pointer: coarse)').matches,
+  moveX: 0,
+  moveY: 0,
+  lookX: 0,
+  lookY: 0,
+  running: false,
+};
 const colliders = [];
 const wallMeshes = [];
 const lockers = [];
@@ -645,6 +655,78 @@ function interact() {
   }
 }
 
+function startCaughtCutscene() {
+  if (state.caught) return;
+  state.caught = true;
+  state.caughtAt = clock.elapsedTime;
+  state.noise = 0;
+  Object.keys(keys).forEach((key) => { keys[key] = false; });
+  if (controls.isLocked) controls.unlock();
+  document.body.classList.add('caught-cutscene');
+}
+
+function respawnPlayer() {
+  state.caught = false;
+  state.ended = false;
+  state.hidden = false;
+  state.key = false;
+  state.flashlight = true;
+  state.battery = 100;
+  state.detection = 0;
+  state.alert = 'UNNOTICED';
+  state.moveMode = 'WALKING';
+  state.noise = 0;
+  state.nearLocker = null;
+  state.currentLocker = null;
+  state.lockerExitGraceUntil = clock.elapsedTime + 1;
+  state.settingsOpen = false;
+  mobileInput.moveX = mobileInput.moveY = mobileInput.lookX = mobileInput.lookY = 0;
+  mobileInput.running = false;
+  $('#mobile-run-toggle').classList.remove('running');
+  $('#mobile-run-toggle').textContent = '歩く';
+  document.body.classList.remove('caught-cutscene', 'hidden-in-locker');
+  camera.position.set(playerStart.x, 1.68, playerStart.z);
+  camera.rotation.set(0, 0, 0);
+  keyGroup.visible = true;
+  keyLight.visible = true;
+  $('#objective-text').textContent = '鍵を探す';
+  enemy.position.set(enemyStart.x, 0, enemyStart.z);
+  Object.assign(enemyData, {
+    speed: 1.25,
+    path: [],
+    mode: 'ROAMING',
+    targetKey: null,
+    repathAt: 0,
+    investigateUntil: 0,
+    investigateSpeed: 1.85,
+    pauseUntil: 0,
+    isMoving: false,
+    alertMemory: 0,
+    lastMemoryGainAt: -Infinity,
+    lastHeardAt: -Infinity,
+    lastHeardPosition: null,
+    searchUntil: 0,
+    lookAroundUntil: 0,
+    lookBaseYaw: 0,
+  });
+  soundEvents.length = 0;
+  chooseRandomEnemyRoute();
+  showToast('意識を取り戻した');
+  if (!mobileInput.active) lockPointer();
+}
+
+function updateCaughtCutscene(time) {
+  const progress = THREE.MathUtils.clamp((time - state.caughtAt) / 1.75, 0, 1);
+  const enemyFace = enemy.position.clone().add(new THREE.Vector3(0, 1.78, 0));
+  const away = camera.position.clone().sub(enemyFace).setY(0).normalize();
+  const targetPosition = enemyFace.clone().addScaledVector(away.lengthSq() ? away : new THREE.Vector3(0, 0, 1), 0.52);
+  targetPosition.y = 1.58;
+  camera.position.lerp(targetPosition, 0.045 + progress * 0.08);
+  camera.lookAt(enemyFace);
+  $('#danger-flash').style.opacity = String(0.45 + Math.sin(time * 18) * 0.2);
+  if (progress >= 1) respawnPlayer();
+}
+
 function endGame(win) {
   state.ended = true;
   controls.unlock();
@@ -667,10 +749,11 @@ function openSettings() {
 function closeSettings() {
   state.settingsOpen = false;
   $('#settings-screen').classList.remove('visible');
-  if (state.started && !state.ended) lockPointer();
+  if (state.started && !state.ended && !state.caught) lockPointer();
 }
 
 function lockPointer() {
+  if (mobileInput.active) return;
   try {
     controls.lock(true);
   } catch {
@@ -699,11 +782,12 @@ $('#settings-quit').addEventListener('click', () => {
   location.reload();
 });
 controls.addEventListener('unlock', () => {
-  if (state.started && !state.ended && !state.settingsOpen) openSettings();
+  if (state.started && !state.ended && !state.caught && !state.settingsOpen) openSettings();
 });
 $('#start-button').addEventListener('click', () => {
   state.started = true;
   initAudio();
+  document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   lockPointer();
 });
@@ -712,7 +796,7 @@ $('#restart-button').addEventListener('click', () => {
   location.reload();
 });
 renderer.domElement.addEventListener('click', () => {
-  if (state.started && !state.ended && !state.settingsOpen && !controls.isLocked) lockPointer();
+  if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
 addEventListener('keydown', (event) => {
   if (state.started && !state.ended && (event.ctrlKey || event.metaKey)) event.preventDefault();
@@ -745,6 +829,59 @@ addEventListener('beforeunload', (event) => {
   }
 });
 
+function setupTouchStick(element, onChange) {
+  let pointerId = null;
+  let bounds = null;
+  const knob = element.querySelector('i');
+  const update = (event) => {
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    const radius = bounds.width * 0.36;
+    const rawX = event.clientX - centerX;
+    const rawY = event.clientY - centerY;
+    const distance = Math.hypot(rawX, rawY) || 1;
+    const scale = Math.min(1, radius / distance);
+    const x = rawX * scale;
+    const y = rawY * scale;
+    knob.style.transform = `translate(${x}px, ${y}px)`;
+    onChange(x / radius, y / radius);
+  };
+  element.addEventListener('pointerdown', (event) => {
+    if (!state.started || state.caught) return;
+    event.preventDefault();
+    pointerId = event.pointerId;
+    bounds = element.getBoundingClientRect();
+    element.setPointerCapture(pointerId);
+    update(event);
+  });
+  element.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== pointerId) return;
+    event.preventDefault();
+    update(event);
+  });
+  const release = (event) => {
+    if (event.pointerId !== pointerId) return;
+    pointerId = null;
+    knob.style.transform = '';
+    onChange(0, 0);
+  };
+  element.addEventListener('pointerup', release);
+  element.addEventListener('pointercancel', release);
+}
+
+setupTouchStick($('#move-stick'), (x, y) => { mobileInput.moveX = x; mobileInput.moveY = y; });
+setupTouchStick($('#look-stick'), (x, y) => { mobileInput.lookX = x; mobileInput.lookY = y; });
+$('#mobile-run-toggle').addEventListener('click', () => {
+  mobileInput.running = !mobileInput.running;
+  $('#mobile-run-toggle').classList.toggle('running', mobileInput.running);
+  $('#mobile-run-toggle').textContent = mobileInput.running ? '走る' : '歩く';
+});
+$('#mobile-flashlight').addEventListener('click', () => {
+  state.flashlight = !state.flashlight;
+  $('#mobile-flashlight').classList.toggle('active', state.flashlight);
+});
+$('#mobile-action').addEventListener('click', interact);
+
 const clock = new THREE.Clock();
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
@@ -752,9 +889,25 @@ const move = new THREE.Vector3();
 const toPlayer = new THREE.Vector3();
 const playerStart = worldFromGrid(4, 14);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
+camera.rotation.order = 'YXZ';
+
+function updateMobileLook(dt) {
+  if (!mobileInput.active || state.caught || state.settingsOpen) return;
+  const lookSpeed = 2.6 * (controls.pointerSpeed / 0.45);
+  if (state.hidden) {
+    state.lockerLookOffset = THREE.MathUtils.clamp(
+      state.lockerLookOffset - mobileInput.lookX * lookSpeed * dt,
+      -Math.PI / 2,
+      Math.PI / 2,
+    );
+  } else {
+    camera.rotation.y -= mobileInput.lookX * lookSpeed * dt;
+    camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x - mobileInput.lookY * lookSpeed * dt, -1.35, 1.35);
+  }
+}
 
 function updatePlayer(dt) {
-  if (!controls.isLocked || state.hidden) return;
+  if ((!controls.isLocked && !mobileInput.active) || state.hidden) return;
   camera.getWorldDirection(forward);
   forward.y = 0;
   forward.normalize();
@@ -764,9 +917,13 @@ function updatePlayer(dt) {
   if (keys.KeyS) move.sub(forward);
   if (keys.KeyD) move.add(right);
   if (keys.KeyA) move.sub(right);
+  if (mobileInput.active) {
+    move.addScaledVector(forward, -mobileInput.moveY);
+    move.addScaledVector(right, mobileInput.moveX);
+  }
   const active = move.lengthSq() > 0;
   if (active) move.normalize();
-  const running = keys.ShiftLeft || keys.ShiftRight;
+  const running = keys.ShiftLeft || keys.ShiftRight || mobileInput.running;
   const speed = running ? 4.7 : 2.35;
   state.moveMode = running ? 'RUNNING' : 'WALKING';
   state.noise = active ? (running ? 88 : 38) : 0;
@@ -881,7 +1038,7 @@ function updateEnemy(dt, time) {
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
-  if (distance < 0.82 && !state.hidden) endGame(false);
+  if (distance < 0.82 && !state.hidden) startCaughtCutscene();
 }
 
 function updateInteraction() {
@@ -900,6 +1057,10 @@ function updateInteraction() {
   else if (!state.key && camera.position.distanceTo(keyGroup.position) < 1.8) prompt = '[ E ] 鍵を拾う';
   else if (camera.position.distanceTo(exitDoor.position) < 2.5) prompt = state.key ? '[ E ] 鍵を使って脱出' : '[ E ] 扉を調べる';
   $('#prompt').textContent = prompt;
+  const mobileAction = $('#mobile-action');
+  const actionLabel = prompt.replace(/^\[ E \]\s*/, '');
+  mobileAction.textContent = actionLabel || '調べる';
+  mobileAction.classList.toggle('visible', mobileInput.active && Boolean(prompt) && !state.caught);
 }
 
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
@@ -989,6 +1150,26 @@ function updateRadar(dt, time) {
   radar.restore();
 
   const enemyPoint = radarPoint(enemy.position.x, enemy.position.z);
+  const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
+  const visionDirection = Math.atan2(radarForward.z, radarForward.x);
+  const visionHalfAngle = Math.acos(0.84);
+  radar.beginPath();
+  radar.moveTo(enemyPoint.x, enemyPoint.y);
+  for (let i = 0; i <= 14; i += 1) {
+    const angle = visionDirection - visionHalfAngle + (visionHalfAngle * 2 * i) / 14;
+    const point = radarPoint(
+      enemy.position.x + Math.cos(angle) * 10.5,
+      enemy.position.z + Math.sin(angle) * 10.5,
+    );
+    radar.lineTo(point.x, point.y);
+  }
+  radar.closePath();
+  radar.fillStyle = state.alert === 'HUNTING' ? 'rgba(239,65,52,.24)' : 'rgba(208,82,62,.12)';
+  radar.fill();
+  radar.strokeStyle = 'rgba(239,92,76,.38)';
+  radar.lineWidth = 1;
+  radar.stroke();
+
   radar.fillStyle = `rgba(239,65,52,${0.72 + Math.sin(time * 6) * 0.25})`;
   radar.shadowColor = '#ef4134';
   radar.shadowBlur = 7;
@@ -1009,7 +1190,10 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
   const time = clock.elapsedTime;
-  if (state.started && !state.ended && !state.settingsOpen) {
+  if (state.caught) {
+    updateCaughtCutscene(time);
+  } else if (state.started && !state.ended && !state.settingsOpen) {
+    updateMobileLook(dt);
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
