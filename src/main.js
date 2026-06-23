@@ -953,7 +953,7 @@ function updateLockerView() {
 
 function updateEnemy(dt, time) {
   if (state.ended) return;
-  const distance = enemy.position.distanceTo(camera.position);
+  const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
   const playerEye = camera.position.clone();
   toPlayer.subVectors(playerEye, enemyEye);
