@@ -33,7 +33,6 @@ const state = {
   noise: 0,
   nearLocker: null,
   currentLocker: null,
-  lockerYaw: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -406,9 +405,7 @@ function updateAudio(time) {
   if (moving && time > audio.nextStep) {
     const settings = state.moveMode === 'RUNNING'
       ? { volume: 0.72, pitch: 1.2, interval: 0.27 }
-      : state.moveMode === 'CROUCHING'
-        ? { volume: 0.24, pitch: 0.86, interval: 0.69 }
-        : { volume: 0.46, pitch: 1, interval: 0.44 };
+      : { volume: 0.46, pitch: 1, interval: 0.44 };
     playFootstep(settings.volume, settings.pitch, 0);
     emitPlayerSound(state.noise);
     audio.nextStep = time + settings.interval;
@@ -468,7 +465,6 @@ function enterLocker(locker) {
   const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 4));
   camera.position.copy(inside);
   camera.lookAt(lookTarget);
-  state.lockerYaw = camera.rotation.y;
   keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
   showToast('ロッカーの中に隠れた');
 }
@@ -621,20 +617,18 @@ function updatePlayer(dt) {
   if (keys.KeyA) move.sub(right);
   const active = move.lengthSq() > 0;
   if (active) move.normalize();
-  const crouching = keys.ControlLeft || keys.ControlRight;
-  const running = (keys.ShiftLeft || keys.ShiftRight) && !crouching;
-  const speed = crouching ? 1.25 : running ? 4.7 : 2.35;
-  state.moveMode = crouching ? 'CROUCHING' : running ? 'RUNNING' : 'WALKING';
-  state.noise = active ? (crouching ? 13 : running ? 88 : 38) : 0;
+  const running = keys.ShiftLeft || keys.ShiftRight;
+  const speed = running ? 4.7 : 2.35;
+  state.moveMode = running ? 'RUNNING' : 'WALKING';
+  state.noise = active ? (running ? 88 : 38) : 0;
   const nextX = camera.position.x + move.x * speed * dt;
   const nextZ = camera.position.z + move.z * speed * dt;
   if (canMoveTo(nextX, camera.position.z)) camera.position.x = nextX;
   if (canMoveTo(camera.position.x, nextZ)) camera.position.z = nextZ;
-  const targetY = crouching ? 1.05 : 1.68;
-  camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, dt * 9);
+  camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.68, dt * 9);
   if (active) {
     state.bob += dt * speed * (running ? 2.1 : 1.65);
-    camera.position.y += Math.sin(state.bob * 3.6) * (crouching ? 0.008 : running ? 0.038 : 0.022);
+    camera.position.y += Math.sin(state.bob * 3.6) * (running ? 0.038 : 0.022);
   }
   if (state.flashlight) {
     state.battery = Math.max(0, state.battery - dt * 0.18);
@@ -646,8 +640,7 @@ function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
   const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   camera.position.copy(inside);
-  const delta = Math.atan2(Math.sin(camera.rotation.y - state.lockerYaw), Math.cos(camera.rotation.y - state.lockerYaw));
-  camera.rotation.y = state.lockerYaw + THREE.MathUtils.clamp(delta, -1.7, 1.7);
+  // Horizontal rotation stays unrestricted; only vertical look is locked in a locker.
   camera.rotation.x = 0;
   camera.rotation.z = 0;
 }
@@ -671,21 +664,21 @@ function updateEnemy(dt, time) {
   if (state.detection > 70 && !state.hidden) {
     state.alert = 'HUNTING';
     enemyData.mode = 'HUNTING';
-    enemyData.speed = 2.75;
+    enemyData.speed = 5.2 + state.detection * 0.006;
     if (time > enemyData.repathAt) {
       setEnemyDestination(camera.position.x, camera.position.z, 'HUNTING');
       enemyData.repathAt = time + 0.48;
     }
   } else if (enemyData.mode === 'INVESTIGATING' && time < enemyData.investigateUntil) {
     state.alert = 'SUSPICIOUS';
-    enemyData.speed = enemyData.investigateSpeed;
+    enemyData.speed = Math.max(enemyData.investigateSpeed, 2.45);
   } else {
     if (enemyData.mode !== 'ROAMING') {
       enemyData.mode = 'ROAMING';
       enemyData.path = [];
     }
     state.alert = state.detection > 25 ? 'SUSPICIOUS' : 'UNNOTICED';
-    enemyData.speed = 1.25;
+    enemyData.speed = state.alert === 'SUSPICIOUS' ? 2.75 : 1.3;
   }
 
   enemyData.isMoving = false;
@@ -728,7 +721,7 @@ function updateInteraction() {
 }
 
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
-const movementLabels = { WALKING: '歩行', RUNNING: '走行', CROUCHING: 'しゃがみ', HIDING: '隠れている' };
+const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている' };
 function updateHUD() {
   $('#noise-bar').style.width = `${state.noise}%`;
   $('#noise-value').textContent = String(Math.round(state.noise)).padStart(2, '0');
