@@ -181,6 +181,36 @@ makeLocker(7, 9, 'east');
 makeLocker(4, 5, 'east');
 makeLocker(4, 10, 'west');
 
+// Cover objects leave the navigation centerline open while breaking sight lines.
+const coverPoints = [];
+const crateMat = material(0x443b2e, 0.92);
+const cabinetMat = material(0x303a34, 0.5, 0.55);
+function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
+  const cell = worldFromGrid(gx, gz);
+  const x = cell.x + offsetX;
+  const z = cell.z + offsetZ;
+  if (type === 'cabinet') {
+    addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true);
+    addBox(x, 1.55, z + 0.425, 0.72, 0.06, 0.025, darkMat);
+    addBox(x, 1.38, z + 0.425, 0.72, 0.06, 0.025, darkMat);
+  } else {
+    addBox(x, 0.58, z, 1.2, 1.16, 1.05, crateMat, true);
+    addBox(x + 0.12, 1.42, z - 0.05, 0.86, 0.56, 0.82, crateMat);
+  }
+  coverPoints.push({ x, z });
+}
+
+addCover(4, 4, -1.05, 0, 'cabinet');
+addCover(4, 9, 1.02, 0, 'crate');
+addCover(3, 2, 0, 1.02, 'crate');
+addCover(5, 2, 0, -1.02, 'cabinet');
+addCover(3, 7, 0, -1.02, 'cabinet');
+addCover(5, 7, 0, 1.02, 'crate');
+addCover(3, 12, 0, 1.02, 'cabinet');
+addCover(5, 12, 0, -1.02, 'crate');
+addCover(1, 5, 1.02, 0, 'crate');
+addCover(7, 10, -1.02, 0, 'cabinet');
+
 // Exit door at the north end of the maze.
 const exitDoor = addBox(0, 1.45, -29.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
 addBox(0, 3.45, -29.68, 1.2, 0.36, 0.08, material(0x1d6243, 0.35));
@@ -244,6 +274,11 @@ const enemyData = {
   isMoving: false,
   alertMemory: 0,
   lastMemoryGainAt: -Infinity,
+  lastHeardAt: -Infinity,
+  lastHeardPosition: null,
+  searchUntil: 0,
+  lookAroundUntil: 0,
+  lookBaseYaw: 0,
 };
 
 function nearestNode(x, z) {
@@ -297,6 +332,22 @@ function chooseRandomEnemyRoute() {
   const choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
   const target = choices[Math.floor(Math.random() * choices.length)];
   setEnemyDestination(target.x, target.z, 'ROAMING');
+}
+
+function chooseCoverSearchRoute() {
+  const origin = enemyData.lastHeardPosition || { x: enemy.position.x, z: enemy.position.z };
+  let nearbyCovers = coverPoints.filter((cover) => Math.hypot(cover.x - origin.x, cover.z - origin.z) < 11);
+  if (!nearbyCovers.length) nearbyCovers = coverPoints;
+  const cover = nearbyCovers[Math.floor(Math.random() * nearbyCovers.length)];
+  const nearbyNodes = [...navNodes.values()].filter((node) => Math.hypot(node.x - cover.x, node.z - cover.z) < 4.8);
+  const target = nearbyNodes[Math.floor(Math.random() * nearbyNodes.length)] || nearestNode(cover.x, cover.z);
+  if (target) {
+    setEnemyDestination(target.x, target.z, 'SEARCHING');
+    if (enemyData.path.length === 0) {
+      enemyData.lookBaseYaw = enemy.rotation.y;
+      enemyData.lookAroundUntil = clock.elapsedTime + 0.8 + Math.random();
+    }
+  }
 }
 
 // Flashlight.
@@ -450,6 +501,8 @@ function emitPlayerSound(strength, baseHearingRadius) {
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
   if (distance <= hearingRadius) {
     const now = clock.elapsedTime;
+    enemyData.lastHeardAt = now;
+    enemyData.lastHeardPosition = { x: event.x, z: event.z };
     if (now - enemyData.lastMemoryGainAt > 0.85) {
       enemyData.alertMemory = THREE.MathUtils.clamp(
         enemyData.alertMemory + (strength > 70 ? 0.12 : 0.055),
@@ -468,6 +521,7 @@ function emitPlayerSound(strength, baseHearingRadius) {
     const firstReaction = enemyData.mode !== 'INVESTIGATING';
     setEnemyDestination(event.x, event.z, 'INVESTIGATING');
     enemyData.investigateUntil = now + 3.5 + strength * 0.025;
+    enemyData.searchUntil = now + 10;
     enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
     if (firstReaction) enemyData.pauseUntil = now + 0.7;
   }
@@ -750,7 +804,7 @@ function updateEnemy(dt, time) {
   const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
   const facing = enemyForward.dot(toPlayer.clone().normalize());
   const exitGraceActive = time < state.lockerExitGraceUntil;
-  const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.32 && hasLineOfSight(enemyEye, playerEye);
+  const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
 
   if (visible) {
     state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
@@ -759,13 +813,20 @@ function updateEnemy(dt, time) {
       enemyData.lastMemoryGainAt = time;
     }
   } else {
-    const baseCalmRate = enemyData.mode === 'INVESTIGATING' ? 2.3 : 4.5;
+    const baseCalmRate = ['INVESTIGATING', 'SEARCHING'].includes(enemyData.mode) ? 2.3 : 4.5;
     const calmRate = Math.max(0.65, baseCalmRate * (1 - enemyData.alertMemory * 0.82));
     state.detection -= calmRate * dt;
   }
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
   if (!state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
+
+  if (enemyData.mode === 'INVESTIGATING' && time - enemyData.lastHeardAt > 0.85 && enemyData.path.length === 0) {
+    enemyData.mode = 'SEARCHING';
+    enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 7);
+    enemyData.lookBaseYaw = enemy.rotation.y;
+    enemyData.lookAroundUntil = time + 1.1;
+  }
 
   if (state.detection > 70 && !state.hidden) {
     state.alert = 'HUNTING';
@@ -778,6 +839,9 @@ function updateEnemy(dt, time) {
   } else if (enemyData.mode === 'INVESTIGATING' && time < enemyData.investigateUntil) {
     state.alert = 'SUSPICIOUS';
     enemyData.speed = Math.max(enemyData.investigateSpeed, 2.45);
+  } else if (enemyData.mode === 'SEARCHING' && time < enemyData.searchUntil) {
+    state.alert = 'SUSPICIOUS';
+    enemyData.speed = 2.15 + enemyData.alertMemory * 0.7;
   } else {
     if (enemyData.mode !== 'ROAMING') {
       enemyData.mode = 'ROAMING';
@@ -788,17 +852,29 @@ function updateEnemy(dt, time) {
   }
 
   enemyData.isMoving = false;
-  if (enemyData.path.length === 0) chooseRandomEnemyRoute();
+  if (enemyData.path.length === 0) {
+    if (enemyData.mode === 'SEARCHING' && time >= enemyData.lookAroundUntil) chooseCoverSearchRoute();
+    else if (!['INVESTIGATING', 'SEARCHING'].includes(enemyData.mode)) chooseRandomEnemyRoute();
+  }
   const target = enemyData.path[0];
-  if (target && time >= enemyData.pauseUntil) {
+  if (target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
     const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
-    if (direction.length() < 0.18) enemyData.path.shift();
+    if (direction.length() < 0.18) {
+      enemyData.path.shift();
+      if (enemyData.path.length === 0 && enemyData.mode === 'SEARCHING') {
+        enemyData.lookBaseYaw = enemy.rotation.y;
+        enemyData.lookAroundUntil = time + 0.9 + Math.random() * 1.2;
+      }
+    }
     else {
       direction.normalize();
       enemy.position.addScaledVector(direction, enemyData.speed * dt);
       enemy.rotation.y = Math.atan2(direction.x, direction.z);
       enemyData.isMoving = true;
     }
+  }
+  if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
+    enemy.rotation.y = enemyData.lookBaseYaw + Math.sin(time * 3.1) * 1.05;
   }
   enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
