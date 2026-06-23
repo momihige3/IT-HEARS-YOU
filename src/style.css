@@ -58,14 +58,15 @@ kbd { border:1px solid #657269; padding:3px 6px; font:10px 'Share Tech Mono'; co
 
 #mobile-controls, #rotate-device { display:none; }
 #mobile-controls { position:fixed; inset:0; z-index:15; pointer-events:none; transition:opacity .2s; }
-.touch-stick { position:absolute; bottom:22px; width:112px; height:112px; border:1px solid rgba(205,220,211,.34); border-radius:50%; background:rgba(18,28,22,.28); box-shadow:inset 0 0 24px rgba(0,0,0,.4); pointer-events:auto; touch-action:none; user-select:none; }
-.touch-stick i { position:absolute; left:50%; top:50%; width:48px; height:48px; margin:-24px; border-radius:50%; border:1px solid rgba(222,232,226,.46); background:rgba(126,148,135,.28); box-shadow:0 3px 14px rgba(0,0,0,.5); }
+.touch-stick { position:absolute; bottom:50px; width:224px; height:224px; border:1px solid rgba(205,220,211,.34); border-radius:50%; background:rgba(18,28,22,.24); box-shadow:inset 0 0 38px rgba(0,0,0,.4); pointer-events:auto; touch-action:none; user-select:none; }
+.touch-stick i { position:absolute; left:50%; top:50%; width:82px; height:82px; margin:-41px; border-radius:50%; border:1px solid rgba(222,232,226,.46); background:rgba(126,148,135,.3); box-shadow:0 3px 18px rgba(0,0,0,.5); }
 .touch-stick span { position:absolute; width:100%; bottom:-16px; text-align:center; color:rgba(190,204,195,.55); font:9px 'Share Tech Mono'; letter-spacing:.12em; }
-#move-stick { left:25px; } #look-stick { right:25px; }
-#mobile-action { display:none; position:absolute; left:50%; bottom:24px; transform:translateX(-50%); min-width:150px; padding:13px 18px; border:1px solid rgba(212,224,217,.55); background:rgba(21,31,25,.62); color:#e1e8e3; font:12px 'Share Tech Mono'; pointer-events:auto; touch-action:manipulation; }
+#move-stick { left:46px; }
+#mobile-action { display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); min-width:330px; min-height:92px; padding:24px 30px; border:2px solid rgba(212,224,217,.65); background:rgba(21,31,25,.72); color:#e1e8e3; font:21px 'Share Tech Mono'; pointer-events:auto; touch-action:manipulation; box-shadow:0 8px 28px rgba(0,0,0,.55); }
 #mobile-action.visible { display:block; }
-.mobile-right-buttons { position:absolute; right:150px; bottom:28px; display:grid; gap:8px; pointer-events:auto; }
-.mobile-right-buttons button { width:72px; padding:10px 5px; border:1px solid rgba(188,204,194,.38); background:rgba(18,27,21,.48); color:#b8c6bd; font:10px 'Share Tech Mono'; touch-action:manipulation; }
+.mobile-right-buttons { position:absolute; right:34px; bottom:42px; display:grid; gap:14px; pointer-events:auto; }
+.mobile-right-buttons button { width:126px; min-height:66px; padding:14px 8px; border:2px solid rgba(188,204,194,.42); border-radius:6px; background:rgba(18,27,21,.58); color:#d2dcd6; font:15px 'Share Tech Mono'; touch-action:manipulation; box-shadow:0 5px 18px rgba(0,0,0,.35); }
+#game canvas { touch-action:none; }
 #mobile-run-toggle.running { color:#f0d084; border-color:rgba(225,181,78,.65); background:rgba(100,72,18,.35); }
 #rotate-device { position:fixed; inset:0; z-index:40; place-content:center; text-align:center; background:#030504; }
 #rotate-device strong { font-size:22px; letter-spacing:.12em; } #rotate-device span { margin-top:10px; color:#77827b; font:11px 'Share Tech Mono'; }
