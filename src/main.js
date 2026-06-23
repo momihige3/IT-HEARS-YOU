@@ -35,6 +35,7 @@ const state = {
   currentLocker: null,
   lockerFrontYaw: 0,
   lockerLookOffset: 0,
+  lockerExitGraceUntil: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -299,7 +300,7 @@ function chooseRandomEnemyRoute() {
 }
 
 // Flashlight.
-const flashlight = new THREE.SpotLight(0xf4f1dc, 56, 25, Math.PI / 9, 0.48, 1.35);
+const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
 flashlight.castShadow = true;
 flashlight.shadow.mapSize.set(512, 512);
 scene.add(flashlight);
@@ -385,8 +386,65 @@ function playFootstep(volume, pitch = 1, pan = 0) {
   source.start();
 }
 
-function emitPlayerSound(strength) {
-  const hearingRadius = (3.5 + strength * 0.2) * (1 + enemyData.alertMemory * 0.28);
+function playEnemyFootstep(volume, pan = 0) {
+  if (!audio || volume <= 0.006) return;
+  const { ctx, master, noiseBuffer } = audio;
+  const bus = ctx.createGain();
+  const source = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const impact = ctx.createOscillator();
+  const impactGain = ctx.createGain();
+  source.buffer = noiseBuffer;
+  source.playbackRate.value = 0.52;
+  filter.type = 'lowpass';
+  filter.frequency.value = 240;
+  impact.type = 'triangle';
+  impact.frequency.setValueAtTime(62, ctx.currentTime);
+  impact.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 0.2);
+  impactGain.gain.setValueAtTime(0.7, ctx.currentTime);
+  impactGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+  bus.gain.setValueAtTime(volume, ctx.currentTime);
+  bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.24);
+  source.connect(filter).connect(bus);
+  impact.connect(impactGain).connect(bus);
+  if (ctx.createStereoPanner) {
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = THREE.MathUtils.clamp(pan, -1, 1);
+    bus.connect(panner).connect(master);
+  } else bus.connect(master);
+  source.start();
+  impact.start();
+  impact.stop(ctx.currentTime + 0.24);
+}
+
+function playLockerSound(opening) {
+  if (!audio) return;
+  const { ctx, master, noiseBuffer } = audio;
+  const squeak = ctx.createOscillator();
+  const squeakGain = ctx.createGain();
+  const clank = ctx.createBufferSource();
+  const clankFilter = ctx.createBiquadFilter();
+  const clankGain = ctx.createGain();
+  squeak.type = 'sawtooth';
+  squeak.frequency.setValueAtTime(opening ? 170 : 260, ctx.currentTime);
+  squeak.frequency.exponentialRampToValueAtTime(opening ? 390 : 120, ctx.currentTime + 0.28);
+  squeakGain.gain.setValueAtTime(0.13, ctx.currentTime);
+  squeakGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
+  clank.buffer = noiseBuffer;
+  clank.playbackRate.value = 1.7;
+  clankFilter.type = 'bandpass';
+  clankFilter.frequency.value = 1250;
+  clankGain.gain.setValueAtTime(0.32, ctx.currentTime);
+  clankGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+  squeak.connect(squeakGain).connect(master);
+  clank.connect(clankFilter).connect(clankGain).connect(master);
+  squeak.start();
+  squeak.stop(ctx.currentTime + 0.34);
+  clank.start();
+}
+
+function emitPlayerSound(strength, baseHearingRadius) {
+  const hearingRadius = baseHearingRadius * (1 + enemyData.alertMemory * 0.28);
   const event = { x: camera.position.x, z: camera.position.z, strength, hearingRadius, age: 0, life: 2.4 };
   soundEvents.push(event);
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
@@ -403,7 +461,7 @@ function emitPlayerSound(strength) {
     const noiseGain = (strength > 70 ? 5.5 : 1.8) * (1 + enemyData.alertMemory * 1.2);
     state.detection = Math.max(state.detection, strength > 70 ? 20 : 10);
     state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
-    if (state.alert === 'HUNTING') {
+    if (state.alert === 'HUNTING' && state.detection > 70) {
       setEnemyDestination(event.x, event.z, 'HUNTING');
       return;
     }
@@ -424,10 +482,10 @@ function updateAudio(time) {
   const moving = state.noise > 0 && !state.hidden;
   if (moving && time > audio.nextStep) {
     const settings = state.moveMode === 'RUNNING'
-      ? { volume: 0.72, pitch: 1.2, interval: 0.27 }
-      : { volume: 0.46, pitch: 1, interval: 0.44 };
+      ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 21 }
+      : { volume: 0.46, pitch: 1, interval: 0.44, radius: 2 };
     playFootstep(settings.volume, settings.pitch, 0);
-    emitPlayerSound(state.noise);
+    emitPlayerSound(state.noise, settings.radius);
     audio.nextStep = time + settings.interval;
   }
 
@@ -439,7 +497,7 @@ function updateAudio(time) {
     const directionToEnemy = new THREE.Vector3().subVectors(enemy.position, camera.position).normalize();
     const pan = cameraRight.dot(directionToEnemy);
     const volume = distanceAttenuation(enemyDistance, 30, 1.15) * 1.05;
-    playFootstep(volume, 0.62, pan);
+    playEnemyFootstep(volume, pan);
     audio.nextEnemyStep = time + (enemyData.speed > 2 ? 0.34 : 0.56);
   }
 
@@ -489,6 +547,8 @@ function enterLocker(locker) {
   state.lockerLookOffset = 0;
   camera.rotation.y = state.lockerFrontYaw;
   keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
+  playLockerSound(true);
+  emitPlayerSound(45, 6);
   showToast('ロッカーの中に隠れた');
 }
 
@@ -500,7 +560,11 @@ function leaveLocker() {
   camera.lookAt(lookTarget);
   state.hidden = false;
   state.currentLocker = null;
+  state.lockerExitGraceUntil = clock.elapsedTime + 1.4;
+  state.detection = Math.min(state.detection, 55);
   document.body.classList.remove('hidden-in-locker');
+  playLockerSound(false);
+  emitPlayerSound(45, 6);
   showToast('ロッカーから出た');
 }
 
@@ -685,7 +749,8 @@ function updateEnemy(dt, time) {
   toPlayer.y = 0;
   const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
   const facing = enemyForward.dot(toPlayer.clone().normalize());
-  const visible = !state.hidden && distance < 10.5 && facing > 0.32 && hasLineOfSight(enemyEye, playerEye);
+  const exitGraceActive = time < state.lockerExitGraceUntil;
+  const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.32 && hasLineOfSight(enemyEye, playerEye);
 
   if (visible) {
     state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
@@ -699,7 +764,7 @@ function updateEnemy(dt, time) {
     state.detection -= calmRate * dt;
   }
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
-  if (!state.hidden && distance < 1.8) state.detection += 90 * dt;
+  if (!state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
 
   if (state.detection > 70 && !state.hidden) {
@@ -785,7 +850,7 @@ function updateLight(time) {
   flashlight.position.copy(camera.position).addScaledVector(forward, 0.12);
   flashlight.target.position.copy(camera.position).addScaledVector(forward, 8);
   fillLight.position.copy(camera.position);
-  flashlight.intensity = (Math.random() < 0.006 ? 12 : 56) * (state.battery < 15 ? 0.55 + Math.sin(time * 17) * 0.35 : 1);
+  flashlight.intensity = (Math.random() < 0.006 ? 18 : 78) * (state.battery < 15 ? 0.55 + Math.sin(time * 17) * 0.35 : 1);
   keyGroup.rotation.y = time * 0.9;
   keyGroup.position.y = 1.05 + Math.sin(time * 2) * 0.06;
 }
