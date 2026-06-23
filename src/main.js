@@ -33,6 +33,8 @@ const state = {
   noise: 0,
   nearLocker: null,
   currentLocker: null,
+  lockerFrontYaw: 0,
+  lockerLookOffset: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -135,8 +137,9 @@ function makeLocker(gx, gz, wallSide) {
   const cell = worldFromGrid(gx, gz);
   const group = new THREE.Group();
   localBox(group, 0, 0, -0.42, 1.08, 2.5, 0.08, metalMat);
-  localBox(group, -0.52, 0, 0, 0.08, 2.5, 0.88, metalMat);
-  localBox(group, 0.52, 0, 0, 0.08, 2.5, 0.88, metalMat);
+  // Side panels stop before the door so a 180-degree view is not physically blocked.
+  localBox(group, -0.52, 0, -0.08, 0.08, 2.5, 0.72, metalMat);
+  localBox(group, 0.52, 0, -0.08, 0.08, 2.5, 0.72, metalMat);
   localBox(group, 0, 1.21, 0, 1.08, 0.08, 0.88, metalMat);
   localBox(group, 0, -1.21, 0, 1.08, 0.08, 0.88, metalMat);
   localBox(group, -0.44, 0, 0.44, 0.13, 2.35, 0.06, metalMat);
@@ -465,6 +468,9 @@ function enterLocker(locker) {
   const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 4));
   camera.position.copy(inside);
   camera.lookAt(lookTarget);
+  state.lockerFrontYaw = Math.atan2(Math.sin(locker.yaw + Math.PI), Math.cos(locker.yaw + Math.PI));
+  state.lockerLookOffset = 0;
+  camera.rotation.y = state.lockerFrontYaw;
   keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
   showToast('ロッカーの中に隠れた');
 }
@@ -589,6 +595,14 @@ addEventListener('keydown', (event) => {
   }
 });
 addEventListener('keyup', (event) => { keys[event.code] = false; });
+addEventListener('mousemove', (event) => {
+  if (!state.hidden || !controls.isLocked) return;
+  state.lockerLookOffset = THREE.MathUtils.clamp(
+    state.lockerLookOffset - event.movementX * 0.002 * controls.pointerSpeed,
+    -Math.PI / 2,
+    Math.PI / 2,
+  );
+});
 addEventListener('beforeunload', (event) => {
   if (state.started && !state.ended && !state.allowExit) {
     event.preventDefault();
@@ -640,7 +654,7 @@ function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
   const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   camera.position.copy(inside);
-  // Horizontal rotation stays unrestricted; only vertical look is locked in a locker.
+  camera.rotation.y = state.lockerFrontYaw + state.lockerLookOffset;
   camera.rotation.x = 0;
   camera.rotation.z = 0;
 }
