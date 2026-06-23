@@ -235,6 +235,9 @@ const enemyData = {
   targetKey: null,
   repathAt: 0,
   investigateUntil: 0,
+  investigateSpeed: 1.85,
+  pauseUntil: 0,
+  isMoving: false,
 };
 
 function nearestNode(x, z) {
@@ -383,8 +386,11 @@ function emitPlayerSound(strength) {
   soundEvents.push(event);
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
   if (distance <= hearingRadius && state.alert !== 'HUNTING') {
+    const firstReaction = enemyData.mode !== 'INVESTIGATING';
     setEnemyDestination(event.x, event.z, 'INVESTIGATING');
     enemyData.investigateUntil = clock.elapsedTime + 3.5 + strength * 0.025;
+    enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
+    if (firstReaction) enemyData.pauseUntil = clock.elapsedTime + 0.7;
     state.detection = Math.max(state.detection, strength > 70 ? 36 : 18);
   }
 }
@@ -407,7 +413,7 @@ function updateAudio(time) {
     audio.nextStep = time + settings.interval;
   }
 
-  if (time > audio.nextEnemyStep) {
+  if (enemyData.isMoving && time > audio.nextEnemyStep) {
     camera.getWorldDirection(forward);
     forward.y = 0;
     forward.normalize();
@@ -651,7 +657,7 @@ function updateEnemy(dt, time) {
     }
   } else if (enemyData.mode === 'INVESTIGATING' && time < enemyData.investigateUntil) {
     state.alert = 'SUSPICIOUS';
-    enemyData.speed = 1.85;
+    enemyData.speed = enemyData.investigateSpeed;
   } else {
     if (enemyData.mode !== 'ROAMING') {
       enemyData.mode = 'ROAMING';
@@ -661,18 +667,20 @@ function updateEnemy(dt, time) {
     enemyData.speed = 1.25;
   }
 
+  enemyData.isMoving = false;
   if (enemyData.path.length === 0) chooseRandomEnemyRoute();
   const target = enemyData.path[0];
-  if (target) {
+  if (target && time >= enemyData.pauseUntil) {
     const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
     if (direction.length() < 0.18) enemyData.path.shift();
     else {
       direction.normalize();
       enemy.position.addScaledVector(direction, enemyData.speed * dt);
       enemy.rotation.y = Math.atan2(direction.x, direction.z);
+      enemyData.isMoving = true;
     }
   }
-  enemy.position.y = Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035;
+  enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
