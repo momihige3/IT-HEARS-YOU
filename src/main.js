@@ -241,6 +241,8 @@ const enemyData = {
   investigateSpeed: 1.85,
   pauseUntil: 0,
   isMoving: false,
+  alertMemory: 0,
+  lastMemoryGainAt: -Infinity,
 };
 
 function nearestNode(x, z) {
@@ -384,17 +386,32 @@ function playFootstep(volume, pitch = 1, pan = 0) {
 }
 
 function emitPlayerSound(strength) {
-  const hearingRadius = 3.5 + strength * 0.2;
+  const hearingRadius = (3.5 + strength * 0.2) * (1 + enemyData.alertMemory * 0.28);
   const event = { x: camera.position.x, z: camera.position.z, strength, hearingRadius, age: 0, life: 2.4 };
   soundEvents.push(event);
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
-  if (distance <= hearingRadius && state.alert !== 'HUNTING') {
+  if (distance <= hearingRadius) {
+    const now = clock.elapsedTime;
+    if (now - enemyData.lastMemoryGainAt > 0.85) {
+      enemyData.alertMemory = THREE.MathUtils.clamp(
+        enemyData.alertMemory + (strength > 70 ? 0.12 : 0.055),
+        0,
+        1,
+      );
+      enemyData.lastMemoryGainAt = now;
+    }
+    const noiseGain = (strength > 70 ? 5.5 : 1.8) * (1 + enemyData.alertMemory * 1.2);
+    state.detection = Math.max(state.detection, strength > 70 ? 20 : 10);
+    state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
+    if (state.alert === 'HUNTING') {
+      setEnemyDestination(event.x, event.z, 'HUNTING');
+      return;
+    }
     const firstReaction = enemyData.mode !== 'INVESTIGATING';
     setEnemyDestination(event.x, event.z, 'INVESTIGATING');
-    enemyData.investigateUntil = clock.elapsedTime + 3.5 + strength * 0.025;
+    enemyData.investigateUntil = now + 3.5 + strength * 0.025;
     enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
-    if (firstReaction) enemyData.pauseUntil = clock.elapsedTime + 0.7;
-    state.detection = Math.max(state.detection, strength > 70 ? 36 : 18);
+    if (firstReaction) enemyData.pauseUntil = now + 0.7;
   }
 }
 
@@ -670,8 +687,18 @@ function updateEnemy(dt, time) {
   const facing = enemyForward.dot(toPlayer.clone().normalize());
   const visible = !state.hidden && distance < 10.5 && facing > 0.32 && hasLineOfSight(enemyEye, playerEye);
 
-  if (visible) state.detection += (13 - distance) * 13 * dt;
-  else state.detection -= (enemyData.mode === 'INVESTIGATING' ? 8 : 16) * dt;
+  if (visible) {
+    state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
+    if (time - enemyData.lastMemoryGainAt > 2.4) {
+      enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + 0.06, 0, 1);
+      enemyData.lastMemoryGainAt = time;
+    }
+  } else {
+    const baseCalmRate = enemyData.mode === 'INVESTIGATING' ? 2.3 : 4.5;
+    const calmRate = Math.max(0.65, baseCalmRate * (1 - enemyData.alertMemory * 0.82));
+    state.detection -= calmRate * dt;
+  }
+  enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
   if (!state.hidden && distance < 1.8) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
 
