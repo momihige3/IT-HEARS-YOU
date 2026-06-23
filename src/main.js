@@ -529,7 +529,15 @@ function openSettings() {
 function closeSettings() {
   state.settingsOpen = false;
   $('#settings-screen').classList.remove('visible');
-  if (state.started && !state.ended) controls.lock(true);
+  if (state.started && !state.ended) lockPointer();
+}
+
+function lockPointer() {
+  try {
+    controls.lock(true);
+  } catch {
+    controls.lock(false);
+  }
 }
 
 const sensitivitySlider = $('#sensitivity-slider');
@@ -537,9 +545,10 @@ sensitivitySlider.addEventListener('input', () => {
   const value = Number(sensitivitySlider.value);
   controls.pointerSpeed = value / 100;
   $('#sensitivity-value').textContent = String(value);
-  localStorage.setItem('mouseSensitivity', String(value));
+  try { localStorage.setItem('mouseSensitivity', String(value)); } catch { /* Storage may be disabled. */ }
 });
-const savedSensitivity = Number(localStorage.getItem('mouseSensitivity'));
+let savedSensitivity = 0;
+try { savedSensitivity = Number(localStorage.getItem('mouseSensitivity')); } catch { /* Use default sensitivity. */ }
 if (savedSensitivity >= 15 && savedSensitivity <= 120) {
   sensitivitySlider.value = String(savedSensitivity);
   sensitivitySlider.dispatchEvent(new Event('input'));
@@ -555,11 +564,11 @@ $('#start-button').addEventListener('click', () => {
   state.started = true;
   initAudio();
   $('#start-screen').classList.remove('visible');
-  controls.lock(true);
+  lockPointer();
 });
 $('#restart-button').addEventListener('click', () => location.reload());
 renderer.domElement.addEventListener('click', () => {
-  if (state.started && !state.ended && !state.settingsOpen && !controls.isLocked) controls.lock(true);
+  if (state.started && !state.ended && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
 addEventListener('keydown', (event) => {
   const browserShortcutKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyP', 'KeyR'];
