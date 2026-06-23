@@ -10,61 +10,62 @@
   <body>
     <div id="app">
       <div id="game"></div>
-
       <div id="vignette"></div>
       <div id="danger-flash"></div>
       <div id="locker-slats" aria-hidden="true"></div>
 
       <header id="hud">
-        <div class="objective"><span>OBJECTIVE</span><strong id="objective-text">鍵を探せ</strong></div>
+        <div class="objective"><span>目的</span><strong id="objective-text">鍵を探す</strong></div>
         <div class="status-cluster">
-          <div class="status-row"><span>NOISE</span><div class="meter"><i id="noise-bar"></i></div><b id="noise-value">00</b></div>
-          <div class="status-row"><span>DETECTION</span><div class="meter detection"><i id="detect-bar"></i></div><b id="detect-value">00</b></div>
-          <div class="alert-line"><span id="alert-dot"></span><strong id="alert-text">UNNOTICED</strong></div>
+          <div class="status-row"><span>物音</span><div class="meter"><i id="noise-bar"></i></div><b id="noise-value">00</b></div>
+          <div class="status-row"><span>敵の感知</span><div class="meter detection"><i id="detect-bar"></i></div><b id="detect-value">00</b></div>
+          <div class="alert-line"><span id="alert-dot"></span><strong id="alert-text">未発見</strong></div>
         </div>
       </header>
+
+      <aside id="radar-panel">
+        <div class="radar-title"><span>レーダー</span><small>敵・音源探知</small></div>
+        <canvas id="minimap" width="190" height="190"></canvas>
+        <div class="radar-legend"><span><i class="you"></i>自分</span><span><i class="enemy-dot"></i>敵</span><span><i class="sound-dot"></i>物音</span></div>
+      </aside>
 
       <div id="crosshair"><i></i><i></i><i></i><i></i></div>
       <div id="prompt"></div>
 
       <div id="bottom-hud">
         <div class="mode-panel">
-          <small>MOVEMENT</small>
-          <strong id="move-mode">WALKING</strong>
-          <div><span>CTRL CROUCH</span><span>SHIFT RUN</span></div>
+          <small>移動状態</small>
+          <strong id="move-mode">歩行</strong>
+          <div><span>CTRL しゃがむ</span><span>SHIFT 走る</span></div>
         </div>
         <div class="battery-panel">
           <span class="flash-icon">⌁</span>
-          <div><small>FLASHLIGHT</small><strong id="battery-value">100%</strong></div>
-          <div class="battery"><i id="battery-bar"></i></div>
-          <kbd>F</kbd>
+          <div><small>懐中電灯</small><strong id="battery-value">100%</strong></div>
+          <div class="battery"><i id="battery-bar"></i></div><kbd>F</kbd>
         </div>
       </div>
 
       <section id="start-screen" class="screen visible">
         <div class="title-block">
-          <p class="eyebrow">A FIRST-PERSON HORROR EXPERIENCE</p>
+          <p class="eyebrow">一人称ステルスホラー</p>
           <h1>IT<br><em>HEARS</em><br>YOU</h1>
           <p class="tagline">静かに。ここでは、足音が命取りになる。</p>
           <div class="start-actions">
-            <button id="start-button"><span>ENTER THE HALLWAY</span><small>クリックして開始</small></button>
-            <button id="settings-button" class="secondary-button">SETTINGS</button>
+            <button id="start-button"><span>廊下へ入る</span><small>クリックして開始</small></button>
+            <button id="settings-button" class="secondary-button">設定</button>
           </div>
           <div class="controls">
-            <span><b>WASD</b> 移動</span><span><b>MOUSE</b> 視点</span><span><b>SHIFT</b> 走る</span>
+            <span><b>WASD</b> 移動</span><span><b>マウス</b> 視点</span><span><b>SHIFT</b> 走る</span>
             <span><b>CTRL</b> しゃがむ</span><span><b>E</b> 調べる / 隠れる</span><span><b>F</b> ライト</span>
           </div>
         </div>
-        <div class="version">HEADPHONES RECOMMENDED <i></i> v1.0</div>
+        <div class="version">ヘッドホン推奨 <i></i> v2.0</div>
       </section>
 
       <section id="settings-screen" class="screen settings-screen">
         <div class="settings-card">
-          <p class="eyebrow">CONTROL SETTINGS</p>
-          <h2>SETTINGS</h2>
-          <label for="sensitivity-slider">
-            <span>マウス感度</span><output id="sensitivity-value">45</output>
-          </label>
+          <p class="eyebrow">操作設定</p><h2>設定</h2>
+          <label for="sensitivity-slider"><span>マウス感度</span><output id="sensitivity-value">45</output></label>
           <input id="sensitivity-slider" type="range" min="15" max="120" step="5" value="45" />
           <p class="setting-note">マウス加速を使わない、一定速度の視点操作です。</p>
           <button id="settings-close">ゲームに戻る</button>
@@ -75,7 +76,6 @@
       <section id="message-screen" class="screen">
         <div class="message-card"><p id="message-kicker"></p><h2 id="message-title"></h2><p id="message-body"></p><button id="restart-button">もう一度</button></div>
       </section>
-
       <div id="toast"></div>
     </div>
     <script type="module" src="/src/main.js"></script>
