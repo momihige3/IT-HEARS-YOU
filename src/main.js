@@ -2,15 +2,16 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 
 const $ = (selector) => document.querySelector(selector);
+const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
-const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 110);
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
+const renderer = new THREE.WebGLRenderer({ antialias: !touchDevice, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1 : 1.4));
+renderer.shadowMap.enabled = !touchDevice;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -45,13 +46,12 @@ const state = {
 
 const keys = {};
 const mobileInput = {
-  active: matchMedia('(hover: none) and (pointer: coarse)').matches,
+  active: touchDevice,
   moveX: 0,
   moveY: 0,
   running: false,
 };
 const colliders = [];
-const wallMeshes = [];
 const lockers = [];
 const soundEvents = [];
 const CELL = 4;
@@ -92,14 +92,13 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
   for (let gz = fromZ; gz <= toZ; gz += 1) carve(gx, gz);
 }
 
-function addBox(x, y, z, w, h, d, mat, collide = false, wall = false) {
+function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = true;
+  mesh.castShadow = castShadow && !touchDevice;
   mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
-  if (wall) wallMeshes.push(mesh);
   return mesh;
 }
 
@@ -110,12 +109,13 @@ const directions = [
   [0, -1],
 ];
 
+let corridorLightCount = 0;
 for (const key of walkable) {
   const [gx, gz] = key.split(',').map(Number);
   const pos = worldFromGrid(gx, gz);
   navNodes.set(key, { key, gx, gz, x: pos.x, z: pos.z });
-  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, floorMat);
-  addBox(pos.x, 4.25, pos.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat);
+  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, floorMat, false, false, false);
+  addBox(pos.x, 4.25, pos.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat, false, false, false);
 
   for (const [dx, dz] of directions) {
     if (walkable.has(gridKey(gx + dx, gz + dz))) continue;
@@ -123,13 +123,16 @@ for (const key of walkable) {
     else addBox(pos.x, 2.05, pos.z + dz * CELL / 2, CELL + 0.18, 4.2, 0.18, wallMat, true, true);
   }
 
-  if ((gx * 5 + gz * 3) % 7 === 0) {
-    const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28));
+  if ((gx * 5 + gz * 3) % 9 === 0) {
+    const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
-    const light = new THREE.PointLight(0xc2cbaa, 10, 12, 1.65);
-    light.position.set(pos.x, 3.82, pos.z);
-    scene.add(light);
+    if (corridorLightCount < 10) {
+      const light = new THREE.PointLight(0xc2cbaa, 10, 10, 1.65);
+      light.position.set(pos.x, 3.82, pos.z);
+      scene.add(light);
+      corridorLightCount += 1;
+    }
   }
 }
 
@@ -139,7 +142,7 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = true;
+  mesh.castShadow = !touchDevice;
   mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
@@ -310,7 +313,7 @@ scene.add(enemy);
 
 const VISION_DISTANCE = 10.5;
 const VISION_HALF_ANGLE = Math.acos(0.84);
-const VISION_RAYS = 17;
+const VISION_RAYS = 13;
 const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
 const enemyVisionGeometry = new THREE.BufferGeometry();
 enemyVisionGeometry.setAttribute('position', new THREE.BufferAttribute(visionPositions, 3));
@@ -324,15 +327,41 @@ const enemyVisionLines = new THREE.LineSegments(enemyVisionGeometry, enemyVision
 enemyVisionLines.frustumCulled = false;
 scene.add(enemyVisionLines);
 
-function visionRayDistance(originX, originZ, dx, dz) {
-  for (let distance = 0.2; distance <= VISION_DISTANCE; distance += 0.1) {
-    const x = originX + dx * distance;
-    const z = originZ + dz * distance;
-    if (colliders.some((c) => Math.abs(x - c.x) < c.hw + 0.02 && Math.abs(z - c.z) < c.hz + 0.02)) {
-      return Math.max(0.1, distance - 0.1);
-    }
+function rayColliderEntry(originX, originZ, dx, dz, collider, maxDistance, padding = 0.02) {
+  let near = 0;
+  let far = maxDistance;
+  const minX = collider.x - collider.hw - padding;
+  const maxX = collider.x + collider.hw + padding;
+  if (Math.abs(dx) < 0.00001) {
+    if (originX < minX || originX > maxX) return Infinity;
+  } else {
+    let entryX = (minX - originX) / dx;
+    let exitX = (maxX - originX) / dx;
+    if (entryX > exitX) [entryX, exitX] = [exitX, entryX];
+    near = Math.max(near, entryX);
+    far = Math.min(far, exitX);
+    if (near > far) return Infinity;
   }
-  return VISION_DISTANCE;
+
+  const minZ = collider.z - collider.hz - padding;
+  const maxZ = collider.z + collider.hz + padding;
+  if (Math.abs(dz) < 0.00001) return originZ < minZ || originZ > maxZ ? Infinity : near;
+  let entryZ = (minZ - originZ) / dz;
+  let exitZ = (maxZ - originZ) / dz;
+  if (entryZ > exitZ) [entryZ, exitZ] = [exitZ, entryZ];
+  near = Math.max(near, entryZ);
+  far = Math.min(far, exitZ);
+  if (near > far) return Infinity;
+  return near;
+}
+
+function visionRayDistance(originX, originZ, dx, dz) {
+  let nearest = VISION_DISTANCE;
+  for (const collider of colliders) {
+    const entry = rayColliderEntry(originX, originZ, dx, dz, collider, nearest);
+    if (entry < nearest) nearest = entry;
+  }
+  return Math.max(0.1, nearest - 0.03);
 }
 
 function updateEnemyVision() {
@@ -448,8 +477,8 @@ function chooseCoverSearchRoute() {
 
 // Flashlight.
 const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
-flashlight.castShadow = true;
-flashlight.shadow.mapSize.set(512, 512);
+flashlight.castShadow = !touchDevice;
+flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
 const fillLight = new THREE.PointLight(0xcbd5c1, 0.22, 2.2);
@@ -675,13 +704,12 @@ function canMoveTo(x, z) {
 }
 
 function hasLineOfSight(from, to) {
-  const distance = from.distanceTo(to);
-  const steps = Math.ceil(distance / 0.3);
-  for (let i = 1; i < steps; i += 1) {
-    const t = i / steps;
-    const x = THREE.MathUtils.lerp(from.x, to.x, t);
-    const z = THREE.MathUtils.lerp(from.z, to.z, t);
-    if (colliders.some((c) => Math.abs(x - c.x) < c.hw + 0.04 && Math.abs(z - c.z) < c.hz + 0.04)) return false;
+  const distance = Math.hypot(to.x - from.x, to.z - from.z);
+  if (distance < 0.001) return true;
+  const dx = (to.x - from.x) / distance;
+  const dz = (to.z - from.z) / distance;
+  for (const collider of colliders) {
+    if (rayColliderEntry(from.x, from.z, dx, dz, collider, distance, 0.04) < distance) return false;
   }
   return true;
 }
@@ -1376,6 +1404,8 @@ function updateRadar(dt, time) {
   radar.stroke();
 }
 
+let nextVisionUpdate = 0;
+let radarAccumulator = 1;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -1386,13 +1416,20 @@ function animate() {
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
-    updateEnemyVision();
+    if (time >= nextVisionUpdate) {
+      updateEnemyVision();
+      nextVisionUpdate = time + 1 / 12;
+    }
     updateInteraction();
     updateHUD();
     updateLight(time);
     updateAudio(time);
-    updateRadar(dt, time);
-  } else updateRadar(dt, time);
+  }
+  radarAccumulator += dt;
+  if (radarAccumulator >= 1 / 20) {
+    updateRadar(radarAccumulator, time);
+    radarAccumulator = 0;
+  }
   renderer.render(scene, camera);
 }
 
