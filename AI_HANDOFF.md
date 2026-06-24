@@ -1,68 +1,35 @@
 # AI作業引継ぎファイル - IT HEARS YOU
 
-## 目的
-Codex / ChatGPT / 他AI間で、実装済み内容・未対応内容・注意点を共有するための作業メモです。
-作業を行ったAIは、変更内容と確認結果をこのファイルへ追記してください。
+## 最新対応
+- 4Kディスプレイでウィンドウ最大表示にした際の処理落ち対策を追加。
+- Three.js の内部描画サイズを最大 1280x720 相当、約92万ピクセルに制限。
+- 画面上は canvas を CSS で 100% 表示し、内部720p描画を拡大表示する方式に変更。
+- `renderer.setPixelRatio(1)` 固定。
+- `renderer.setSize(width, height, false)` を使用し、CSSサイズと内部描画サイズを分離。
+- リサイズ時も `getRenderSize()` で内部描画サイズを再計算。
+- WebGLアンチエイリアスを無効化。
+- 影描画を無効化。
+- 描画ループを 30 FPS 上限に制限。
+- 全画面CSSグラデーションの一部を軽量な半透明＋box-shadowに変更。
 
-## 現在のプロジェクト
-- ゲーム名: IT HEARS YOU
-- 構成: Vite + Three.js
-- 主ファイル: `src/main.js`, `src/style.css`
-- 起動: `npm install` → `npm run dev`
-- ビルド: `npm run build`
+## 変更した主なファイル
+- `src/main.js`
+  - `INTERNAL_RENDER_WIDTH = 1280`
+  - `INTERNAL_RENDER_HEIGHT = 720`
+  - `TARGET_RENDER_FPS = 30`
+  - `getRenderSize()` 追加
+  - renderer初期化、resize、animateを軽量化
+- `src/style.css`
+  - canvasをCSS 100%拡大表示
+  - vignette / danger flash の重い全画面radial-gradientを軽量化
+- `AI_HANDOFF.md`
+  - AI間で作業内容を共有するため追加
 
-## 2026-06-24 作業内容
-### 対応した要望
-4Kディスプレイでブラウザウィンドウを最大化した際、処理落ちして重くなる問題への軽量化対応。
-
-### 実装内容
-`src/main.js` に内部描画解像度の上限設定を追加。
-
-- PCのWebGL内部描画サイズを最大 `1280 x 720` 相当に制限
-- スマホ/タッチ端末は最大 `960 x 540` 相当に制限
-- CanvasのCSS表示サイズは `100vw x 100vh` のまま維持
-- 4K表示時も画面いっぱいに表示されるが、内部的には720p相当を拡大表示する
-- `devicePixelRatio` による高解像度描画を抑えるため `pixelRatio: 1` に固定
-- PCでもアンチエイリアスをOFFにしてピクセル負荷を軽減
-- リサイズ時も同じ上限設定を再適用するよう修正
-
-### 変更した主なコード
-`src/main.js`
-
-- `RENDER_QUALITY` を追加
-- `getRenderSize()` を追加
-- `applyRenderSize()` を追加
-- 初期化時の `renderer.setSize(innerWidth, innerHeight)` を廃止
-- `resize` イベントを `applyRenderSize` 呼び出しに変更
-
-### 注意点
-- カメラのアスペクト比はブラウザ表示サイズを基準にしているため、画面比率は崩れません。
-- レンダリングの内部解像度だけを下げています。UIやCanvas表示領域は全画面のままです。
-- 4K環境では見た目が少し柔らかくなりますが、描画負荷は大きく下がります。
-
-## 次に確認してほしいこと
-- 4K最大化時にFPS低下が改善しているか
-- 画面がぼやけすぎていないか
-- UIクリック、視点操作、ロッカー操作、敵AIに影響がないか
-- さらに重い場合は、影・ライト数・レーダー更新頻度の追加軽量化を検討
-
-## 今後の追記ルール
-作業したら以下の形式で追記してください。
-
-```md
-## YYYY-MM-DD 作業内容
-### 対応した要望
-- 
-
-### 実装内容
-- 
-
-### 変更ファイル
-- 
-
-### 確認結果
-- 
-
-### 未対応・注意点
-- 
-```
+## 注意
+- 画質より軽さ優先の修正。
+- 4K最大化でも内部描画は720p相当になる。
+- さらに重い場合は、次に以下を検討する。
+  - `TARGET_RENDER_FPS` を 24 に下げる
+  - HUD/ミニマップ更新頻度をさらに下げる
+  - PointLight数を減らす
+  - 壁や床のBoxGeometryを結合してdraw callを減らす

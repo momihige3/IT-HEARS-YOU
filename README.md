@@ -21,8 +21,8 @@ npm run dev
 
 `main` ブランチへpushすると、GitHub Actionsが自動でビルド・公開します。リポジトリの **Settings → Pages → Source** は **GitHub Actions** を選択してください。
 
-## 軽量描画設定
+## Performance note / 4K display mitigation
 
-4Kなど大きな画面で最大化しても重くなりすぎないよう、ゲーム画面は全画面表示のまま、内部のWebGL描画解像度をPCでは最大720p相当に制限しています。
-作業履歴とAI間の引継ぎ内容は `AI_HANDOFF.md` を確認してください。
+This build caps the internal WebGL render target to approximately 1280x720 pixels and scales the canvas to the full browser window with CSS. This keeps fullscreen 4K displays from forcing native 4K WebGL rendering. Shadows, antialiasing, and high-DPI pixel ratio rendering are disabled for stable lightweight play.
 
+AI handoff details are recorded in `AI_HANDOFF.md`.

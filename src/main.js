@@ -7,41 +7,31 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
-const RENDER_QUALITY = {
-  // The canvas still fills the browser window, but the WebGL back buffer is capped.
-  // This keeps 4K/maximized windows from rendering millions of unnecessary pixels.
-  maxWidth: touchDevice ? 960 : 1280,
-  maxHeight: touchDevice ? 540 : 720,
-  pixelRatio: 1,
-};
+const INTERNAL_RENDER_WIDTH = 1280;
+const INTERNAL_RENDER_HEIGHT = 720;
+const INTERNAL_RENDER_PIXELS = INTERNAL_RENDER_WIDTH * INTERNAL_RENDER_HEIGHT;
+const TARGET_RENDER_FPS = 30;
 
 function getRenderSize() {
-  const viewportWidth = Math.max(1, innerWidth);
-  const viewportHeight = Math.max(1, innerHeight);
-  const scale = Math.min(1, RENDER_QUALITY.maxWidth / viewportWidth, RENDER_QUALITY.maxHeight / viewportHeight);
+  const width = Math.max(1, innerWidth);
+  const height = Math.max(1, innerHeight);
+  const scale = Math.min(1, Math.sqrt(INTERNAL_RENDER_PIXELS / (width * height)));
   return {
-    viewportWidth,
-    viewportHeight,
-    bufferWidth: Math.max(1, Math.floor(viewportWidth * scale)),
-    bufferHeight: Math.max(1, Math.floor(viewportHeight * scale)),
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
   };
-}
-
-function applyRenderSize() {
-  const size = getRenderSize();
-  camera.aspect = size.viewportWidth / size.viewportHeight;
-  camera.updateProjectionMatrix();
-  renderer.setPixelRatio(RENDER_QUALITY.pixelRatio);
-  renderer.setSize(size.bufferWidth, size.bufferHeight, false);
-  renderer.domElement.style.width = '100vw';
-  renderer.domElement.style.height = '100vh';
 }
 
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-applyRenderSize();
-renderer.shadowMap.enabled = !touchDevice;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(1);
+const initialRenderSize = getRenderSize();
+renderer.setSize(initialRenderSize.width, initialRenderSize.height, false);
+renderer.domElement.style.width = '100%';
+renderer.domElement.style.height = '100%';
+renderer.domElement.style.imageRendering = 'auto';
+renderer.shadowMap.enabled = false;
+renderer.shadowMap.type = THREE.BasicShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
@@ -124,7 +114,7 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = castShadow && !touchDevice;
+  mesh.castShadow = false;
   mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
@@ -171,7 +161,7 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = !touchDevice;
+  mesh.castShadow = false;
   mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
@@ -506,7 +496,7 @@ function chooseCoverSearchRoute() {
 
 // Flashlight.
 const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
-flashlight.castShadow = !touchDevice;
+flashlight.castShadow = false;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
@@ -1435,9 +1425,14 @@ function updateRadar(dt, time) {
 
 let nextVisionUpdate = 0;
 let radarAccumulator = 1;
+let renderAccumulator = 0;
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.04);
+  const rawDt = Math.min(clock.getDelta(), 0.08);
+  renderAccumulator += rawDt;
+  if (renderAccumulator < 1 / TARGET_RENDER_FPS) return;
+  const dt = Math.min(renderAccumulator, 0.08);
+  renderAccumulator = 0;
   const time = clock.elapsedTime;
   if (state.caught) {
     updateCaughtCutscene(time);
@@ -1465,4 +1460,10 @@ function animate() {
 chooseRandomEnemyRoute();
 animate();
 
-addEventListener('resize', applyRenderSize);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  const renderSize = getRenderSize();
+  renderer.setPixelRatio(1);
+  renderer.setSize(renderSize.width, renderSize.height, false);
+});
