@@ -76,8 +76,14 @@
       <section id="settings-screen" class="screen settings-screen">
         <div class="settings-card">
           <p class="eyebrow">操作設定</p><h2>設定</h2>
-          <label for="sensitivity-slider"><span>マウス感度</span><output id="sensitivity-value">45</output></label>
-          <input id="sensitivity-slider" type="range" min="15" max="120" step="5" value="45" />
+          <div class="setting-control">
+            <label for="sensitivity-slider"><span>マウス感度</span><output id="sensitivity-value">45</output></label>
+            <input id="sensitivity-slider" type="range" min="15" max="120" step="5" value="45" />
+          </div>
+          <div class="setting-control">
+            <label for="se-volume-slider"><span>SE音量</span><output id="se-volume-value">80%</output></label>
+            <input id="se-volume-slider" type="range" min="0" max="100" step="5" value="80" />
+          </div>
           <p class="setting-note">マウス加速を使わない、一定速度の視点操作です。</p>
           <button id="settings-close">ゲームに戻る</button>
           <button id="settings-quit" class="danger-button">ゲームを終了してタイトルへ</button>

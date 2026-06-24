@@ -461,6 +461,13 @@ scene.add(lockerViewLight.target);
 
 // Procedural spatial audio.
 let audio = null;
+let seVolume = 80;
+try {
+  const storedVolume = localStorage.getItem('soundEffectVolume');
+  const savedVolume = Number(storedVolume);
+  if (storedVolume !== null && savedVolume >= 0 && savedVolume <= 100) seVolume = savedVolume;
+} catch { /* Use default volume. */ }
+
 function initAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return;
@@ -470,7 +477,7 @@ function initAudio() {
   compressor.ratio.value = 5;
   compressor.connect(ctx.destination);
   const master = ctx.createGain();
-  master.gain.value = 0.72;
+  master.gain.value = 0.9 * (seVolume / 100);
   master.connect(compressor);
   const hum = ctx.createOscillator();
   const humGain = ctx.createGain();
@@ -880,6 +887,16 @@ if (savedSensitivity >= 15 && savedSensitivity <= 120) {
   sensitivitySlider.value = String(savedSensitivity);
   sensitivitySlider.dispatchEvent(new Event('input'));
 }
+
+const seVolumeSlider = $('#se-volume-slider');
+seVolumeSlider.value = String(seVolume);
+$('#se-volume-value').textContent = `${seVolume}%`;
+seVolumeSlider.addEventListener('input', () => {
+  seVolume = Number(seVolumeSlider.value);
+  $('#se-volume-value').textContent = `${seVolume}%`;
+  try { localStorage.setItem('soundEffectVolume', String(seVolume)); } catch { /* Storage may be disabled. */ }
+  if (audio) audio.master.gain.setTargetAtTime(0.9 * (seVolume / 100), audio.ctx.currentTime, 0.035);
+});
 
 $('#settings-button').addEventListener('click', openSettings);
 $('#settings-close').addEventListener('click', closeSettings);

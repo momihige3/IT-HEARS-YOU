@@ -96,6 +96,7 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
 .settings-card label { display:flex; justify-content:space-between; color:#b6c0ba; letter-spacing:.12em; }
 .settings-card output { font:14px 'Share Tech Mono'; color:#d3ddd6; }
 .settings-card input[type="range"] { width:100%; margin:18px 0 10px; accent-color:#8fa198; cursor:pointer; }
+.setting-control + .setting-control { margin-top:20px; }
 .setting-note { margin:0 0 28px; color:#69746d; font-size:12px; letter-spacing:.05em; }
 .settings-card #settings-close { width:100%; text-align:center; }
 .danger-button { width:100%; margin-top:10px; padding:11px 20px; border:1px solid #5e2926; background:rgba(92,24,20,.12); color:#b96a63; font:11px 'Share Tech Mono'; letter-spacing:.1em; cursor:pointer; transition:.2s; }
