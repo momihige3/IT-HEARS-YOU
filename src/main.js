@@ -26,7 +26,7 @@ const state = {
   caught: false,
   caughtAt: 0,
   hidden: false,
-  key: false,
+  keyCount: 0,
   flashlight: true,
   battery: 100,
   detection: 0,
@@ -55,8 +55,11 @@ const wallMeshes = [];
 const lockers = [];
 const soundEvents = [];
 const CELL = 4;
-const GRID_W = 9;
-const GRID_H = 15;
+const GRID_W = 13;
+const GRID_H = 19;
+const GRID_HALF_W = (GRID_W - 1) / 2;
+const GRID_HALF_H = (GRID_H - 1) / 2;
+const REQUIRED_KEYS = 5;
 const walkable = new Set();
 const navNodes = new Map();
 
@@ -70,7 +73,7 @@ const metalMat = material(0x313c34, 0.42, 0.65);
 const darkMat = material(0x080b09, 0.82);
 
 function worldFromGrid(gx, gz) {
-  return new THREE.Vector3((gx - 4) * CELL, 0, (gz - 7) * CELL);
+  return new THREE.Vector3((gx - GRID_HALF_W) * CELL, 0, (gz - GRID_HALF_H) * CELL);
 }
 
 function gridKey(gx, gz) {
@@ -81,13 +84,13 @@ function carve(gx, gz) {
   if (gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_H) walkable.add(gridKey(gx, gz));
 }
 
-// Central spine plus three cross-corridors and two side spines = four looping routes.
-for (let gz = 0; gz < GRID_H; gz += 1) carve(4, gz);
-for (let gz = 2; gz <= 12; gz += 1) {
-  carve(1, gz);
-  carve(7, gz);
+// A larger multi-loop maze: five long routes, six cross routes, and short dead ends.
+for (let gz = 0; gz < GRID_H; gz += 1) carve(6, gz);
+for (const gx of [1, 3, 9, 11]) for (let gz = 2; gz <= 17; gz += 1) carve(gx, gz);
+for (const gz of [2, 5, 8, 11, 14, 17]) for (let gx = 1; gx <= 11; gx += 1) carve(gx, gz);
+for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]]) {
+  for (let gz = fromZ; gz <= toZ; gz += 1) carve(gx, gz);
 }
-for (const gz of [2, 7, 12]) for (let gx = 1; gx <= 7; gx += 1) carve(gx, gz);
 
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -183,11 +186,13 @@ function makeLocker(gx, gz, wallSide) {
 }
 
 makeLocker(1, 4, 'west');
-makeLocker(7, 5, 'east');
+makeLocker(11, 4, 'east');
 makeLocker(1, 10, 'west');
-makeLocker(7, 9, 'east');
-makeLocker(4, 5, 'east');
-makeLocker(4, 10, 'west');
+makeLocker(11, 12, 'east');
+makeLocker(3, 7, 'east');
+makeLocker(9, 16, 'west');
+makeLocker(6, 6, 'east');
+makeLocker(6, 13, 'west');
 
 // Cover objects leave the navigation centerline open while breaking sight lines.
 const coverPoints = [];
@@ -208,48 +213,81 @@ function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
   coverPoints.push({ x, z });
 }
 
-addCover(4, 4, -1.05, 0, 'cabinet');
-addCover(4, 9, 1.02, 0, 'crate');
+addCover(6, 4, -1.05, 0, 'cabinet');
+addCover(6, 9, 1.02, 0, 'crate');
 addCover(3, 2, 0, 1.02, 'crate');
-addCover(5, 2, 0, -1.02, 'cabinet');
+addCover(9, 2, 0, -1.02, 'cabinet');
 addCover(3, 7, 0, -1.02, 'cabinet');
-addCover(5, 7, 0, 1.02, 'crate');
+addCover(9, 7, 0, 1.02, 'crate');
 addCover(3, 12, 0, 1.02, 'cabinet');
-addCover(5, 12, 0, -1.02, 'crate');
-addCover(1, 5, 1.02, 0, 'crate');
-addCover(7, 10, -1.02, 0, 'cabinet');
+addCover(9, 12, 0, -1.02, 'crate');
+addCover(1, 15, 1.02, 0, 'crate');
+addCover(11, 10, -1.02, 0, 'cabinet');
+addCover(5, 14, 0, 1.02, 'crate');
+addCover(7, 5, 0, -1.02, 'cabinet');
 
 // Exit door at the north end of the maze.
-const exitDoor = addBox(0, 1.45, -29.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
-addBox(0, 3.45, -29.68, 1.2, 0.36, 0.08, material(0x1d6243, 0.35));
+const exitPosition = worldFromGrid(6, 0);
+const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z - 1.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
+addBox(exitPosition.x, 3.45, exitPosition.z - 1.68, 1.2, 0.36, 0.08, material(0x1d6243, 0.35));
 const exitLight = new THREE.PointLight(0x3acb88, 4.5, 5);
-exitLight.position.set(0, 3.4, -28.7);
+exitLight.position.set(exitPosition.x, 3.4, exitPosition.z - 0.7);
 scene.add(exitLight);
 
-// Key is placed at a different side-route location every playthrough.
+const exitCounterCanvas = document.createElement('canvas');
+exitCounterCanvas.width = 512;
+exitCounterCanvas.height = 128;
+const exitCounterContext = exitCounterCanvas.getContext('2d');
+const exitCounterTexture = new THREE.CanvasTexture(exitCounterCanvas);
+const exitCounter = new THREE.Sprite(new THREE.SpriteMaterial({ map: exitCounterTexture, transparent: true, depthTest: true }));
+exitCounter.position.set(exitPosition.x, 3.45, exitPosition.z - 1.53);
+exitCounter.scale.set(3.8, 0.95, 1);
+scene.add(exitCounter);
+
+function updateExitCounter() {
+  exitCounterContext.clearRect(0, 0, 512, 128);
+  exitCounterContext.fillStyle = 'rgba(4, 15, 10, .88)';
+  exitCounterContext.fillRect(0, 0, 512, 128);
+  exitCounterContext.strokeStyle = state.keyCount >= REQUIRED_KEYS ? '#70e0a5' : '#b8c9be';
+  exitCounterContext.lineWidth = 5;
+  exitCounterContext.strokeRect(4, 4, 504, 120);
+  exitCounterContext.fillStyle = state.keyCount >= REQUIRED_KEYS ? '#70e0a5' : '#e0e8e3';
+  exitCounterContext.font = 'bold 48px sans-serif';
+  exitCounterContext.textAlign = 'center';
+  exitCounterContext.textBaseline = 'middle';
+  exitCounterContext.fillText(`必要な鍵 ${state.keyCount} / ${REQUIRED_KEYS}`, 256, 64);
+  exitCounterTexture.needsUpdate = true;
+}
+
+// Five keys are sampled from different side-route locations every playthrough.
 const keyCandidates = [
-  [1, 3], [1, 6], [1, 9], [1, 11],
-  [7, 3], [7, 6], [7, 8], [7, 11],
-  [2, 2], [6, 7], [2, 12], [6, 12],
+  [1, 3], [1, 6], [1, 9], [1, 13], [1, 16],
+  [3, 4], [3, 10], [3, 15], [9, 3], [9, 6],
+  [9, 10], [9, 15], [11, 4], [11, 7], [11, 13], [11, 16],
+  [2, 5], [5, 11], [7, 14], [10, 8],
 ];
-const [keyGX, keyGZ] = keyCandidates[Math.floor(Math.random() * keyCandidates.length)];
-const keySpawn = worldFromGrid(keyGX, keyGZ);
-const keyGroup = new THREE.Group();
 const keyMat = material(0xc2a44e, 0.25, 0.85);
-const keyRing = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), keyMat);
-keyRing.rotation.x = Math.PI / 2;
-keyGroup.add(keyRing);
-const keyStem = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.035, 0.35), keyMat);
-keyStem.position.z = 0.24;
-keyGroup.add(keyStem);
-const keyTooth = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.035, 0.06), keyMat);
-keyTooth.position.set(0.04, 0, 0.4);
-keyGroup.add(keyTooth);
-keyGroup.position.set(keySpawn.x + 0.6, 1.05, keySpawn.z);
-scene.add(keyGroup);
-const keyLight = new THREE.PointLight(0xe2c466, 1.25, 2.5);
-keyLight.position.copy(keyGroup.position);
-scene.add(keyLight);
+const shuffledKeyCandidates = [...keyCandidates].sort(() => Math.random() - 0.5).slice(0, REQUIRED_KEYS);
+const keyItems = shuffledKeyCandidates.map(([gx, gz], index) => {
+  const keySpawn = worldFromGrid(gx, gz);
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), keyMat);
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.035, 0.35), keyMat);
+  stem.position.z = 0.24;
+  group.add(stem);
+  const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.035, 0.06), keyMat);
+  tooth.position.set(0.04, 0, 0.4);
+  group.add(tooth);
+  group.position.set(keySpawn.x + (index % 2 ? -0.6 : 0.6), 1.05, keySpawn.z);
+  scene.add(group);
+  const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
+  light.position.copy(group.position);
+  scene.add(light);
+  return { group, light, collected: false, baseY: 1.05, phase: index * 0.9 };
+});
+updateExitCounter();
 
 // Enemy silhouette.
 const enemy = new THREE.Group();
@@ -269,6 +307,52 @@ for (const x of [-0.1, 0.1]) {
 const enemyStart = worldFromGrid(1, 7);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
 scene.add(enemy);
+
+const VISION_DISTANCE = 10.5;
+const VISION_HALF_ANGLE = Math.acos(0.84);
+const VISION_RAYS = 17;
+const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
+const enemyVisionGeometry = new THREE.BufferGeometry();
+enemyVisionGeometry.setAttribute('position', new THREE.BufferAttribute(visionPositions, 3));
+const enemyVisionMaterial = new THREE.LineBasicMaterial({
+  color: 0xe8372d,
+  transparent: true,
+  opacity: 0.48,
+  depthWrite: false,
+});
+const enemyVisionLines = new THREE.LineSegments(enemyVisionGeometry, enemyVisionMaterial);
+enemyVisionLines.frustumCulled = false;
+scene.add(enemyVisionLines);
+
+function visionRayDistance(originX, originZ, dx, dz) {
+  for (let distance = 0.2; distance <= VISION_DISTANCE; distance += 0.1) {
+    const x = originX + dx * distance;
+    const z = originZ + dz * distance;
+    if (colliders.some((c) => Math.abs(x - c.x) < c.hw + 0.02 && Math.abs(z - c.z) < c.hz + 0.02)) {
+      return Math.max(0.1, distance - 0.1);
+    }
+  }
+  return VISION_DISTANCE;
+}
+
+function updateEnemyVision() {
+  for (let i = 0; i < VISION_RAYS; i += 1) {
+    const offset = -VISION_HALF_ANGLE + (VISION_HALF_ANGLE * 2 * i) / (VISION_RAYS - 1);
+    const angle = enemy.rotation.y + offset;
+    const dx = Math.sin(angle);
+    const dz = Math.cos(angle);
+    const distance = visionRayDistance(enemy.position.x, enemy.position.z, dx, dz);
+    const cursor = i * 6;
+    visionPositions[cursor] = enemy.position.x;
+    visionPositions[cursor + 1] = 0.08;
+    visionPositions[cursor + 2] = enemy.position.z;
+    visionPositions[cursor + 3] = enemy.position.x + dx * distance;
+    visionPositions[cursor + 4] = 0.08;
+    visionPositions[cursor + 5] = enemy.position.z + dz * distance;
+  }
+  enemyVisionMaterial.opacity = state.alert === 'HUNTING' ? 0.78 : 0.48;
+  enemyVisionGeometry.attributes.position.needsUpdate = true;
+}
 
 const enemyData = {
   speed: 1.25,
@@ -576,7 +660,9 @@ function updateAudio(time) {
 }
 
 function canMoveTo(x, z) {
-  if (x < -17.8 || x > 17.8 || z < -29.8 || z > 29.8) return false;
+  const maxX = GRID_HALF_W * CELL + CELL / 2 - 0.2;
+  const maxZ = GRID_HALF_H * CELL + CELL / 2 - 0.2;
+  if (x < -maxX || x > maxX || z < -maxZ || z > maxZ) return false;
   return !colliders.some((collider) =>
     Math.abs(x - collider.x) < collider.hw + 0.26 && Math.abs(z - collider.z) < collider.hz + 0.26);
 }
@@ -593,6 +679,10 @@ function hasLineOfSight(from, to) {
   return true;
 }
 
+function horizontalDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
 function showToast(text) {
   const toast = $('#toast');
   toast.textContent = text;
@@ -603,6 +693,7 @@ function showToast(text) {
 
 function enterLocker(locker) {
   state.hidden = true;
+  state.noise = 0;
   state.currentLocker = locker;
   document.body.classList.add('hidden-in-locker');
   const inside = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
@@ -643,17 +734,22 @@ function interact() {
     enterLocker(state.nearLocker);
     return;
   }
-  if (!state.key && camera.position.distanceTo(keyGroup.position) < 1.8) {
-    state.key = true;
-    keyGroup.visible = false;
-    keyLight.visible = false;
-    $('#objective-text').textContent = '出口へ向かう';
-    showToast('古びた鍵を手に入れた');
+  const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
+  if (nearbyKey) {
+    nearbyKey.collected = true;
+    nearbyKey.group.visible = false;
+    nearbyKey.light.visible = false;
+    state.keyCount += 1;
+    updateExitCounter();
+    $('#objective-text').textContent = state.keyCount >= REQUIRED_KEYS
+      ? '出口へ向かう'
+      : `鍵を探す ${state.keyCount} / ${REQUIRED_KEYS}`;
+    showToast(`鍵を手に入れた　${state.keyCount} / ${REQUIRED_KEYS}`);
     return;
   }
-  if (camera.position.distanceTo(exitDoor.position) < 2.5) {
-    if (state.key) endGame(true);
-    else showToast('鍵がかかっている');
+  if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
+    if (state.keyCount >= REQUIRED_KEYS) endGame(true);
+    else showToast(`鍵が足りない　${state.keyCount} / ${REQUIRED_KEYS}`);
   }
 }
 
@@ -671,7 +767,7 @@ function respawnPlayer() {
   state.caught = false;
   state.ended = false;
   state.hidden = false;
-  state.key = false;
+  state.keyCount = 0;
   state.flashlight = true;
   state.battery = 100;
   state.detection = 0;
@@ -689,9 +785,13 @@ function respawnPlayer() {
   document.body.classList.remove('caught-cutscene', 'hidden-in-locker');
   camera.position.set(playerStart.x, 1.68, playerStart.z);
   camera.rotation.set(0, 0, 0);
-  keyGroup.visible = true;
-  keyLight.visible = true;
-  $('#objective-text').textContent = '鍵を探す';
+  for (const item of keyItems) {
+    item.collected = false;
+    item.group.visible = true;
+    item.light.visible = true;
+  }
+  updateExitCounter();
+  $('#objective-text').textContent = `鍵を探す 0 / ${REQUIRED_KEYS}`;
   enemy.position.set(enemyStart.x, 0, enemyStart.z);
   Object.assign(enemyData, {
     speed: 1.25,
@@ -927,7 +1027,7 @@ const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const toPlayer = new THREE.Vector3();
-const playerStart = worldFromGrid(4, 14);
+const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
 
@@ -969,6 +1069,7 @@ function updatePlayer(dt) {
 
 function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
+  state.noise = 0;
   const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   camera.position.copy(inside);
   camera.rotation.y = state.lockerFrontYaw + state.lockerLookOffset;
@@ -1110,10 +1211,15 @@ function updateInteraction() {
     }
   }
   let prompt = '';
+  const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
   if (state.hidden) prompt = '[ E ] ロッカーから出る';
   else if (state.nearLocker) prompt = '[ E ] ロッカーの中に隠れる';
-  else if (!state.key && camera.position.distanceTo(keyGroup.position) < 1.8) prompt = '[ E ] 鍵を拾う';
-  else if (camera.position.distanceTo(exitDoor.position) < 2.5) prompt = state.key ? '[ E ] 鍵を使って脱出' : '[ E ] 扉を調べる';
+  else if (nearbyKey) prompt = `[ E ] 鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
+  else if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
+    prompt = state.keyCount >= REQUIRED_KEYS
+      ? '[ E ] 鍵を使って脱出'
+      : `[ E ] 出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
+  }
   $('#prompt').textContent = prompt;
   const mobileAction = $('#mobile-action');
   const actionLabel = prompt.replace(/^\[ E \]\s*/, '');
@@ -1146,16 +1252,18 @@ function updateLight(time) {
   flashlight.target.position.copy(camera.position).addScaledVector(forward, 8);
   fillLight.position.copy(camera.position);
   flashlight.intensity = (Math.random() < 0.006 ? 18 : 78) * (state.battery < 15 ? 0.55 + Math.sin(time * 17) * 0.35 : 1);
-  keyGroup.rotation.y = time * 0.9;
-  keyGroup.position.y = 1.05 + Math.sin(time * 2) * 0.06;
+  for (const item of keyItems) {
+    item.group.rotation.y = time * 0.9 + item.phase;
+    item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;
+  }
 }
 
 const minimap = $('#minimap');
 const radar = minimap.getContext('2d');
 function radarPoint(x, z) {
   return {
-    x: ((x + 18) / 36) * minimap.width,
-    y: ((z + 30) / 60) * minimap.height,
+    x: ((x + (GRID_HALF_W + 0.5) * CELL) / (GRID_W * CELL)) * minimap.width,
+    y: ((z + (GRID_HALF_H + 0.5) * CELL) / (GRID_H * CELL)) * minimap.height,
   };
 }
 
@@ -1172,9 +1280,16 @@ function updateRadar(dt, time) {
   }
 
   radar.fillStyle = 'rgba(94,126,105,.22)';
+  const radarCellWidth = minimap.width / GRID_W;
+  const radarCellHeight = minimap.height / GRID_H;
   for (const node of navNodes.values()) {
     const p = radarPoint(node.x, node.z);
-    radar.fillRect(p.x - 9.5, p.y - 5.5, 19, 11);
+    radar.fillRect(
+      p.x - radarCellWidth * 0.47,
+      p.y - radarCellHeight * 0.47,
+      radarCellWidth * 0.94,
+      radarCellHeight * 0.94,
+    );
   }
 
   for (let i = soundEvents.length - 1; i >= 0; i -= 1) {
@@ -1210,14 +1325,14 @@ function updateRadar(dt, time) {
   const enemyPoint = radarPoint(enemy.position.x, enemy.position.z);
   const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
   const visionDirection = Math.atan2(radarForward.z, radarForward.x);
-  const visionHalfAngle = Math.acos(0.84);
+  const visionHalfAngle = VISION_HALF_ANGLE;
   radar.beginPath();
   radar.moveTo(enemyPoint.x, enemyPoint.y);
   for (let i = 0; i <= 14; i += 1) {
     const angle = visionDirection - visionHalfAngle + (visionHalfAngle * 2 * i) / 14;
     const point = radarPoint(
-      enemy.position.x + Math.cos(angle) * 10.5,
-      enemy.position.z + Math.sin(angle) * 10.5,
+      enemy.position.x + Math.cos(angle) * VISION_DISTANCE,
+      enemy.position.z + Math.sin(angle) * VISION_DISTANCE,
     );
     radar.lineTo(point.x, point.y);
   }
@@ -1254,6 +1369,7 @@ function animate() {
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
+    updateEnemyVision();
     updateInteraction();
     updateHUD();
     updateLight(time);
