@@ -20,3 +20,9 @@ npm run dev
 ## GitHub Pages
 
 `main` ブランチへpushすると、GitHub Actionsが自動でビルド・公開します。リポジトリの **Settings → Pages → Source** は **GitHub Actions** を選択してください。
+
+## 軽量描画設定
+
+4Kなど大きな画面で最大化しても重くなりすぎないよう、ゲーム画面は全画面表示のまま、内部のWebGL描画解像度をPCでは最大720p相当に制限しています。
+作業履歴とAI間の引継ぎ内容は `AI_HANDOFF.md` を確認してください。
+

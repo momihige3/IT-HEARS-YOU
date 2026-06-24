@@ -7,10 +7,39 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
+const RENDER_QUALITY = {
+  // The canvas still fills the browser window, but the WebGL back buffer is capped.
+  // This keeps 4K/maximized windows from rendering millions of unnecessary pixels.
+  maxWidth: touchDevice ? 960 : 1280,
+  maxHeight: touchDevice ? 540 : 720,
+  pixelRatio: 1,
+};
+
+function getRenderSize() {
+  const viewportWidth = Math.max(1, innerWidth);
+  const viewportHeight = Math.max(1, innerHeight);
+  const scale = Math.min(1, RENDER_QUALITY.maxWidth / viewportWidth, RENDER_QUALITY.maxHeight / viewportHeight);
+  return {
+    viewportWidth,
+    viewportHeight,
+    bufferWidth: Math.max(1, Math.floor(viewportWidth * scale)),
+    bufferHeight: Math.max(1, Math.floor(viewportHeight * scale)),
+  };
+}
+
+function applyRenderSize() {
+  const size = getRenderSize();
+  camera.aspect = size.viewportWidth / size.viewportHeight;
+  camera.updateProjectionMatrix();
+  renderer.setPixelRatio(RENDER_QUALITY.pixelRatio);
+  renderer.setSize(size.bufferWidth, size.bufferHeight, false);
+  renderer.domElement.style.width = '100vw';
+  renderer.domElement.style.height = '100vh';
+}
+
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
-const renderer = new THREE.WebGLRenderer({ antialias: !touchDevice, powerPreference: 'high-performance' });
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1 : 1.4));
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+applyRenderSize();
 renderer.shadowMap.enabled = !touchDevice;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1436,8 +1465,4 @@ function animate() {
 chooseRandomEnemyRoute();
 animate();
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+addEventListener('resize', applyRenderSize);
