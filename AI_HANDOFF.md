@@ -1,35 +1,69 @@
-# AI作業引継ぎファイル - IT HEARS YOU
+# AI 作業引継ぎメモ - IT HEARS YOU
 
-## 最新対応
-- 4Kディスプレイでウィンドウ最大表示にした際の処理落ち対策を追加。
-- Three.js の内部描画サイズを最大 1280x720 相当、約92万ピクセルに制限。
-- 画面上は canvas を CSS で 100% 表示し、内部720p描画を拡大表示する方式に変更。
-- `renderer.setPixelRatio(1)` 固定。
-- `renderer.setSize(width, height, false)` を使用し、CSSサイズと内部描画サイズを分離。
-- リサイズ時も `getRenderSize()` で内部描画サイズを再計算。
-- WebGLアンチエイリアスを無効化。
-- 影描画を無効化。
-- 描画ループを 30 FPS 上限に制限。
-- 全画面CSSグラデーションの一部を軽量な半透明＋box-shadowに変更。
+## 作業日
+2026-06-24
 
-## 変更した主なファイル
-- `src/main.js`
-  - `INTERNAL_RENDER_WIDTH = 1280`
-  - `INTERNAL_RENDER_HEIGHT = 720`
-  - `TARGET_RENDER_FPS = 30`
-  - `getRenderSize()` 追加
-  - renderer初期化、resize、animateを軽量化
-- `src/style.css`
-  - canvasをCSS 100%拡大表示
-  - vignette / danger flash の重い全画面radial-gradientを軽量化
-- `AI_HANDOFF.md`
-  - AI間で作業内容を共有するため追加
+## ユーザー報告
+- 4Kディスプレイでウィンドウ最大化すると処理落ちする。
+- 前回のFPS制限版は、前より処理落ちがひどくなった。
+- ユーザーから「敵側がプレイヤーが離れすぎているのに捕獲判定を常時処理しているからでは？」という指摘あり。
+
+## 今回の方針
+前回版ではなく、元の `IT HEARS YOU.zip` を基準に修正。
+FPSを30固定する制限は入れない。
+4K描画バッファ対策と、敵AIの遠距離判定スキップを同時に実施。
+
+## 変更内容
+### `src/main.js`
+1. WebGL内部描画サイズを最大1280x720へ制限
+   - `resizeRenderer()` を追加。
+   - CSS上は canvas を `100% x 100%` 表示。
+   - 4K最大化時もWebGLバックバッファは720p相当に抑える。
+   - `renderer.setSize(renderWidth, renderHeight, false)` を使用。
+   - resize時も同じ制御を適用。
+
+2. FPS制限を削除/未導入
+   - 前回の30FPS固定がカクつきを悪化させた可能性があるため、`requestAnimationFrame` の自然な更新に戻した。
+
+3. 敵AIの遠距離捕獲・視線判定をスキップ
+   - `PERFORMANCE.enemySenseFarDistance = 14` を追加。
+   - プレイヤーが遠い場合、重い `hasLineOfSight()` と捕獲判定を実行しない。
+   - ただし敵の巡回、探索、足音反応は継続する。
+
+4. 捕獲判定の条件を明確化
+   - `PERFORMANCE.enemyCaptureDistance = 1.45`
+   - この距離未満の時だけ近距離捕獲用の `hasLineOfSight()` を実行。
+   - 遠距離で捕獲判定が毎フレーム走らないようにした。
+
+5. 毎フレームの一時オブジェクト生成を削減
+   - `enemyEyeTemp`, `playerEyeTemp`, `enemyForwardTemp`, `enemyMoveDirection` を再利用。
+   - `clone()` や毎フレーム `new THREE.Vector3()` を減らした。
+
+6. UI要素の毎フレーム `querySelector` を削減
+   - `ui` キャッシュを追加。
+   - `#danger-flash`, `#detect-bar`, `#detect-value`, `#alert-text`, `#move-mode`, `#battery-value`, `#battery-bar` を使い回し。
+
+7. デスクトップのアンチエイリアスと影を無効化
+   - `antialias: false`
+   - `renderer.shadowMap.enabled = false`
+   - 4K環境でのGPU負荷を下げるため。
+
+## ビルド確認
+- `npm install`
+- `npm run build`
+- ビルド成功。
+- JSチャンクサイズ警告は出るが、元構成由来で実行失敗ではない。
+
+## 次に見るべき場所
+まだ重い場合は以下を優先確認。
+1. `updateRadar()`
+   - Canvas 2Dミニマップを20FPSで全描画している。
+   - 低スペック環境では10FPS化、または非表示時停止が有効。
+2. `updateLight()`
+   - 鍵アイテム全件の回転/上下アニメを毎フレーム更新している。
+3. WebGLポスト処理は現状なし。
+4. Three.jsのジオメトリ数が多いため、壁/床/天井の結合やInstancedMesh化が次の大きな軽量化候補。
 
 ## 注意
-- 画質より軽さ優先の修正。
-- 4K最大化でも内部描画は720p相当になる。
-- さらに重い場合は、次に以下を検討する。
-  - `TARGET_RENDER_FPS` を 24 に下げる
-  - HUD/ミニマップ更新頻度をさらに下げる
-  - PointLight数を減らす
-  - 壁や床のBoxGeometryを結合してdraw callを減らす
+- 前回の30FPS固定は戻さないこと。
+- 720p固定は「CSS拡大」で行うこと。canvas自体を画面サイズに戻すと4Kで再び重くなる。

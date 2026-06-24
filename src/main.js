@@ -7,35 +7,56 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
-const INTERNAL_RENDER_WIDTH = 1280;
-const INTERNAL_RENDER_HEIGHT = 720;
-const INTERNAL_RENDER_PIXELS = INTERNAL_RENDER_WIDTH * INTERNAL_RENDER_HEIGHT;
-const TARGET_RENDER_FPS = 30;
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
 
-function getRenderSize() {
+// Performance policy:
+// Keep the canvas visually fullscreen, but never let WebGL render at a huge 4K backbuffer.
+// A 3840x2160 WebGL buffer is over 8 million pixels per frame; this game is designed to
+// render internally around 720p and be upscaled by CSS.
+const PERFORMANCE = {
+  maxRenderWidth: 1280,
+  maxRenderHeight: 720,
+  pixelRatio: 1,
+  enemySenseFarDistance: 14,
+  enemyCaptureDistance: 1.45,
+  enemyContactDistance: 1.8,
+};
+
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(PERFORMANCE.pixelRatio);
+function resizeRenderer() {
   const width = Math.max(1, innerWidth);
   const height = Math.max(1, innerHeight);
-  const scale = Math.min(1, Math.sqrt(INTERNAL_RENDER_PIXELS / (width * height)));
-  return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
-  };
-}
+  const aspect = width / height;
+  camera.aspect = aspect;
+  camera.updateProjectionMatrix();
 
-const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(1);
-const initialRenderSize = getRenderSize();
-renderer.setSize(initialRenderSize.width, initialRenderSize.height, false);
-renderer.domElement.style.width = '100%';
-renderer.domElement.style.height = '100%';
-renderer.domElement.style.imageRendering = 'auto';
+  let renderWidth = width;
+  let renderHeight = height;
+  const scale = Math.min(1, PERFORMANCE.maxRenderWidth / width, PERFORMANCE.maxRenderHeight / height);
+  renderWidth = Math.max(1, Math.floor(width * scale));
+  renderHeight = Math.max(1, Math.floor(height * scale));
+
+  renderer.setSize(renderWidth, renderHeight, false);
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+}
+resizeRenderer();
 renderer.shadowMap.enabled = false;
-renderer.shadowMap.type = THREE.BasicShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
 $('#game').append(renderer.domElement);
+
+const ui = {
+  dangerFlash: $('#danger-flash'),
+  detectBar: $('#detect-bar'),
+  detectValue: $('#detect-value'),
+  alertText: $('#alert-text'),
+  moveMode: $('#move-mode'),
+  batteryValue: $('#battery-value'),
+  batteryBar: $('#battery-bar'),
+};
 
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
@@ -114,7 +135,7 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = false;
+  mesh.castShadow = castShadow && !touchDevice;
   mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
@@ -161,7 +182,7 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = false;
+  mesh.castShadow = !touchDevice;
   mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
@@ -496,7 +517,7 @@ function chooseCoverSearchRoute() {
 
 // Flashlight.
 const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
-flashlight.castShadow = false;
+flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
@@ -1091,6 +1112,10 @@ const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const toPlayer = new THREE.Vector3();
+const enemyEyeTemp = new THREE.Vector3();
+const playerEyeTemp = new THREE.Vector3();
+const enemyForwardTemp = new THREE.Vector3();
+const enemyMoveDirection = new THREE.Vector3();
 const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
@@ -1143,20 +1168,40 @@ function updateLockerView() {
 
 function updateEnemy(dt, time) {
   if (state.ended) return;
-  const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
-  const enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
-  const playerEye = camera.position.clone();
-  toPlayer.subVectors(playerEye, enemyEye);
-  toPlayer.y = 0;
-  const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
-  const facing = enemyForward.dot(toPlayer.clone().normalize());
+
+  const dxToPlayer = camera.position.x - enemy.position.x;
+  const dzToPlayer = camera.position.z - enemy.position.z;
+  const distance = Math.hypot(dxToPlayer, dzToPlayer);
   const exitGraceActive = time < state.lockerExitGraceUntil;
-  const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
-  const nearbySharedCover = !state.hidden && !exitGraceActive && enemyData.mode === 'SEARCHING'
-    ? coverPoints.findIndex((cover) =>
-      Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
-      && Math.hypot(enemy.position.x - cover.x, enemy.position.z - cover.z) < 2.45)
-    : -1;
+  const canSensePlayer = !state.hidden && !exitGraceActive;
+
+  // Heavy checks such as line-of-sight/capture should not run when the player is far away.
+  // The enemy can still move, patrol, investigate, and react to sounds; only direct capture
+  // and visual detection are gated by distance/facing first.
+  let visible = false;
+  let checkingSameCover = false;
+  let nearbySharedCover = -1;
+
+  if (canSensePlayer && distance <= PERFORMANCE.enemySenseFarDistance) {
+    enemyEyeTemp.set(enemy.position.x, enemy.position.y + 1.7, enemy.position.z);
+    playerEyeTemp.copy(camera.position);
+    toPlayer.subVectors(playerEyeTemp, enemyEyeTemp);
+    toPlayer.y = 0;
+
+    enemyForwardTemp.set(0, 0, 1).applyQuaternion(enemy.quaternion);
+    const facing = enemyForwardTemp.dot(toPlayer.normalize());
+
+    if (distance < VISION_DISTANCE && facing > 0.84) {
+      visible = hasLineOfSight(enemyEyeTemp, playerEyeTemp);
+    }
+
+    if (enemyData.mode === 'SEARCHING') {
+      nearbySharedCover = coverPoints.findIndex((cover) =>
+        Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
+        && Math.hypot(enemy.position.x - cover.x, enemy.position.z - cover.z) < 2.45);
+    }
+  }
+
   if (nearbySharedCover >= 0 && (nearbySharedCover !== enemyData.coverCheckIndex || time >= enemyData.nextCoverCheckAt)) {
     enemyData.coverCheckIndex = nearbySharedCover;
     enemyData.coverCheckSuccess = Math.random() < 0.45 + enemyData.alertMemory * 0.35;
@@ -1168,7 +1213,7 @@ function updateEnemy(dt, time) {
     enemyData.coverCheckIndex = -1;
     enemyData.coverCheckSuccess = false;
   }
-  const checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess;
+  checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess;
 
   if (visible) {
     state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
@@ -1183,7 +1228,7 @@ function updateEnemy(dt, time) {
   }
   if (checkingSameCover) state.detection += (72 + enemyData.alertMemory * 35) * dt;
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
-  if (!state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
+  if (canSensePlayer && distance < PERFORMANCE.enemyContactDistance) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
 
   if (visible && state.detection <= 70) {
@@ -1229,8 +1274,8 @@ function updateEnemy(dt, time) {
   }
   const target = enemyData.path[0];
   if (target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
-    const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
-    if (direction.length() < 0.18) {
+    enemyMoveDirection.set(target.x - enemy.position.x, 0, target.z - enemy.position.z);
+    if (enemyMoveDirection.length() < 0.18) {
       enemyData.path.shift();
       if (enemyData.path.length === 0 && enemyData.mode === 'SEARCHING') {
         enemyData.lookBaseYaw = enemy.rotation.y;
@@ -1238,9 +1283,9 @@ function updateEnemy(dt, time) {
       }
     }
     else {
-      direction.normalize();
-      enemy.position.addScaledVector(direction, enemyData.speed * dt);
-      enemy.rotation.y = Math.atan2(direction.x, direction.z);
+      enemyMoveDirection.normalize();
+      enemy.position.addScaledVector(enemyMoveDirection, enemyData.speed * dt);
+      enemy.rotation.y = Math.atan2(enemyMoveDirection.x, enemyMoveDirection.z);
       enemyData.isMoving = true;
     }
   }
@@ -1256,12 +1301,18 @@ function updateEnemy(dt, time) {
   }
   enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
-  $('#danger-flash').style.opacity = state.alert === 'HUNTING'
+  ui.dangerFlash.style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
-  const clearAtCloseRange = distance < 1.45 && hasLineOfSight(enemyEye, playerEye);
+
+  let clearAtCloseRange = false;
+  if (canSensePlayer && distance < PERFORMANCE.enemyCaptureDistance) {
+    enemyEyeTemp.set(enemy.position.x, enemy.position.y + 1.7, enemy.position.z);
+    playerEyeTemp.copy(camera.position);
+    clearAtCloseRange = hasLineOfSight(enemyEyeTemp, playerEyeTemp);
+  }
   const fullyDetected = state.detection >= 99.5 && (visible || checkingSameCover);
-  if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
+  if (canSensePlayer && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
 }
 
 function updateInteraction() {
@@ -1296,13 +1347,13 @@ const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れ�
 function updateHUD() {
   $('#noise-bar').style.width = `${state.noise}%`;
   $('#noise-value').textContent = String(Math.round(state.noise)).padStart(2, '0');
-  $('#detect-bar').style.width = `${state.detection}%`;
-  $('#detect-value').textContent = String(Math.round(state.detection)).padStart(2, '0');
-  $('#alert-text').textContent = alertLabels[state.alert];
-  $('#alert-text').parentElement.classList.toggle('danger', state.alert === 'HUNTING');
-  $('#move-mode').textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
-  $('#battery-value').textContent = `${Math.ceil(state.battery)}%`;
-  $('#battery-bar').style.width = `${state.battery}%`;
+  ui.detectBar.style.width = `${state.detection}%`;
+  ui.detectValue.textContent = String(Math.round(state.detection)).padStart(2, '0');
+  ui.alertText.textContent = alertLabels[state.alert];
+  ui.alertText.parentElement.classList.toggle('danger', state.alert === 'HUNTING');
+  ui.moveMode.textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
+  ui.batteryValue.textContent = `${Math.ceil(state.battery)}%`;
+  ui.batteryBar.style.width = `${state.battery}%`;
 }
 
 function updateLight(time) {
@@ -1425,14 +1476,9 @@ function updateRadar(dt, time) {
 
 let nextVisionUpdate = 0;
 let radarAccumulator = 1;
-let renderAccumulator = 0;
 function animate() {
   requestAnimationFrame(animate);
-  const rawDt = Math.min(clock.getDelta(), 0.08);
-  renderAccumulator += rawDt;
-  if (renderAccumulator < 1 / TARGET_RENDER_FPS) return;
-  const dt = Math.min(renderAccumulator, 0.08);
-  renderAccumulator = 0;
+  const dt = Math.min(clock.getDelta(), 0.04);
   const time = clock.elapsedTime;
   if (state.caught) {
     updateCaughtCutscene(time);
@@ -1460,10 +1506,4 @@ function animate() {
 chooseRandomEnemyRoute();
 animate();
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  const renderSize = getRenderSize();
-  renderer.setPixelRatio(1);
-  renderer.setSize(renderSize.width, renderSize.height, false);
-});
+addEventListener('resize', resizeRenderer);
