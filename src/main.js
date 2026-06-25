@@ -4,8 +4,8 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
 const PERF_BUILD_ID = 'PERF-CONFIRMED-960-20260625';
-const INTERNAL_MAX_W = 960;
-const INTERNAL_MAX_H = 540;
+const INTERNAL_MAX_W = 1280;
+const INTERNAL_MAX_H = 720;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
