@@ -6,6 +6,9 @@
 - 4Kサイズのウィンドウで重くなる問題を修正し、画質をどこまで上げられるか調整中。
 - 敵AIが遮蔽物の影に隠れたプレイヤーを見つけにくいため、通路方向の往復だけでなく、オブジェクトの横や裏を確認する探索ロジックを追加する。
 - ゲーム中のバック音がスピーカーノイズのように聞こえるため、洞窟内の空気音に近い環境音へ変更する。
+- 道の中央の遮蔽物に隠れた時、敵が遮蔽物を貫通してゲームオーバーにならないようにする。
+- ミニマップをソナー式にし、音波紋の表示頻度を大幅に下げる。
+- 校舎風のランダムマップ、地下ブレーカー、ランダム非常口、懐中電灯の自然回復を追加する。
 
 ### 4K負荷対策の現状
 - 左上に `PERF CONFIRMED 960` を表示。
@@ -22,6 +25,14 @@
 - 追跡中に遮蔽物でプレイヤーへ視線が通らず、近距離で詰まった場合は `PASSING_BY` に切り替える。
 - `PASSING_BY` 中は感知度と警戒状態を強制的に落とし、プレイヤー付近を通り過ぎた後にランダムな角度で振り返る。
 - `PASSING_BY` 中は短時間だけ新しい足音への反応を無視し、同じ遮蔽物前で追跡へ戻る往復を抑える。
+- 敵移動に `canEnemyMoveTo()` を追加し、遮蔽物や壁コライダーを貫通して進まないように変更。
+- 捕獲判定は `visible` または明確な近距離視線が通っている場合に限定し、遮蔽物越しのゲームオーバーを抑制。
+- ミニマップは自分中心の拡大ソナーへ変更。`sonarReveals` と回転スイープ線が通った範囲だけ地図を数秒表示。
+- 音波紋は敵の聴覚判定とは分離し、表示だけ `state.nextSoundRippleAt` で約2.6秒に1回へ間引き。
+- 学校風のランダム校内生成へ変更。地下、1F、2F、3Fは現在の2Dナビゲーション上の区画として案内表示。
+- 地下ブレーカーを追加。ONで全体照明が明るくなり、2〜10分で自動的に落ちる。
+- 懐中電灯はOFF中にゆっくり電池が回復する。
+- 出口はランダムな教室候補に非常口として配置。
 - 捕獲後リスポーン時に、遮蔽物覗き込み関連のAI状態もリセット。
 - バック音を発振音中心から、低く丸めたループ空気音、ゆっくりしたフィルター揺れ、軽い反響へ変更。
 
@@ -29,6 +40,12 @@
 - 敵がまだ遮蔽物裏を見つけにくい場合:
   - [src/main.js](src/main.js) の `coverSearchNodes()`、`chooseCoverSearchRoute()`、`choosePassByRoute()`、`updateEnemy()` 内の `nearbySharedCover` / `blockedChase` 周辺を確認。
   - `coverCheckSuccess` の確率、`coverPeekUntil` の時間、`nearbySharedCover` の距離条件、`blockedChase` の距離と時間を調整。
+- 遮蔽物貫通や捕獲判定がまだ強い場合:
+  - [src/main.js](src/main.js) の `canEnemyMoveTo()`、`clearAtCloseRange`、`fullyDetected`、`visible` を確認。
+- ソナー表示を調整する場合:
+  - [src/main.js](src/main.js) の `updateRadar()`、`radarPoint()`、`sonarReveals`、`state.nextSoundRippleAt` を確認。
+- ブレーカーや学校照明を調整する場合:
+  - [src/main.js](src/main.js) の `setBreaker()`、`updateSchoolLighting()`、`updateLight()` を確認。
 - 4Kでまだ重い場合:
   - 左下の FPS / draw / tris / render / window を見る。
   - FPS低い + draw/tris高い: メッシュ結合、3D視覚ライン削除、マップ縮小を検討。

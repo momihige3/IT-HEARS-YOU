@@ -50,11 +50,15 @@ const state = {
   keyCount: 0,
   flashlight: true,
   battery: 100,
+  breakerOn: false,
+  breakerOutAt: Infinity,
+  nextSoundRippleAt: 0,
   detection: 0,
   alert: 'UNNOTICED',
   moveMode: 'WALKING',
   noise: 0,
   nearLocker: null,
+  nearBreaker: false,
   currentLocker: null,
   lockerFrontYaw: 0,
   lockerLookOffset: 0,
@@ -74,6 +78,7 @@ const mobileInput = {
 const colliders = [];
 const lockers = [];
 const soundEvents = [];
+const sonarReveals = [];
 const CELL = 4;
 const GRID_W = 13;
 const GRID_H = 19;
@@ -85,12 +90,14 @@ const navNodes = new Map();
 
 const material = (color, roughness = 0.82, metalness = 0.05) =>
   new THREE.MeshStandardMaterial({ color, roughness, metalness });
-const wallMat = material(0x27312a, 0.96);
-const trimMat = material(0x121914, 0.72);
-const floorMat = material(0x202722, 0.58);
-const ceilingMat = material(0x111713, 0.9);
+const wallMat = material(0x3d5048, 0.9);
+const trimMat = material(0x1f302b, 0.7);
+const floorMat = material(0x2c332f, 0.62);
+const ceilingMat = material(0xced5c8, 0.82);
 const metalMat = material(0x313c34, 0.42, 0.65);
 const darkMat = material(0x080b09, 0.82);
+const doorMat = material(0x5b4b36, 0.7);
+const signMat = material(0x1d6243, 0.35);
 
 function worldFromGrid(gx, gz) {
   return new THREE.Vector3((gx - GRID_HALF_W) * CELL, 0, (gz - GRID_HALF_H) * CELL);
@@ -104,13 +111,40 @@ function carve(gx, gz) {
   if (gx >= 0 && gx < GRID_W && gz >= 0 && gz < GRID_H) walkable.add(gridKey(gx, gz));
 }
 
-// A larger multi-loop maze: five long routes, six cross routes, and short dead ends.
+const directions = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+// Randomized school layout: a connected spine, classrooms, dead ends, and uneven loops.
 for (let gz = 0; gz < GRID_H; gz += 1) carve(6, gz);
-for (const gx of [1, 3, 9, 11]) for (let gz = 2; gz <= 17; gz += 1) carve(gx, gz);
-for (const gz of [2, 5, 8, 11, 14, 17]) for (let gx = 1; gx <= 11; gx += 1) carve(gx, gz);
-for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]]) {
-  for (let gz = fromZ; gz <= toZ; gz += 1) carve(gx, gz);
+for (const gz of [2, 5, 8, 11, 14, 17]) {
+  const leftEnd = 1 + Math.floor(Math.random() * 2);
+  const rightEnd = 10 + Math.floor(Math.random() * 2);
+  for (let gx = leftEnd; gx <= rightEnd; gx += 1) carve(gx, gz);
 }
+for (const gx of [1, 3, 9, 11]) {
+  let z = 2 + Math.floor(Math.random() * 2);
+  while (z < GRID_H - 1) {
+    const length = 3 + Math.floor(Math.random() * 5);
+    for (let step = 0; step < length && z < GRID_H - 1; step += 1, z += 1) carve(gx, z);
+    z += 1 + Math.floor(Math.random() * 2);
+  }
+}
+for (let i = 0; i < 16; i += 1) {
+  const gx = 1 + Math.floor(Math.random() * (GRID_W - 2));
+  const gz = 1 + Math.floor(Math.random() * (GRID_H - 2));
+  if (walkable.has(gridKey(gx, gz))) {
+    const [dx, dz] = directions[Math.floor(Math.random() * directions.length)];
+    carve(gx + dx, gz + dz);
+  }
+}
+carve(1, 17);
+carve(2, 17);
+carve(10, 1);
+carve(11, 1);
 
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -122,13 +156,7 @@ function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow
   return mesh;
 }
 
-const directions = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-
+const schoolLights = [];
 let corridorLightCount = 0;
 for (const key of walkable) {
   const [gx, gz] = key.split(',').map(Number);
@@ -144,20 +172,29 @@ for (const key of walkable) {
   }
 
   if ((gx * 5 + gz * 3) % 9 === 0) {
-    const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28), false, false, false);
+    const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xdfe6d5, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
     if (corridorLightCount < 4) {
       const light = new THREE.PointLight(0xc2cbaa, 4.5, 8, 1.7);
       light.position.set(pos.x, 3.82, pos.z);
       scene.add(light);
+      schoolLights.push(light);
       corridorLightCount += 1;
     }
   }
+
+  if ((gx + gz) % 4 === 0) {
+    const doorSide = gx < 6 ? -1 : 1;
+    addBox(pos.x + doorSide * 1.93, 1.34, pos.z, 0.08, 2.12, 1.08, doorMat, false, false, false);
+    addBox(pos.x + doorSide * 1.88, 2.7, pos.z, 0.06, 0.22, 1.15, signMat, false, false, false);
+  }
 }
 
-scene.add(new THREE.HemisphereLight(0x78877a, 0x111511, 0.54));
-scene.add(new THREE.AmbientLight(0x354139, 0.38));
+const hemisphereLight = new THREE.HemisphereLight(0x78877a, 0x111511, 0.54);
+const ambientLight = new THREE.AmbientLight(0x354139, 0.38);
+scene.add(hemisphereLight);
+scene.add(ambientLight);
 
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -270,13 +307,60 @@ function coverSearchNodes(cover) {
     });
 }
 
-// Exit door at the north end of the maze.
-const exitPosition = worldFromGrid(6, 0);
-const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z - 1.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
-addBox(exitPosition.x, 3.45, exitPosition.z - 1.68, 1.2, 0.36, 0.08, material(0x1d6243, 0.35));
+const walkableNodes = [...walkable].map((key) => {
+  const [gx, gz] = key.split(',').map(Number);
+  const pos = worldFromGrid(gx, gz);
+  return { gx, gz, x: pos.x, z: pos.z, key };
+});
+const classroomNodes = walkableNodes.filter((node) =>
+  node.gz < GRID_H - 3 && Math.abs(node.gx - 6) > 1 && (node.gx + node.gz) % 2 === 0);
+const exitNode = classroomNodes[Math.floor(Math.random() * classroomNodes.length)] || walkableNodes[0];
+const exitPosition = new THREE.Vector3(exitNode.x, 0, exitNode.z);
+const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z, 0.14, 2.9, 2.15, material(0x303a33, 0.48, 0.6));
+addBox(exitPosition.x, 3.45, exitPosition.z, 0.08, 0.36, 1.2, material(0x1d6243, 0.35));
 const exitLight = new THREE.PointLight(0x3acb88, 4.5, 5);
-exitLight.position.set(exitPosition.x, 3.4, exitPosition.z - 0.7);
+exitLight.position.set(exitPosition.x, 3.4, exitPosition.z);
 scene.add(exitLight);
+schoolLights.push(exitLight);
+
+const breakerNode = walkableNodes.find((node) => node.gx <= 2 && node.gz >= GRID_H - 3) || walkableNodes[walkableNodes.length - 1];
+const breakerPosition = new THREE.Vector3(breakerNode.x, 0, breakerNode.z);
+const breakerPanel = addBox(breakerPosition.x - 1.72, 1.45, breakerPosition.z, 0.18, 1.35, 0.82, material(0x252b28, 0.55, 0.45), true);
+addBox(breakerPosition.x - 1.58, 1.78, breakerPosition.z, 0.05, 0.2, 0.46, material(0xb8c5b9, 0.32), false, false, false);
+const breakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
+breakerLight.position.set(breakerPosition.x - 1.35, 2.2, breakerPosition.z);
+scene.add(breakerLight);
+
+const floorLabels = [
+  { text: 'B1 ブレーカー室', gz: 17 },
+  { text: '1F 教室棟', gz: 12 },
+  { text: '2F 教室棟', gz: 7 },
+  { text: '3F 非常口候補', gz: 2 },
+];
+function makeSignTexture(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  context.fillStyle = 'rgba(236, 241, 224, .82)';
+  context.fillRect(0, 0, 512, 128);
+  context.strokeStyle = '#41554a';
+  context.lineWidth = 6;
+  context.strokeRect(4, 4, 504, 120);
+  context.fillStyle = '#24322c';
+  context.font = 'bold 44px sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(text, 256, 64);
+  return new THREE.CanvasTexture(canvas);
+}
+for (const label of floorLabels) {
+  const pos = worldFromGrid(6, label.gz);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeSignTexture(label.text), transparent: true, depthTest: true }));
+  sprite.position.set(pos.x, 3.05, pos.z);
+  sprite.scale.set(2.45, 0.62, 1);
+  scene.add(sprite);
+}
 
 const exitCounterCanvas = document.createElement('canvas');
 exitCounterCanvas.width = 512;
@@ -284,7 +368,7 @@ exitCounterCanvas.height = 128;
 const exitCounterContext = exitCounterCanvas.getContext('2d');
 const exitCounterTexture = new THREE.CanvasTexture(exitCounterCanvas);
 const exitCounter = new THREE.Sprite(new THREE.SpriteMaterial({ map: exitCounterTexture, transparent: true, depthTest: true }));
-exitCounter.position.set(exitPosition.x, 3.45, exitPosition.z - 1.53);
+exitCounter.position.set(exitPosition.x, 3.45, exitPosition.z);
 exitCounter.scale.set(3.8, 0.95, 1);
 scene.add(exitCounter);
 
@@ -304,12 +388,9 @@ function updateExitCounter() {
 }
 
 // Five keys are sampled from different side-route locations every playthrough.
-const keyCandidates = [
-  [1, 3], [1, 6], [1, 9], [1, 13], [1, 16],
-  [3, 4], [3, 10], [3, 15], [9, 3], [9, 6],
-  [9, 10], [9, 15], [11, 4], [11, 7], [11, 13], [11, 16],
-  [2, 5], [5, 11], [7, 14], [10, 8],
-];
+const keyCandidates = walkableNodes
+  .filter((node) => node.key !== exitNode.key && node.key !== breakerNode.key && Math.hypot(node.gx - 6, node.gz - 18) > 3)
+  .map((node) => [node.gx, node.gz]);
 const keyMat = material(0xc2a44e, 0.25, 0.85);
 const shuffledKeyCandidates = [...keyCandidates].sort(() => Math.random() - 0.5).slice(0, REQUIRED_KEYS);
 const keyItems = shuffledKeyCandidates.map(([gx, gz], index) => {
@@ -721,11 +802,14 @@ function playLockerSound(opening) {
 
 function emitPlayerSound(strength, baseHearingRadius) {
   const hearingRadius = baseHearingRadius * (1 + enemyData.alertMemory * 0.28);
+  const now = clock.elapsedTime;
   const event = { x: camera.position.x, z: camera.position.z, strength, hearingRadius, age: 0, life: 2.4 };
-  soundEvents.push(event);
+  if (now >= state.nextSoundRippleAt) {
+    soundEvents.push(event);
+    state.nextSoundRippleAt = now + 2.6;
+  }
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
   if (distance <= hearingRadius) {
-    const now = clock.elapsedTime;
     if (enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
     enemyData.lastHeardAt = now;
     enemyData.lastHeardPosition = { x: event.x, z: event.z };
@@ -799,6 +883,14 @@ function canMoveTo(x, z) {
     Math.abs(x - collider.x) < collider.hw + 0.26 && Math.abs(z - collider.z) < collider.hz + 0.26);
 }
 
+function canEnemyMoveTo(x, z) {
+  const maxX = GRID_HALF_W * CELL + CELL / 2 - 0.2;
+  const maxZ = GRID_HALF_H * CELL + CELL / 2 - 0.2;
+  if (x < -maxX || x > maxX || z < -maxZ || z > maxZ) return false;
+  return !colliders.some((collider) =>
+    Math.abs(x - collider.x) < collider.hw + 0.34 && Math.abs(z - collider.z) < collider.hz + 0.34);
+}
+
 function hasLineOfSight(from, to) {
   const distance = Math.hypot(to.x - from.x, to.z - from.z);
   if (distance < 0.001) return true;
@@ -820,6 +912,24 @@ function showToast(text) {
   toast.classList.add('show');
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove('show'), 2100);
+}
+
+function setBreaker(on) {
+  state.breakerOn = on;
+  state.breakerOutAt = on ? clock.elapsedTime + 120 + Math.random() * 480 : Infinity;
+  breakerLight.color.set(on ? 0x7dffad : 0xff6d4d);
+  breakerLight.intensity = on ? 1.6 : 0.35;
+  showToast(on ? 'ブレーカーを入れた' : 'ブレーカーが落ちた');
+}
+
+function updateSchoolLighting(time) {
+  if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
+  const power = state.breakerOn ? 1 : 0;
+  hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 1.35, power);
+  ambientLight.intensity = THREE.MathUtils.lerp(0.38, 1.12, power);
+  scene.fog.density = THREE.MathUtils.lerp(0.018, 0.006, power);
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(1.08, 1.38, power);
+  for (const light of schoolLights) light.intensity = THREE.MathUtils.lerp(2.2, 8.5, power);
 }
 
 function enterLocker(locker) {
@@ -865,6 +975,11 @@ function interact() {
     enterLocker(state.nearLocker);
     return;
   }
+  if (state.nearBreaker) {
+    if (!state.breakerOn) setBreaker(true);
+    else showToast('ブレーカーは入っている');
+    return;
+  }
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
   if (nearbyKey) {
     nearbyKey.collected = true;
@@ -906,7 +1021,11 @@ function respawnPlayer() {
   state.moveMode = 'WALKING';
   state.noise = 0;
   state.nearLocker = null;
+  state.nearBreaker = false;
   state.currentLocker = null;
+  state.breakerOn = false;
+  state.breakerOutAt = Infinity;
+  state.nextSoundRippleAt = 0;
   state.lockerExitGraceUntil = clock.elapsedTime + 1;
   state.settingsOpen = false;
   mobileInput.moveX = mobileInput.moveY = 0;
@@ -953,6 +1072,7 @@ function respawnPlayer() {
     lookBackYaw: 0,
   });
   soundEvents.length = 0;
+  sonarReveals.length = 0;
   chooseRandomEnemyRoute();
   showToast('意識を取り戻した');
   if (!mobileInput.active) lockPointer();
@@ -1211,6 +1331,8 @@ function updatePlayer(dt) {
   if (state.flashlight) {
     state.battery = Math.max(0, state.battery - dt * 0.18);
     if (state.battery <= 0) state.flashlight = false;
+  } else {
+    state.battery = Math.min(100, state.battery + dt * 1.05);
   }
 }
 
@@ -1354,9 +1476,18 @@ function updateEnemy(dt, time) {
     }
     else {
       direction.normalize();
-      enemy.position.addScaledVector(direction, enemyData.speed * dt);
-      enemy.rotation.y = Math.atan2(direction.x, direction.z);
-      enemyData.isMoving = true;
+      const nextX = enemy.position.x + direction.x * enemyData.speed * dt;
+      const nextZ = enemy.position.z + direction.z * enemyData.speed * dt;
+      if (canEnemyMoveTo(nextX, nextZ)) {
+        enemy.position.x = nextX;
+        enemy.position.z = nextZ;
+        enemy.rotation.y = Math.atan2(direction.x, direction.z);
+        enemyData.isMoving = true;
+      } else {
+        enemyData.path = [];
+        if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
+        else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
+      }
     }
   }
   if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
@@ -1386,12 +1517,13 @@ function updateEnemy(dt, time) {
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
   const clearAtCloseRange = !passByActive && distance < 1.45 && lineOfSightToPlayer;
-  const fullyDetected = state.detection >= 99.5 && (visible || checkingSameCover);
+  const fullyDetected = state.detection >= 99.5 && visible;
   if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
 }
 
 function updateInteraction() {
   state.nearLocker = null;
+  state.nearBreaker = false;
   let bestDistance = 1.5;
   for (const locker of lockers) {
     const distance = Math.hypot(camera.position.x - locker.x, camera.position.z - locker.z);
@@ -1402,8 +1534,10 @@ function updateInteraction() {
   }
   let prompt = '';
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
+  state.nearBreaker = horizontalDistance(camera.position, breakerPanel.position) < 2.35;
   if (state.hidden) prompt = '[ E ] ロッカーから出る';
   else if (state.nearLocker) prompt = '[ E ] ロッカーの中に隠れる';
+  else if (state.nearBreaker) prompt = state.breakerOn ? '[ E ] ブレーカーは入っている' : '[ E ] ブレーカーを入れる';
   else if (nearbyKey) prompt = `[ E ] 鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
   else if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
     prompt = state.keyCount >= REQUIRED_KEYS
@@ -1432,6 +1566,7 @@ function updateHUD() {
 }
 
 function updateLight(time) {
+  updateSchoolLighting(time);
   flashlight.visible = state.flashlight && !state.hidden;
   fillLight.visible = flashlight.visible;
   lockerViewLight.visible = state.hidden;
@@ -1450,30 +1585,63 @@ function updateLight(time) {
 
 const minimap = $('#minimap');
 const radar = minimap.getContext('2d');
-function radarPoint(x, z) {
+function radarPoint(x, z, scale = 8.2) {
   return {
-    x: ((x + (GRID_HALF_W + 0.5) * CELL) / (GRID_W * CELL)) * minimap.width,
-    y: ((z + (GRID_HALF_H + 0.5) * CELL) / (GRID_H * CELL)) * minimap.height,
+    x: minimap.width / 2 + (x - camera.position.x) * scale,
+    y: minimap.height / 2 + (z - camera.position.z) * scale,
   };
+}
+
+function angleDelta(a, b) {
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 }
 
 function updateRadar(dt, time) {
   radar.clearRect(0, 0, minimap.width, minimap.height);
-  radar.fillStyle = 'rgba(8,18,12,.72)';
+  radar.fillStyle = 'rgba(3,9,6,.92)';
   radar.fillRect(0, 0, minimap.width, minimap.height);
+  const centerX = minimap.width / 2;
+  const centerY = minimap.height / 2;
+  const radarRadius = Math.min(minimap.width, minimap.height) * 0.46;
+  const worldRadius = 14;
+  const scale = radarRadius / worldRadius;
+  const sweep = time * 1.45;
+  sonarReveals.push({ angle: sweep, age: 0, life: 3.2 });
+  if (sonarReveals.length > 28) sonarReveals.shift();
+  for (let i = sonarReveals.length - 1; i >= 0; i -= 1) {
+    sonarReveals[i].age += dt;
+    if (sonarReveals[i].age >= sonarReveals[i].life) sonarReveals.splice(i, 1);
+  }
+
+  radar.save();
+  radar.beginPath();
+  radar.arc(centerX, centerY, radarRadius, 0, Math.PI * 2);
+  radar.clip();
   radar.strokeStyle = 'rgba(96,137,110,.18)';
   radar.lineWidth = 1;
   for (let r = 1; r <= 3; r += 1) {
     radar.beginPath();
-    radar.arc(minimap.width / 2, minimap.height / 2, r * 28, 0, Math.PI * 2);
+    radar.arc(centerX, centerY, r * radarRadius / 3, 0, Math.PI * 2);
     radar.stroke();
   }
 
-  radar.fillStyle = 'rgba(94,126,105,.22)';
-  const radarCellWidth = minimap.width / GRID_W;
-  const radarCellHeight = minimap.height / GRID_H;
+  const radarCellWidth = CELL * scale;
+  const radarCellHeight = CELL * scale;
   for (const node of navNodes.values()) {
-    const p = radarPoint(node.x, node.z);
+    const dx = node.x - camera.position.x;
+    const dz = node.z - camera.position.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > worldRadius) continue;
+    const nodeAngle = Math.atan2(dz, dx);
+    let revealAlpha = 0;
+    for (const reveal of sonarReveals) {
+      const progress = reveal.age / reveal.life;
+      const matched = angleDelta(nodeAngle, reveal.angle) < 0.34 + progress * 0.08;
+      if (matched) revealAlpha = Math.max(revealAlpha, (1 - progress) * 0.33);
+    }
+    if (revealAlpha <= 0.01) continue;
+    const p = radarPoint(node.x, node.z, scale);
+    radar.fillStyle = `rgba(100,145,116,${revealAlpha})`;
     radar.fillRect(
       p.x - radarCellWidth * 0.47,
       p.y - radarCellHeight * 0.47,
@@ -1489,17 +1657,17 @@ function updateRadar(dt, time) {
       soundEvents.splice(i, 1);
       continue;
     }
-    const p = radarPoint(event.x, event.z);
+    const p = radarPoint(event.x, event.z, scale);
     const progress = event.age / event.life;
     radar.strokeStyle = `rgba(225,181,78,${1 - progress})`;
     radar.lineWidth = 1.5;
-    const hearingRadiusPixels = event.hearingRadius * 4.1;
+    const hearingRadiusPixels = event.hearingRadius * scale;
     radar.beginPath();
     radar.arc(p.x, p.y, 2 + progress * hearingRadiusPixels, 0, Math.PI * 2);
     radar.stroke();
   }
 
-  const playerPoint = radarPoint(camera.position.x, camera.position.z);
+  const playerPoint = { x: centerX, y: centerY };
   radar.save();
   radar.translate(playerPoint.x, playerPoint.y);
   radar.rotate(-camera.rotation.y);
@@ -1512,7 +1680,7 @@ function updateRadar(dt, time) {
   radar.fill();
   radar.restore();
 
-  const enemyPoint = radarPoint(enemy.position.x, enemy.position.z);
+  const enemyPoint = radarPoint(enemy.position.x, enemy.position.z, scale);
   const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
   const visionDirection = Math.atan2(radarForward.z, radarForward.x);
   const visionHalfAngle = VISION_HALF_ANGLE;
@@ -1523,6 +1691,7 @@ function updateRadar(dt, time) {
     const point = radarPoint(
       enemy.position.x + Math.cos(angle) * VISION_DISTANCE,
       enemy.position.z + Math.sin(angle) * VISION_DISTANCE,
+      scale,
     );
     radar.lineTo(point.x, point.y);
   }
@@ -1541,11 +1710,16 @@ function updateRadar(dt, time) {
   radar.fill();
   radar.shadowBlur = 0;
 
-  const sweep = time * 0.85;
-  radar.strokeStyle = 'rgba(105,190,137,.22)';
+  radar.strokeStyle = 'rgba(105,220,148,.38)';
   radar.beginPath();
   radar.moveTo(playerPoint.x, playerPoint.y);
-  radar.lineTo(playerPoint.x + Math.cos(sweep) * 80, playerPoint.y + Math.sin(sweep) * 80);
+  radar.lineTo(playerPoint.x + Math.cos(sweep) * radarRadius, playerPoint.y + Math.sin(sweep) * radarRadius);
+  radar.stroke();
+  radar.restore();
+  radar.strokeStyle = 'rgba(105,190,137,.38)';
+  radar.lineWidth = 1.2;
+  radar.beginPath();
+  radar.arc(centerX, centerY, radarRadius, 0, Math.PI * 2);
   radar.stroke();
 }
 
