@@ -4,44 +4,40 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
 
-// True 720p mode:
-// Keep the whole game UI in a fixed 1280x720 virtual screen and scale that screen up.
-// This caps WebGL, canvas radar, and full-screen CSS overlays instead of only capping WebGL.
-const VIRTUAL_WIDTH = 1280;
-const VIRTUAL_HEIGHT = 720;
-const QUALITY = {
-  renderScale: 1,
-  pixelRatio: 1,
-  shadows: false,
-  antialias: false,
-  radarHz: 8,
-  hudHz: 10,
-  interactionHz: 10,
-  lightHz: 10,
-  visionHz: 10,
-};
-
-function resizeVirtualScreen() {
-  const scale = Math.min(innerWidth / VIRTUAL_WIDTH, innerHeight / VIRTUAL_HEIGHT);
-  document.documentElement.style.setProperty('--game-scale', String(scale));
-}
-resizeVirtualScreen();
+const PERF_BUILD_ID = 'PERF-FIX-20260625-VISIBLE-960x540';
+const MAX_RENDER_WIDTH = 960;
+const MAX_RENDER_HEIGHT = 540;
+const LOW_SPEC = true;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
-const camera = new THREE.PerspectiveCamera(72, VIRTUAL_WIDTH / VIRTUAL_HEIGHT, 0.05, touchDevice ? 60 : 80);
-const renderer = new THREE.WebGLRenderer({ antialias: QUALITY.antialias, powerPreference: 'high-performance' });
-renderer.setPixelRatio(QUALITY.pixelRatio);
-renderer.setSize(VIRTUAL_WIDTH * QUALITY.renderScale, VIRTUAL_HEIGHT * QUALITY.renderScale, false);
-renderer.domElement.style.width = `${VIRTUAL_WIDTH}px`;
-renderer.domElement.style.height = `${VIRTUAL_HEIGHT}px`;
-renderer.shadowMap.enabled = QUALITY.shadows;
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 45 : 55);
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1;
+renderer.domElement.style.width = '100vw';
+renderer.domElement.style.height = '100vh';
+renderer.domElement.style.display = 'block';
 $('#game').append(renderer.domElement);
+
+const perfPanel = document.createElement('div');
+perfPanel.id = 'perf-panel';
+perfPanel.textContent = `${PERF_BUILD_ID} / FPS -- / draw --`;
+document.body.append(perfPanel);
+
+function applyRenderCap() {
+  const scale = Math.min(MAX_RENDER_WIDTH / innerWidth, MAX_RENDER_HEIGHT / innerHeight, 1);
+  const width = Math.max(320, Math.floor(innerWidth * scale));
+  const height = Math.max(180, Math.floor(innerHeight * scale));
+  renderer.setSize(width, height, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
 
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
@@ -120,7 +116,7 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = castShadow && QUALITY.shadows;
+  mesh.castShadow = castShadow && !touchDevice;
   mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
@@ -152,8 +148,8 @@ for (const key of walkable) {
     const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
-    if (corridorLightCount < 10) {
-      const light = new THREE.PointLight(0xc2cbaa, 10, 10, 1.65);
+    if (corridorLightCount < 3) {
+      const light = new THREE.PointLight(0xc2cbaa, 4, 7, 1.65);
       light.position.set(pos.x, 3.82, pos.z);
       scene.add(light);
       corridorLightCount += 1;
@@ -167,7 +163,7 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = QUALITY.shadows;
+  mesh.castShadow = !touchDevice;
   mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
@@ -501,14 +497,14 @@ function chooseCoverSearchRoute() {
 }
 
 // Flashlight.
-const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
+const flashlight = new THREE.SpotLight(0xf4f1dc, 36, 28, Math.PI / 5.5, 0.86, 1.8);
 flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
-const fillLight = new THREE.PointLight(0xcbd5c1, 0.22, 2.2);
+const fillLight = new THREE.PointLight(0xcbd5c1, 0.08, 1.5);
 scene.add(fillLight);
-const lockerViewLight = new THREE.SpotLight(0x9cac9f, 20, 11, Math.PI / 5, 0.65, 1.35);
+const lockerViewLight = new THREE.SpotLight(0x9cac9f, 8, 7, Math.PI / 5, 0.65, 1.35);
 lockerViewLight.visible = false;
 scene.add(lockerViewLight);
 scene.add(lockerViewLight.target);
@@ -1150,20 +1146,15 @@ function updateLockerView() {
 function updateEnemy(dt, time) {
   if (state.ended) return;
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
+  const enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
+  const playerEye = camera.position.clone();
+  toPlayer.subVectors(playerEye, enemyEye);
+  toPlayer.y = 0;
+  const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
+  const facing = enemyForward.dot(toPlayer.clone().normalize());
   const exitGraceActive = time < state.lockerExitGraceUntil;
-  let enemyEye = null;
-  let playerEye = null;
-  let visible = false;
-  if (!state.hidden && !exitGraceActive && distance < 10.5) {
-    enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
-    playerEye = camera.position.clone();
-    toPlayer.subVectors(playerEye, enemyEye);
-    toPlayer.y = 0;
-    const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
-    const facing = enemyForward.dot(toPlayer.clone().normalize());
-    visible = facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
-  }
-  const nearbySharedCover = !state.hidden && !exitGraceActive && enemyData.mode === 'SEARCHING' && distance < 8
+  const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
+  const nearbySharedCover = !state.hidden && !exitGraceActive && enemyData.mode === 'SEARCHING'
     ? coverPoints.findIndex((cover) =>
       Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
       && Math.hypot(enemy.position.x - cover.x, enemy.position.z - cover.z) < 2.45)
@@ -1270,12 +1261,7 @@ function updateEnemy(dt, time) {
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
-  let clearAtCloseRange = false;
-  if (!state.hidden && !exitGraceActive && distance < 1.45) {
-    if (!enemyEye) enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
-    if (!playerEye) playerEye = camera.position.clone();
-    clearAtCloseRange = hasLineOfSight(enemyEye, playerEye);
-  }
+  const clearAtCloseRange = distance < 1.45 && hasLineOfSight(enemyEye, playerEye);
   const fullyDetected = state.detection >= 99.5 && (visible || checkingSameCover);
   if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
 }
@@ -1440,27 +1426,7 @@ function updateRadar(dt, time) {
 }
 
 let nextVisionUpdate = 0;
-let nextHudUpdate = 0;
-let nextInteractionUpdate = 0;
-let nextLightUpdate = 0;
 let radarAccumulator = 1;
-const perfPanel = document.createElement('div');
-perfPanel.id = 'perf-panel';
-perfPanel.textContent = 'FPS -- / draw -- / 1280x720 TRUE 720P';
-document.body.append(perfPanel);
-let perfFrames = 0;
-let perfTime = 0;
-function updatePerformancePanel(dt) {
-  perfFrames += 1;
-  perfTime += dt;
-  if (perfTime < 0.5) return;
-  const fps = Math.round(perfFrames / perfTime);
-  perfFrames = 0;
-  perfTime = 0;
-  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-  perfPanel.textContent = `FPS ${fps} / draw ${renderer.info.render.calls} / ${size.x}x${size.y} / TRUE 720P`;
-}
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -1473,24 +1439,15 @@ function animate() {
     updateEnemy(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
-      nextVisionUpdate = time + 1 / QUALITY.visionHz;
+      nextVisionUpdate = time + 1 / 12;
     }
-    if (time >= nextInteractionUpdate) {
-      updateInteraction();
-      nextInteractionUpdate = time + 1 / QUALITY.interactionHz;
-    }
-    if (time >= nextHudUpdate) {
-      updateHUD();
-      nextHudUpdate = time + 1 / QUALITY.hudHz;
-    }
-    if (time >= nextLightUpdate) {
-      updateLight(time);
-      nextLightUpdate = time + 1 / QUALITY.lightHz;
-    }
+    updateInteraction();
+    updateHUD();
+    updateLight(time);
     updateAudio(time);
   }
   radarAccumulator += dt;
-  if (radarAccumulator >= 1 / QUALITY.radarHz) {
+  if (radarAccumulator >= 1 / 20) {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
@@ -1501,4 +1458,5 @@ function animate() {
 chooseRandomEnemyRoute();
 animate();
 
-addEventListener('resize', resizeVirtualScreen);
+applyRenderCap();
+addEventListener('resize', applyRenderCap);

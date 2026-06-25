@@ -1,49 +1,31 @@
-# AI_HANDOFF - IT HEARS YOU
+# AI HANDOFF - IT HEARS YOU
 
-## 2026-06-25 performance follow-up
+## 2026-06-25 visible performance diagnostic build
 
-### User-reported issue
-- 4K display + maximized window still causes heavy frame drops.
-- Previous builds did not visibly show the FPS/draw overlay, so the user could not confirm that the intended build was running.
+User reports 4K/maximized performance drop is unchanged and previous FPS overlay did not appear.
 
-### Important finding
-Previous fixes mainly capped the WebGL canvas render size, but the rest of the app (`#app`, HUD, full-screen CSS overlays, radar canvas, vignette, danger flash, title screens) still used full viewport-sized fixed positioning. On a 4K maximized window, that can still force large CSS/compositor work even if WebGL itself is reduced.
+This build intentionally adds a pure HTML marker outside the app:
 
-### Current fix in this package
-Implemented a true virtual 720p screen:
-- `src/main.js`
-  - Added `VIRTUAL_WIDTH = 1280` and `VIRTUAL_HEIGHT = 720`.
-  - Camera aspect is fixed to 16:9 virtual resolution.
-  - WebGL drawing buffer is fixed to `1280x720` with `pixelRatio = 1`.
-  - `resizeVirtualScreen()` only updates CSS scale via `--game-scale`; it does **not** resize WebGL to the physical window.
-  - Shadows and antialiasing are disabled.
-  - HUD/radar/light/vision/interaction updates are throttled.
-  - Enemy line-of-sight/capture checks are gated by distance.
-  - Added always-visible diagnostic panel text: `FPS ... / draw ... / 1280x720 / TRUE 720P`.
-- `src/style.css`
-  - `#app` is fixed at `1280px x 720px` and scaled with CSS transform.
-  - `#game` is fixed at `1280px x 720px`.
-  - Full-screen UI layers were changed from viewport `position: fixed` to `position: absolute` inside the virtual 720p app where appropriate.
-  - Added `#perf-panel` style with high z-index.
+- Top-left: `PERF FIX ACTIVE / 960x540 render cap / 2026-06-25 visible build`
+- Bottom-left JS panel: `PERF-FIX-20260625-VISIBLE-960x540 / FPS ... / draw ... / WxH`
 
-### Verification
-- `npm run build` succeeds.
-- The generated `dist/` folder is included in this ZIP.
+If the top-left marker does not appear, the user is not launching this build or browser/cache is serving an older build.
 
-### How to confirm the correct build is running
-When launched, the bottom-left overlay must show:
-`FPS -- / draw -- / 1280x720 TRUE 720P`
-then update to:
-`FPS <number> / draw <number> / 1280x720 / TRUE 720P`
+Performance changes from the original source:
 
-If this text is not visible, the user is not running this build or old cached/deployed files are still being served.
+- WebGL drawing buffer capped to fit within 960x540.
+- Canvas visually stretches to viewport with CSS; GPU render resolution remains capped.
+- Pixel ratio forced to 1.
+- Antialias disabled.
+- Shadows disabled globally and on meshes/lights.
+- Camera far plane reduced.
+- Corridor point lights reduced from 10 to 3.
+- Flashlight/fill/locker lights reduced.
+- Tone mapping changed to NoToneMapping.
 
-### Next debugging steps if still heavy
-Ask for the bottom-left overlay values:
-- FPS
-- draw
-- resolution text
+Next debugging step if marker appears but FPS remains low:
 
-If the resolution is not `1280x720`, the deployment is stale or not using this package.
-If draw count is very high, inspect scene object/material counts next.
-If draw count is normal but FPS low, inspect CSS/compositor and audio scheduling next.
+1. Ask for the bottom-left values: FPS, draw, and resolution.
+2. If resolution is above 960x540, `applyRenderCap()` is not running.
+3. If draw count is very high, merge/instance static geometry.
+4. If draw count is low but FPS is low, suspect CSS/compositor, browser/GPU, or hardware acceleration.
