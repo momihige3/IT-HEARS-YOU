@@ -120,10 +120,16 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
 }
 @media (hover:none) and (pointer:coarse) and (orientation:portrait) { #rotate-device { display:grid; } }
 
-/* Performance mode: full-screen radial gradients and animated shadows are costly on 4K displays. */
-#vignette { background: rgba(0,0,0,.18); }
-#danger-flash { background: rgba(80,0,0,.24); transition: none; }
-#locker-slats { transition: none; }
-.meter i, .meter.detection i, #alert-dot, .radar-legend .enemy-dot { box-shadow: none; }
-.alert-line.danger #alert-dot { animation: none; }
-#minimap { background: rgba(3,8,5,.72); }
+#perf-panel {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 50;
+  padding: 6px 8px;
+  border: 1px solid rgba(144, 255, 178, .35);
+  background: rgba(0, 0, 0, .55);
+  color: #b6ffc7;
+  font: 12px/1.2 monospace;
+  pointer-events: none;
+  text-shadow: 0 0 6px rgba(110, 255, 155, .45);
+}

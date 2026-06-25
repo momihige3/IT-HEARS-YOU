@@ -1,72 +1,40 @@
 # AI HANDOFF - IT HEARS YOU
 
-## 2026-06-25 performance follow-up
+## 2026-06-25 Deep performance pass
 
-User report:
-- 4K display fullscreen/maximized is still heavy.
-- Previous fixes did not improve it; one FPS cap version made stutter worse.
-- User suspected enemy capture checks might be running while far away.
+User report: 4K fullscreen/maximized play remains heavy even after render-resolution cap, light reduction, enemy-distance gating, and HUD/radar throttling.
 
-Important conclusion:
-- Distance-gating enemy capture/LOS is valid and remains included.
-- However, unchanged heaviness suggests the main bottleneck is likely GPU fragment/light/compositing load rather than only AI distance checks.
-- This version therefore avoids FPS capping and reduces light/HUD/overlay work more aggressively.
+### Important conclusion
+The previous fixes likely missed the biggest bottleneck: many separate static `BoxGeometry` meshes were rendered as individual WebGL draw calls. In a large maze, floors, ceilings, walls, covers, and exit props create many separate scene meshes. Lowering internal resolution alone does not solve CPU/driver overhead from many draw calls.
 
-Current changes in this handoff version:
-1. Internal WebGL render cap lowered from 1280x720 to 960x540.
-   - Display still fills the window by CSS upscaling.
-   - Do not use a fixed 30 FPS cap; it caused worse perceived stutter.
-2. WebGL renderer changed to cheaper settings:
-   - antialias: false
-   - precision: mediump
-   - NoToneMapping
-   - shadows disabled
-3. Dynamic light budget reduced:
-   - corridor PointLights limited to 2
-   - key PointLights disabled by default
-   - exit PointLight disabled by default
-   - flashlight remains available because it is core gameplay feedback
-4. Enemy direct detection/capture remains distance-gated:
-   - far player skips LOS/capture/cover detection checks
-   - close capture LOS only runs when within capture distance
-5. Enemy vision helper lines are disabled by default.
-   - They are useful for debugging but not required in normal play.
-6. HUD updates are throttled/cached:
-   - DOM changes only happen when rounded values change
-   - HUD refresh target: 10Hz
-7. Light/key animation is throttled:
-   - updateLight target: 15Hz
-8. Radar/minimap is throttled:
-   - 8Hz, not every frame
-9. Expensive fullscreen CSS effects are simplified:
-   - radial gradients/shadows/animations reduced
+### Changes made in this pass
+- Added `mergeGeometries` from `three/examples/jsm/utils/BufferGeometryUtils.js`.
+- Added `mergeStaticSceneBoxes()` after static maze/cover/exit creation and before dynamic key/enemy creation.
+  - It scans top-level static `BoxGeometry` meshes in `scene`.
+  - It clones and transforms their geometry into world space.
+  - It groups them by material and merges them into a few large meshes.
+  - It removes the original separate box meshes.
+  - Existing `colliders` data is kept unchanged, so movement/LOS behavior should remain intact.
+- Reduced repeated per-frame UI work:
+  - Cached `#noise-bar`, `#noise-value`, `#prompt`, and `#mobile-action` DOM references.
+  - HUD updates throttled to `PERFORMANCE.hudHz`.
+  - Interaction prompt updates throttled to `PERFORMANCE.interactionHz`.
+  - Light/key animation updates throttled to `PERFORMANCE.lightHz`.
+  - Radar updates reduced to `PERFORMANCE.radarHz`.
+  - Enemy vision line updates reduced to `PERFORMANCE.visionHz`.
+- Removed per-radar-frame vector allocation by reusing `radarForwardTemp`.
+- Removed per-hidden-frame locker vector allocation by reusing `lockerInsideTemp`.
+- Added on-screen performance panel at bottom-right:
+  - FPS
+  - WebGL draw calls
+  - triangles
+  - drawing buffer size
 
-Files changed:
-- src/main.js
-- src/style.css
-- README.md
-- AI_HANDOFF.md
+### Expected result
+If the bottleneck was draw-call overhead, `draw` in the performance panel should be much lower than before. If FPS is still low while `draw` is low and drawing buffer is capped, the next suspect is browser/GPU/driver, audio, or CSS compositing rather than maze object count.
 
-Build verification:
-- `npm install --no-audit --no-fund`
-- `npm run build`
-- Build succeeded.
-- Vite still reports a >500kB JS chunk warning because Three.js is bundled. This is not a runtime error.
+### Build status
+`npm run build` completed successfully.
 
-Recommended next debugging if user still reports heaviness:
-1. Add an in-game performance overlay showing:
-   - FPS
-   - renderer.info.render.calls
-   - renderer.info.render.triangles
-   - renderer.domElement.width/height
-   - number of active lights
-2. Add a settings/debug toggle to switch among:
-   - 1280x720 quality
-   - 960x540 performance
-   - 640x360 potato mode
-   - radar off
-   - flashlight off
-3. If even 640x360 is heavy, suspect browser/GPU driver/compositing or CSS overlay cost, not scene resolution.
-4. If FPS is high but motion feels bad, inspect dt spikes and pointer-lock/mouse event handling.
-
-Do not reintroduce a hard 30 FPS limiter unless the user explicitly asks. It made perceived stutter worse.
+### Notes for next AI
+Do not re-add a hard 30 FPS limiter. The user reported that made the stutter worse. Prefer actual bottleneck reduction and diagnostics.

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -14,26 +15,21 @@ const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, t
 // A 3840x2160 WebGL buffer is over 8 million pixels per frame; this game is designed to
 // render internally around 720p and be upscaled by CSS.
 const PERFORMANCE = {
-  // 4K環境で重い場合、GPU負荷は解像度だけでなく
-  // 画面全体に当たるライト数・HUD描画・視界線描画でも増えます。
-  // そのため標準を 960x540 + ライト削減に寄せます。
-  maxRenderWidth: 960,
-  maxRenderHeight: 540,
+  maxRenderWidth: 1280,
+  maxRenderHeight: 720,
   pixelRatio: 1,
-  corridorLightLimit: 2,
-  keyLightsEnabled: false,
-  exitLightEnabled: false,
-  enemyVisionEnabled: false,
-  radarEnabled: true,
-  radarHz: 8,
-  hudHz: 10,
-  lightAnimationHz: 15,
   enemySenseFarDistance: 14,
   enemyCaptureDistance: 1.45,
   enemyContactDistance: 1.8,
+  radarHz: 6,
+  hudHz: 8,
+  interactionHz: 8,
+  lightHz: 20,
+  visionHz: 6,
+  diagnosticHz: 2,
 };
 
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', precision: 'mediump' });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(PERFORMANCE.pixelRatio);
 function resizeRenderer() {
   const width = Math.max(1, innerWidth);
@@ -55,22 +51,23 @@ function resizeRenderer() {
 resizeRenderer();
 renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
-renderer.toneMappingExposure = 1;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
 $('#game').append(renderer.domElement);
 
 const ui = {
   dangerFlash: $('#danger-flash'),
-  noiseBar: $('#noise-bar'),
-  noiseValue: $('#noise-value'),
   detectBar: $('#detect-bar'),
   detectValue: $('#detect-value'),
   alertText: $('#alert-text'),
   moveMode: $('#move-mode'),
   batteryValue: $('#battery-value'),
   batteryBar: $('#battery-bar'),
+  noiseBar: $('#noise-bar'),
+  noiseValue: $('#noise-value'),
+  prompt: $('#prompt'),
+  mobileAction: $('#mobile-action'),
 };
-const hudCache = { noise: -1, detection: -1, alert: '', moveMode: '', battery: -1 };
 
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
@@ -149,8 +146,8 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = false;
-  mesh.receiveShadow = false;
+  mesh.castShadow = castShadow && !touchDevice;
+  mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
   return mesh;
@@ -181,7 +178,7 @@ for (const key of walkable) {
     const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
-    if (corridorLightCount < PERFORMANCE.corridorLightLimit) {
+    if (corridorLightCount < 10) {
       const light = new THREE.PointLight(0xc2cbaa, 10, 10, 1.65);
       light.position.set(pos.x, 3.82, pos.z);
       scene.add(light);
@@ -196,8 +193,8 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = false;
-  mesh.receiveShadow = false;
+  mesh.castShadow = !touchDevice;
+  mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
 }
@@ -287,9 +284,9 @@ addCover(7, 5, 0, -1.02, 'cabinet');
 const exitPosition = worldFromGrid(6, 0);
 const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z - 1.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
 addBox(exitPosition.x, 3.45, exitPosition.z - 1.68, 1.2, 0.36, 0.08, material(0x1d6243, 0.35));
-const exitLight = new THREE.PointLight(0x3acb88, 2.2, 4);
+const exitLight = new THREE.PointLight(0x3acb88, 4.5, 5);
 exitLight.position.set(exitPosition.x, 3.4, exitPosition.z - 0.7);
-if (PERFORMANCE.exitLightEnabled) scene.add(exitLight);
+scene.add(exitLight);
 
 const exitCounterCanvas = document.createElement('canvas');
 exitCounterCanvas.width = 512;
@@ -316,6 +313,46 @@ function updateExitCounter() {
   exitCounterTexture.needsUpdate = true;
 }
 
+
+// Merge static box meshes into a few big meshes.
+// This removes hundreds of WebGL draw calls from the maze, walls, floors, ceiling,
+// covers, and exit props while keeping the existing collision data intact.
+function mergeStaticSceneBoxes() {
+  const batches = new Map();
+  const sourceMeshes = [];
+  for (const child of [...scene.children]) {
+    if (!child.isMesh || child.parent !== scene) continue;
+    if (!child.geometry || child.geometry.type !== 'BoxGeometry') continue;
+    if (!child.material) continue;
+    const key = child.material.uuid;
+    if (!batches.has(key)) batches.set(key, { material: child.material, geometries: [] });
+    child.updateMatrixWorld(true);
+    const geometry = child.geometry.clone();
+    geometry.applyMatrix4(child.matrixWorld);
+    batches.get(key).geometries.push(geometry);
+    sourceMeshes.push(child);
+  }
+
+  for (const mesh of sourceMeshes) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+  }
+
+  for (const { material, geometries } of batches.values()) {
+    if (geometries.length === 0) continue;
+    const mergedGeometry = mergeGeometries(geometries, false);
+    for (const geometry of geometries) geometry.dispose();
+    if (!mergedGeometry) continue;
+    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
+    mergedMesh.castShadow = false;
+    mergedMesh.receiveShadow = true;
+    mergedMesh.frustumCulled = false;
+    scene.add(mergedMesh);
+  }
+}
+
+mergeStaticSceneBoxes();
+
 // Five keys are sampled from different side-route locations every playthrough.
 const keyCandidates = [
   [1, 3], [1, 6], [1, 9], [1, 13], [1, 16],
@@ -339,9 +376,9 @@ const keyItems = shuffledKeyCandidates.map(([gx, gz], index) => {
   group.add(tooth);
   group.position.set(keySpawn.x + (index % 2 ? -0.6 : 0.6), 1.05, keySpawn.z);
   scene.add(group);
-  const light = new THREE.PointLight(0xe2c466, 0.8, 2.2);
+  const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
   light.position.copy(group.position);
-  if (PERFORMANCE.keyLightsEnabled) scene.add(light);
+  scene.add(light);
   return { group, light, collected: false, baseY: 1.05, phase: index * 0.9 };
 });
 updateExitCounter();
@@ -350,7 +387,7 @@ updateExitCounter();
 const enemy = new THREE.Group();
 const enemyBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 1.15, 7, 10), material(0x101411, 0.8));
 enemyBody.position.y = 1.05;
-enemyBody.castShadow = false;
+enemyBody.castShadow = true;
 enemy.add(enemyBody);
 const enemyHead = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 9), material(0x151916, 0.85));
 enemyHead.position.y = 2;
@@ -379,7 +416,7 @@ const enemyVisionMaterial = new THREE.LineBasicMaterial({
 });
 const enemyVisionLines = new THREE.LineSegments(enemyVisionGeometry, enemyVisionMaterial);
 enemyVisionLines.frustumCulled = false;
-if (PERFORMANCE.enemyVisionEnabled) scene.add(enemyVisionLines);
+scene.add(enemyVisionLines);
 
 function rayColliderEntry(originX, originZ, dx, dz, collider, maxDistance, padding = 0.02) {
   let near = 0;
@@ -433,7 +470,6 @@ function updateEnemyVision() {
     visionPositions[cursor + 4] = 0.08;
     visionPositions[cursor + 5] = enemy.position.z + dz * distance;
   }
-  if (!PERFORMANCE.enemyVisionEnabled) return;
   enemyVisionMaterial.opacity = state.alert === 'HUNTING' ? 0.78 : 0.48;
   enemyVisionGeometry.attributes.position.needsUpdate = true;
 }
@@ -532,7 +568,7 @@ function chooseCoverSearchRoute() {
 
 // Flashlight.
 const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
-flashlight.castShadow = false;
+flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
@@ -1131,6 +1167,8 @@ const enemyEyeTemp = new THREE.Vector3();
 const playerEyeTemp = new THREE.Vector3();
 const enemyForwardTemp = new THREE.Vector3();
 const enemyMoveDirection = new THREE.Vector3();
+const lockerInsideTemp = new THREE.Vector3();
+const radarForwardTemp = new THREE.Vector3();
 const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
@@ -1174,8 +1212,9 @@ function updatePlayer(dt) {
 function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
   state.noise = 0;
-  const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
-  camera.position.copy(inside);
+  lockerInsideTemp.set(0, 0.12, 0.39);
+  state.currentLocker.group.localToWorld(lockerInsideTemp);
+  camera.position.copy(lockerInsideTemp);
   camera.rotation.y = state.lockerFrontYaw + state.lockerLookOffset;
   camera.rotation.x = 0;
   camera.rotation.z = 0;
@@ -1350,45 +1389,24 @@ function updateInteraction() {
       ? '[ E ] 鍵を使って脱出'
       : `[ E ] 出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
   }
-  $('#prompt').textContent = prompt;
-  const mobileAction = $('#mobile-action');
+  ui.prompt.textContent = prompt;
   const actionLabel = prompt.replace(/^\[ E \]\s*/, '');
-  mobileAction.textContent = actionLabel || '調べる';
-  mobileAction.classList.toggle('visible', mobileInput.active && Boolean(prompt) && !state.caught);
+  ui.mobileAction.textContent = actionLabel || '調べる';
+  ui.mobileAction.classList.toggle('visible', mobileInput.active && Boolean(prompt) && !state.caught);
 }
 
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
 const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている' };
 function updateHUD() {
-  const noise = Math.round(state.noise);
-  const detection = Math.round(state.detection);
-  const battery = Math.ceil(state.battery);
-  const moveMode = state.hidden ? 'HIDING' : state.moveMode;
-
-  if (hudCache.noise !== noise) {
-    hudCache.noise = noise;
-    ui.noiseBar.style.width = `${noise}%`;
-    ui.noiseValue.textContent = String(noise).padStart(2, '0');
-  }
-  if (hudCache.detection !== detection) {
-    hudCache.detection = detection;
-    ui.detectBar.style.width = `${detection}%`;
-    ui.detectValue.textContent = String(detection).padStart(2, '0');
-  }
-  if (hudCache.alert !== state.alert) {
-    hudCache.alert = state.alert;
-    ui.alertText.textContent = alertLabels[state.alert];
-    ui.alertText.parentElement.classList.toggle('danger', state.alert === 'HUNTING');
-  }
-  if (hudCache.moveMode !== moveMode) {
-    hudCache.moveMode = moveMode;
-    ui.moveMode.textContent = movementLabels[moveMode];
-  }
-  if (hudCache.battery !== battery) {
-    hudCache.battery = battery;
-    ui.batteryValue.textContent = `${battery}%`;
-    ui.batteryBar.style.width = `${battery}%`;
-  }
+  ui.noiseBar.style.width = `${state.noise}%`;
+  ui.noiseValue.textContent = String(Math.round(state.noise)).padStart(2, '0');
+  ui.detectBar.style.width = `${state.detection}%`;
+  ui.detectValue.textContent = String(Math.round(state.detection)).padStart(2, '0');
+  ui.alertText.textContent = alertLabels[state.alert];
+  ui.alertText.parentElement.classList.toggle('danger', state.alert === 'HUNTING');
+  ui.moveMode.textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
+  ui.batteryValue.textContent = `${Math.ceil(state.battery)}%`;
+  ui.batteryBar.style.width = `${state.battery}%`;
 }
 
 function updateLight(time) {
@@ -1473,7 +1491,7 @@ function updateRadar(dt, time) {
   radar.restore();
 
   const enemyPoint = radarPoint(enemy.position.x, enemy.position.z);
-  const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
+  const radarForward = radarForwardTemp.set(0, 0, 1).applyQuaternion(enemy.quaternion);
   const visionDirection = Math.atan2(radarForward.z, radarForward.x);
   const visionHalfAngle = VISION_HALF_ANGLE;
   radar.beginPath();
@@ -1509,11 +1527,30 @@ function updateRadar(dt, time) {
   radar.stroke();
 }
 
+
+const perfPanel = document.createElement('div');
+perfPanel.id = 'perf-panel';
+perfPanel.textContent = 'PERF --';
+document.body.append(perfPanel);
+let perfFrames = 0;
+let perfTime = 0;
+let perfFps = 0;
+function updatePerformancePanel(dt, time) {
+  perfFrames += 1;
+  perfTime += dt;
+  if (perfTime < 1 / PERFORMANCE.diagnosticHz) return;
+  perfFps = Math.round(perfFrames / perfTime);
+  perfFrames = 0;
+  perfTime = 0;
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  perfPanel.textContent = `FPS ${perfFps} / draw ${renderer.info.render.calls} / tris ${renderer.info.render.triangles} / ${size.x}x${size.y}`;
+}
+
 let nextVisionUpdate = 0;
+let nextHudUpdate = 0;
+let nextInteractionUpdate = 0;
+let nextLightUpdate = 0;
 let radarAccumulator = 1;
-let hudAccumulator = 1;
-let lightAccumulator = 1;
-let lastLightUpdateTime = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -1524,30 +1561,31 @@ function animate() {
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
-    if (PERFORMANCE.enemyVisionEnabled && time >= nextVisionUpdate) {
+    if (time >= nextVisionUpdate) {
       updateEnemyVision();
-      nextVisionUpdate = time + 1 / 8;
+      nextVisionUpdate = time + 1 / PERFORMANCE.visionHz;
     }
-    updateInteraction();
-    hudAccumulator += dt;
-    if (hudAccumulator >= 1 / PERFORMANCE.hudHz) {
+    if (time >= nextInteractionUpdate) {
+      updateInteraction();
+      nextInteractionUpdate = time + 1 / PERFORMANCE.interactionHz;
+    }
+    if (time >= nextHudUpdate) {
       updateHUD();
-      hudAccumulator = 0;
+      nextHudUpdate = time + 1 / PERFORMANCE.hudHz;
     }
-    lightAccumulator += dt;
-    if (lightAccumulator >= 1 / PERFORMANCE.lightAnimationHz) {
+    if (time >= nextLightUpdate) {
       updateLight(time);
-      lastLightUpdateTime = time;
-      lightAccumulator = 0;
+      nextLightUpdate = time + 1 / PERFORMANCE.lightHz;
     }
     updateAudio(time);
   }
   radarAccumulator += dt;
-  if (PERFORMANCE.radarEnabled && radarAccumulator >= 1 / PERFORMANCE.radarHz) {
+  if (radarAccumulator >= 1 / PERFORMANCE.radarHz) {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
   renderer.render(scene, camera);
+  updatePerformancePanel(dt, time);
 }
 
 chooseRandomEnemyRoute();
