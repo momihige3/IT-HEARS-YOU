@@ -1,31 +1,28 @@
-# AI HANDOFF - IT HEARS YOU
+# AI作業引継ぎ - IT HEARS YOU
 
-## 2026-06-25 visible performance diagnostic build
+## 2026-06-25 PERF CONFIRMED 960
 
-User reports 4K/maximized performance drop is unchanged and previous FPS overlay did not appear.
+目的: 4K最大化時の処理落ち調査と軽量化。前回までの修正版がユーザー環境で反映確認できなかったため、今回は起動確認用の目立つ表示を追加。
 
-This build intentionally adds a pure HTML marker outside the app:
+### 目に見える確認表示
+- 左上: `PERF CONFIRMED 960`
+- 左下: `PERF-CONFIRMED-960-20260625 / FPS / draw / tris / render / window`
 
-- Top-left: `PERF FIX ACTIVE / 960x540 render cap / 2026-06-25 visible build`
-- Bottom-left JS panel: `PERF-FIX-20260625-VISIBLE-960x540 / FPS ... / draw ... / WxH`
+これが表示されない場合、修正版ではなく古いビルドを起動している。
 
-If the top-left marker does not appear, the user is not launching this build or browser/cache is serving an older build.
+### 実装内容
+- WebGL内部描画を最大960x540相当に制限。CSSで画面いっぱいに拡大表示。
+- `renderer.setPixelRatio(1)` 固定。
+- アンチエイリアス無効。
+- 影描画無効。
+- 通路ライト数を削減。
+- レーダー更新を20fps相当から6fps相当に間引き。
+- HUD更新を10fps相当に間引き。
+- インタラクション判定を約8fps相当に間引き。
+- FPS/draw/tris/render/window の診断表示を追加。
 
-Performance changes from the original source:
-
-- WebGL drawing buffer capped to fit within 960x540.
-- Canvas visually stretches to viewport with CSS; GPU render resolution remains capped.
-- Pixel ratio forced to 1.
-- Antialias disabled.
-- Shadows disabled globally and on meshes/lights.
-- Camera far plane reduced.
-- Corridor point lights reduced from 10 to 3.
-- Flashlight/fill/locker lights reduced.
-- Tone mapping changed to NoToneMapping.
-
-Next debugging step if marker appears but FPS remains low:
-
-1. Ask for the bottom-left values: FPS, draw, and resolution.
-2. If resolution is above 960x540, `applyRenderCap()` is not running.
-3. If draw count is very high, merge/instance static geometry.
-4. If draw count is low but FPS is low, suspect CSS/compositor, browser/GPU, or hardware acceleration.
+### 次に見るべき場所
+表示が出ているのに重い場合は、左下の数値を使って原因を分ける。
+- FPS低い + draw/tris高い: 3D描画負荷。メッシュ結合やマテリアル削減。
+- FPS低い + draw/tris低い: JS/DOM/CSS/入力処理が原因。Chrome PerformanceでMain Threadを見る。
+- renderが960x540より大きい: `applyRenderCap()` が効いていない。

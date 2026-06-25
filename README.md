@@ -1,31 +1,26 @@
 # IT HEARS YOU
 
-Three.js + Vite で制作した、一人称視点の短編3Dステルスホラーゲームです。
+## 起動確認
+この版は左上に `PERF CONFIRMED 960`、左下にFPSなどの診断表示が出ます。
+表示されない場合は古いファイルを起動しています。
 
-## 操作
+## 軽量化内容
+- 内部描画最大960x540
+- CSSで全画面拡大
+- アンチエイリアス無効
+- 影描画無効
+- ライト数削減
+- HUD/レーダー/判定更新の間引き
 
-- `WASD`: 移動
-- `Mouse`: 視点操作
-- `Shift`: 走る（速いが敵に気づかれやすい）
-- `E`: 調べる / ロッカーに隠れる
-- `F`: 懐中電灯のON/OFF
-
-## ローカル起動
-
+## 開発
 ```bash
 npm install
 npm run dev
 ```
 
-## GitHub Pages
+## ビルド
+```bash
+npm run build
+```
 
-`main` ブランチへpushすると、GitHub Actionsが自動でビルド・公開します。リポジトリの **Settings → Pages → Source** は **GitHub Actions** を選択してください。
-
-
-## Performance diagnostic build
-
-This build shows a top-left marker: `PERF FIX ACTIVE`.
-If that marker is not visible, an older build is being launched.
-
-The WebGL internal render size is capped to 960x540 and stretched to the window.
-The bottom-left panel shows FPS, draw calls, and the actual WebGL drawing buffer size.
+`dist/index.html`からも起動確認できます。

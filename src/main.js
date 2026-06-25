@@ -3,41 +3,40 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-
-const PERF_BUILD_ID = 'PERF-FIX-20260625-VISIBLE-960x540';
-const MAX_RENDER_WIDTH = 960;
-const MAX_RENDER_HEIGHT = 540;
-const LOW_SPEC = true;
-
+const PERF_BUILD_ID = 'PERF-CONFIRMED-960-20260625';
+const INTERNAL_MAX_W = 960;
+const INTERNAL_MAX_H = 540;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
-const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 45 : 55);
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
-renderer.shadowMap.enabled = false;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
-renderer.toneMappingExposure = 1;
-renderer.domElement.style.width = '100vw';
-renderer.domElement.style.height = '100vh';
-renderer.domElement.style.display = 'block';
-$('#game').append(renderer.domElement);
-
-const perfPanel = document.createElement('div');
-perfPanel.id = 'perf-panel';
-perfPanel.textContent = `${PERF_BUILD_ID} / FPS -- / draw --`;
-document.body.append(perfPanel);
-
 function applyRenderCap() {
-  const scale = Math.min(MAX_RENDER_WIDTH / innerWidth, MAX_RENDER_HEIGHT / innerHeight, 1);
-  const width = Math.max(320, Math.floor(innerWidth * scale));
-  const height = Math.max(180, Math.floor(innerHeight * scale));
-  renderer.setSize(width, height, false);
-  camera.aspect = innerWidth / innerHeight;
+  const viewW = Math.max(1, window.innerWidth);
+  const viewH = Math.max(1, window.innerHeight);
+  const scale = Math.min(1, INTERNAL_MAX_W / viewW, INTERNAL_MAX_H / viewH);
+  const renderW = Math.max(320, Math.round(viewW * scale));
+  const renderH = Math.max(180, Math.round(viewH * scale));
+  camera.aspect = viewW / viewH;
   camera.updateProjectionMatrix();
+  renderer.setSize(renderW, renderH, false);
+  renderer.domElement.style.width = '100vw';
+  renderer.domElement.style.height = '100vh';
+  renderer.domElement.dataset.renderCap = `${renderW}x${renderH}`;
 }
+applyRenderCap();
+renderer.shadowMap.enabled = false;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+$('#game').append(renderer.domElement);
+const perfPanel = $('#perf-panel');
+let perfFrames = 0;
+let perfLast = performance.now();
+let perfFps = 0;
 
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
@@ -116,8 +115,8 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = castShadow && !touchDevice;
-  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
   return mesh;
@@ -148,8 +147,8 @@ for (const key of walkable) {
     const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
-    if (corridorLightCount < 3) {
-      const light = new THREE.PointLight(0xc2cbaa, 4, 7, 1.65);
+    if (corridorLightCount < 4) {
+      const light = new THREE.PointLight(0xc2cbaa, 4.5, 8, 1.7);
       light.position.set(pos.x, 3.82, pos.z);
       scene.add(light);
       corridorLightCount += 1;
@@ -163,8 +162,8 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = !touchDevice;
-  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
   group.add(mesh);
   return mesh;
 }
@@ -497,14 +496,14 @@ function chooseCoverSearchRoute() {
 }
 
 // Flashlight.
-const flashlight = new THREE.SpotLight(0xf4f1dc, 36, 28, Math.PI / 5.5, 0.86, 1.8);
+const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
 flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
-const fillLight = new THREE.PointLight(0xcbd5c1, 0.08, 1.5);
+const fillLight = new THREE.PointLight(0xcbd5c1, 0.22, 2.2);
 scene.add(fillLight);
-const lockerViewLight = new THREE.SpotLight(0x9cac9f, 8, 7, Math.PI / 5, 0.65, 1.35);
+const lockerViewLight = new THREE.SpotLight(0x9cac9f, 20, 11, Math.PI / 5, 0.65, 1.35);
 lockerViewLight.visible = false;
 scene.add(lockerViewLight);
 scene.add(lockerViewLight.target);
@@ -1427,6 +1426,8 @@ function updateRadar(dt, time) {
 
 let nextVisionUpdate = 0;
 let radarAccumulator = 1;
+let hudAccumulator = 1;
+let interactionAccumulator = 1;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -1441,22 +1442,39 @@ function animate() {
       updateEnemyVision();
       nextVisionUpdate = time + 1 / 12;
     }
-    updateInteraction();
-    updateHUD();
+    interactionAccumulator += dt;
+    if (interactionAccumulator >= 0.12) {
+      updateInteraction();
+      interactionAccumulator = 0;
+    }
+    hudAccumulator += dt;
+    if (hudAccumulator >= 0.10) {
+      updateHUD();
+      hudAccumulator = 0;
+    }
     updateLight(time);
     updateAudio(time);
   }
   radarAccumulator += dt;
-  if (radarAccumulator >= 1 / 20) {
+  if (radarAccumulator >= 1 / 6) {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
   renderer.render(scene, camera);
-  updatePerformancePanel(dt);
+  perfFrames += 1;
+  const now = performance.now();
+  if (now - perfLast >= 500) {
+    perfFps = Math.round((perfFrames * 1000) / (now - perfLast));
+    perfFrames = 0;
+    perfLast = now;
+    const info = renderer.info.render;
+    if (perfPanel) {
+      perfPanel.textContent = `${PERF_BUILD_ID}\nFPS ${perfFps} / draw ${info.calls} / tris ${info.triangles}\nrender ${renderer.domElement.width}x${renderer.domElement.height} / window ${innerWidth}x${innerHeight}`;
+    }
+  }
 }
 
 chooseRandomEnemyRoute();
 animate();
 
-applyRenderCap();
 addEventListener('resize', applyRenderCap);
