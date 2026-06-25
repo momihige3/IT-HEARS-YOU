@@ -1,28 +1,40 @@
 # AI作業引継ぎ - IT HEARS YOU
 
-## 2026-06-25 PERF CONFIRMED 960
+## 2026-06-25 現在の作業状況
 
-目的: 4K最大化時の処理落ち調査と軽量化。前回までの修正版がユーザー環境で反映確認できなかったため、今回は起動確認用の目立つ表示を追加。
+### ユーザー要望
+- 4Kサイズのウィンドウで重くなる問題を修正し、画質をどこまで上げられるか調整中。
+- 敵AIが遮蔽物の影に隠れたプレイヤーを見つけにくいため、通路方向の往復だけでなく、オブジェクトの横や裏を確認する探索ロジックを追加する。
+- ゲーム中のバック音がスピーカーノイズのように聞こえるため、洞窟内の空気音に近い環境音へ変更する。
 
-### 目に見える確認表示
-- 左上: `PERF CONFIRMED 960`
-- 左下: `PERF-CONFIRMED-960-20260625 / FPS / draw / tris / render / window`
-
-これが表示されない場合、修正版ではなく古いビルドを起動している。
-
-### 実装内容
-- WebGL内部描画を最大960x540相当に制限。CSSで画面いっぱいに拡大表示。
-- `renderer.setPixelRatio(1)` 固定。
-- アンチエイリアス無効。
-- 影描画無効。
+### 4K負荷対策の現状
+- 左上に `PERF CONFIRMED 960` を表示。
+- 左下に `PERF-CONFIRMED-960-20260625 / FPS / draw / tris / render / window` を表示。
+- WebGL内部描画は最大960x540相当に制限し、CSSで画面いっぱいに拡大表示。
+- `renderer.setPixelRatio(1)` 固定、アンチエイリアス無効、影描画無効。
 - 通路ライト数を削減。
-- レーダー更新を20fps相当から6fps相当に間引き。
-- HUD更新を10fps相当に間引き。
-- インタラクション判定を約8fps相当に間引き。
-- FPS/draw/tris/render/window の診断表示を追加。
+- レーダー、HUD、インタラクション判定の更新頻度を間引き。
+
+### 今回追加した内容
+- 遮蔽物ごとに横・裏を確認する候補地点を作る `coverSearchNodes()` を追加。
+- 探索中の敵が遮蔽物周辺へ移動し、到着後に遮蔽物方向へ見回すように変更。
+- プレイヤーと敵が同じ遮蔽物付近にいる場合、警戒度に応じた確率で「覗き込み」を行い、成功した時だけ感知度が伸びるように変更。
+- 捕獲後リスポーン時に、遮蔽物覗き込み関連のAI状態もリセット。
+- バック音を発振音中心から、低く丸めたループ空気音、ゆっくりしたフィルター揺れ、軽い反響へ変更。
 
 ### 次に見るべき場所
-表示が出ているのに重い場合は、左下の数値を使って原因を分ける。
-- FPS低い + draw/tris高い: 3D描画負荷。メッシュ結合やマテリアル削減。
-- FPS低い + draw/tris低い: JS/DOM/CSS/入力処理が原因。Chrome PerformanceでMain Threadを見る。
-- renderが960x540より大きい: `applyRenderCap()` が効いていない。
+- 敵がまだ遮蔽物裏を見つけにくい場合:
+  - [src/main.js](src/main.js) の `coverSearchNodes()`、`chooseCoverSearchRoute()`、`updateEnemy()` 内の `nearbySharedCover` 周辺を確認。
+  - `coverCheckSuccess` の確率、`coverPeekUntil` の時間、`nearbySharedCover` の距離条件を調整。
+- 4Kでまだ重い場合:
+  - 左下の FPS / draw / tris / render / window を見る。
+  - FPS低い + draw/tris高い: メッシュ結合、3D視覚ライン削除、マップ縮小を検討。
+  - FPS低い + draw/tris低い: JS/DOM/CSS/入力処理を Chrome Performance で確認。
+  - render が 960x540 より大きい場合は `applyRenderCap()` が効いていない。
+- バック音がまだノイズっぽい場合:
+  - [src/main.js](src/main.js) の `initAudio()` 内の `caveGain.gain.value`、`caveLowpass.frequency.value`、`caveEcho.gain.value` を調整。
+
+### 注意
+- `node_modules` がローカルにない環境では `npm run build` が失敗する可能性がある。
+- ローカル確認は `node --check src/main.js` と、必要に応じて一時 `preview.html` を使ったブラウザ確認で行う。
+- GitHub Pages では GitHub Actions 側でビルドされる構成。

@@ -249,6 +249,27 @@ addCover(11, 10, -1.02, 0, 'cabinet');
 addCover(5, 14, 0, 1.02, 'crate');
 addCover(7, 5, 0, -1.02, 'cabinet');
 
+function coverSearchNodes(cover) {
+  const spots = [
+    [cover.x + 2.2, cover.z],
+    [cover.x - 2.2, cover.z],
+    [cover.x, cover.z + 2.2],
+    [cover.x, cover.z - 2.2],
+    [cover.x + 1.55, cover.z + 1.55],
+    [cover.x - 1.55, cover.z + 1.55],
+    [cover.x + 1.55, cover.z - 1.55],
+    [cover.x - 1.55, cover.z - 1.55],
+  ];
+  const seen = new Set();
+  return spots
+    .map(([x, z]) => nearestNode(x, z))
+    .filter((node) => {
+      if (!node || seen.has(node.key)) return false;
+      seen.add(node.key);
+      return Math.hypot(node.x - cover.x, node.z - cover.z) < 5.4;
+    });
+}
+
 // Exit door at the north end of the maze.
 const exitPosition = worldFromGrid(6, 0);
 const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z - 1.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
@@ -424,6 +445,8 @@ const enemyData = {
   coverCheckSuccess: false,
   nextCoverCheckAt: 0,
   coverLookYaw: 0,
+  coverPeekUntil: 0,
+  coverPeekYaw: 0,
 };
 
 function nearestNode(x, z) {
@@ -484,13 +507,14 @@ function chooseCoverSearchRoute() {
   let nearbyCovers = coverPoints.filter((cover) => Math.hypot(cover.x - origin.x, cover.z - origin.z) < 11);
   if (!nearbyCovers.length) nearbyCovers = coverPoints;
   const cover = nearbyCovers[Math.floor(Math.random() * nearbyCovers.length)];
-  const nearbyNodes = [...navNodes.values()].filter((node) => Math.hypot(node.x - cover.x, node.z - cover.z) < 4.8);
-  const target = nearbyNodes[Math.floor(Math.random() * nearbyNodes.length)] || nearestNode(cover.x, cover.z);
+  const inspectNodes = coverSearchNodes(cover);
+  const target = inspectNodes[Math.floor(Math.random() * inspectNodes.length)] || nearestNode(cover.x, cover.z);
   if (target) {
     setEnemyDestination(target.x, target.z, 'SEARCHING');
+    enemyData.coverLookYaw = Math.atan2(cover.x - target.x, cover.z - target.z);
     if (enemyData.path.length === 0) {
-      enemyData.lookBaseYaw = enemy.rotation.y;
-      enemyData.lookAroundUntil = clock.elapsedTime + 0.8 + Math.random();
+      enemyData.lookBaseYaw = enemyData.coverLookYaw;
+      enemyData.lookAroundUntil = clock.elapsedTime + 1.0 + Math.random() * 0.8;
     }
   }
 }
@@ -528,13 +552,38 @@ function initAudio() {
   const master = ctx.createGain();
   master.gain.value = 0.9 * (seVolume / 100);
   master.connect(compressor);
-  const hum = ctx.createOscillator();
-  const humGain = ctx.createGain();
-  hum.type = 'sawtooth';
-  hum.frequency.value = 48;
-  humGain.gain.value = 0.012;
-  hum.connect(humGain).connect(master);
-  hum.start();
+  const caveBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+  const caveData = caveBuffer.getChannelData(0);
+  let drift = 0;
+  for (let i = 0; i < caveData.length; i += 1) {
+    drift = drift * 0.992 + (Math.random() * 2 - 1) * 0.008;
+    caveData[i] = drift;
+  }
+  const caveAir = ctx.createBufferSource();
+  const caveHighpass = ctx.createBiquadFilter();
+  const caveLowpass = ctx.createBiquadFilter();
+  const caveGain = ctx.createGain();
+  const caveDelay = ctx.createDelay();
+  const caveEcho = ctx.createGain();
+  caveAir.buffer = caveBuffer;
+  caveAir.loop = true;
+  caveHighpass.type = 'highpass';
+  caveHighpass.frequency.value = 28;
+  caveLowpass.type = 'lowpass';
+  caveLowpass.frequency.value = 165;
+  caveGain.gain.value = 0.075;
+  caveDelay.delayTime.value = 0.42;
+  caveEcho.gain.value = 0.12;
+  caveAir.connect(caveHighpass).connect(caveLowpass).connect(caveGain).connect(master);
+  caveGain.connect(caveDelay).connect(caveEcho).connect(master);
+  caveAir.start();
+  const cavePulse = ctx.createOscillator();
+  const cavePulseGain = ctx.createGain();
+  cavePulse.type = 'sine';
+  cavePulse.frequency.value = 43;
+  cavePulseGain.gain.value = 0.008;
+  cavePulse.connect(cavePulseGain).connect(master);
+  cavePulse.start();
   const near = ctx.createOscillator();
   const nearGain = ctx.createGain();
   near.type = 'sine';
@@ -545,7 +594,7 @@ function initAudio() {
   const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
   for (let i = 0; i < data.length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-  audio = { ctx, master, nearGain, noiseBuffer, nextStep: 0, nextEnemyStep: 0, nextBeat: 0 };
+  audio = { ctx, master, caveGain, caveLowpass, nearGain, noiseBuffer, nextStep: 0, nextEnemyStep: 0, nextBeat: 0 };
 }
 
 function distanceAttenuation(distance, maxDistance, curve = 1.25) {
@@ -683,6 +732,8 @@ function updateAudio(time) {
   if (!audio) return;
   const enemyDistance = enemy.position.distanceTo(camera.position);
   const proximity = distanceAttenuation(enemyDistance, 22, 1.05);
+  audio.caveGain.gain.setTargetAtTime(0.06 + Math.sin(time * 0.17) * 0.012, audio.ctx.currentTime, 0.8);
+  audio.caveLowpass.frequency.setTargetAtTime(145 + Math.sin(time * 0.09) * 32, audio.ctx.currentTime, 1.1);
   audio.nearGain.gain.setTargetAtTime(proximity * 0.095, audio.ctx.currentTime, 0.14);
 
   const moving = state.noise > 0 && !state.hidden;
@@ -869,6 +920,8 @@ function respawnPlayer() {
     coverCheckSuccess: false,
     nextCoverCheckAt: 0,
     coverLookYaw: 0,
+    coverPeekUntil: 0,
+    coverPeekYaw: 0,
   });
   soundEvents.length = 0;
   chooseRandomEnemyRoute();
@@ -1160,16 +1213,22 @@ function updateEnemy(dt, time) {
     : -1;
   if (nearbySharedCover >= 0 && (nearbySharedCover !== enemyData.coverCheckIndex || time >= enemyData.nextCoverCheckAt)) {
     enemyData.coverCheckIndex = nearbySharedCover;
-    enemyData.coverCheckSuccess = Math.random() < 0.45 + enemyData.alertMemory * 0.35;
-    enemyData.nextCoverCheckAt = time + 3;
+    enemyData.coverCheckSuccess = Math.random() < 0.38 + enemyData.alertMemory * 0.42;
+    enemyData.nextCoverCheckAt = time + 2.6 + Math.random() * 1.2;
     const playerDirection = Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z);
-    enemyData.coverLookYaw = playerDirection + (enemyData.coverCheckSuccess ? 0 : (Math.random() < 0.5 ? -0.72 : 0.72));
-    enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, enemyData.nextCoverCheckAt + 0.35);
+    enemyData.coverLookYaw = playerDirection + (enemyData.coverCheckSuccess ? 0 : (Math.random() < 0.5 ? -0.88 : 0.88));
+    enemyData.coverPeekYaw = enemyData.coverLookYaw;
+    enemyData.coverPeekUntil = time + 1.25 + Math.random() * 0.55;
+    enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, enemyData.coverPeekUntil);
   } else if (nearbySharedCover < 0) {
     enemyData.coverCheckIndex = -1;
     enemyData.coverCheckSuccess = false;
+    enemyData.coverPeekUntil = 0;
   }
-  const checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess;
+  const coverPeekActive = nearbySharedCover >= 0 && time < enemyData.coverPeekUntil;
+  const coverPeekFacing = coverPeekActive
+    && Math.cos(enemyData.coverPeekYaw - Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z)) > 0.72;
+  const checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess && coverPeekFacing;
 
   if (visible) {
     state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
@@ -1234,8 +1293,8 @@ function updateEnemy(dt, time) {
     if (direction.length() < 0.18) {
       enemyData.path.shift();
       if (enemyData.path.length === 0 && enemyData.mode === 'SEARCHING') {
-        enemyData.lookBaseYaw = enemy.rotation.y;
-        enemyData.lookAroundUntil = time + 0.9 + Math.random() * 1.2;
+        enemyData.lookBaseYaw = enemyData.coverLookYaw || enemy.rotation.y;
+        enemyData.lookAroundUntil = time + 1.0 + Math.random() * 1.1;
       }
     }
     else {
@@ -1246,14 +1305,14 @@ function updateEnemy(dt, time) {
     }
   }
   if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
-    enemy.rotation.y = enemyData.lookBaseYaw + Math.sin(time * 3.1) * 1.05;
+    enemy.rotation.y = enemyData.lookBaseYaw + Math.sin(time * 3.1) * 1.18;
   }
-  if (nearbySharedCover >= 0 && enemyData.mode === 'SEARCHING') {
+  if (coverPeekActive && enemyData.mode === 'SEARCHING') {
     const turnDelta = Math.atan2(
-      Math.sin(enemyData.coverLookYaw - enemy.rotation.y),
-      Math.cos(enemyData.coverLookYaw - enemy.rotation.y),
+      Math.sin(enemyData.coverPeekYaw - enemy.rotation.y),
+      Math.cos(enemyData.coverPeekYaw - enemy.rotation.y),
     );
-    enemy.rotation.y += turnDelta * Math.min(1, dt * 5.5);
+    enemy.rotation.y += turnDelta * Math.min(1, dt * 7.5);
   }
   enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
