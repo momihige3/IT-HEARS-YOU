@@ -22,22 +22,12 @@ npm run dev
 `main` ブランチへpushすると、GitHub Actionsが自動でビルド・公開します。リポジトリの **Settings → Pages → Source** は **GitHub Actions** を選択してください。
 
 
-## Performance notes
+## Performance build: true 720p virtual screen
 
-This build keeps the game visually fullscreen, but caps the internal WebGL render buffer around 1280x720.
-It also skips expensive enemy line-of-sight and capture checks while the player is outside the enemy's direct sensing range.
-The previous 30 FPS limiter approach was not used because it can increase visible stutter on some displays.
+This package includes a 4K performance fix that keeps the whole game in a fixed 1280x720 virtual screen and scales it up visually. This caps WebGL, HUD, radar, vignette, danger flash, and other full-screen UI layers instead of only reducing WebGL resolution.
 
-See `AI_HANDOFF.md` for the implementation handoff notes.
+A diagnostic overlay appears at the bottom-left. The correct build shows:
 
+`FPS <number> / draw <number> / 1280x720 / TRUE 720P`
 
-## 2026-06-25 Deep Performance Fix
-
-This build adds a deeper performance pass for 4K/fullscreen stutter:
-
-- Static maze/wall/floor/cover/exit box meshes are merged by material to reduce WebGL draw calls.
-- Internal render size remains capped for fullscreen use.
-- HUD, interaction prompt, radar, light/key animation, and enemy vision debug line updates are throttled.
-- A small bottom-right performance panel shows FPS, draw calls, triangles, and actual drawing buffer size.
-
-Use the performance panel to confirm whether the issue is draw-call count, render buffer size, or something outside the Three.js scene.
+If that overlay does not appear, old files are being launched or served from cache.

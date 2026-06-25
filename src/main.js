@@ -1,73 +1,47 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+// True 720p mode:
+// Keep the whole game UI in a fixed 1280x720 virtual screen and scale that screen up.
+// This caps WebGL, canvas radar, and full-screen CSS overlays instead of only capping WebGL.
+const VIRTUAL_WIDTH = 1280;
+const VIRTUAL_HEIGHT = 720;
+const QUALITY = {
+  renderScale: 1,
+  pixelRatio: 1,
+  shadows: false,
+  antialias: false,
+  radarHz: 8,
+  hudHz: 10,
+  interactionHz: 10,
+  lightHz: 10,
+  visionHz: 10,
+};
+
+function resizeVirtualScreen() {
+  const scale = Math.min(innerWidth / VIRTUAL_WIDTH, innerHeight / VIRTUAL_HEIGHT);
+  document.documentElement.style.setProperty('--game-scale', String(scale));
+}
+resizeVirtualScreen();
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 
-const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
-
-// Performance policy:
-// Keep the canvas visually fullscreen, but never let WebGL render at a huge 4K backbuffer.
-// A 3840x2160 WebGL buffer is over 8 million pixels per frame; this game is designed to
-// render internally around 720p and be upscaled by CSS.
-const PERFORMANCE = {
-  maxRenderWidth: 1280,
-  maxRenderHeight: 720,
-  pixelRatio: 1,
-  enemySenseFarDistance: 14,
-  enemyCaptureDistance: 1.45,
-  enemyContactDistance: 1.8,
-  radarHz: 6,
-  hudHz: 8,
-  interactionHz: 8,
-  lightHz: 20,
-  visionHz: 6,
-  diagnosticHz: 2,
-};
-
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(PERFORMANCE.pixelRatio);
-function resizeRenderer() {
-  const width = Math.max(1, innerWidth);
-  const height = Math.max(1, innerHeight);
-  const aspect = width / height;
-  camera.aspect = aspect;
-  camera.updateProjectionMatrix();
-
-  let renderWidth = width;
-  let renderHeight = height;
-  const scale = Math.min(1, PERFORMANCE.maxRenderWidth / width, PERFORMANCE.maxRenderHeight / height);
-  renderWidth = Math.max(1, Math.floor(width * scale));
-  renderHeight = Math.max(1, Math.floor(height * scale));
-
-  renderer.setSize(renderWidth, renderHeight, false);
-  renderer.domElement.style.width = '100%';
-  renderer.domElement.style.height = '100%';
-}
-resizeRenderer();
-renderer.shadowMap.enabled = false;
+const camera = new THREE.PerspectiveCamera(72, VIRTUAL_WIDTH / VIRTUAL_HEIGHT, 0.05, touchDevice ? 60 : 80);
+const renderer = new THREE.WebGLRenderer({ antialias: QUALITY.antialias, powerPreference: 'high-performance' });
+renderer.setPixelRatio(QUALITY.pixelRatio);
+renderer.setSize(VIRTUAL_WIDTH * QUALITY.renderScale, VIRTUAL_HEIGHT * QUALITY.renderScale, false);
+renderer.domElement.style.width = `${VIRTUAL_WIDTH}px`;
+renderer.domElement.style.height = `${VIRTUAL_HEIGHT}px`;
+renderer.shadowMap.enabled = QUALITY.shadows;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
 $('#game').append(renderer.domElement);
-
-const ui = {
-  dangerFlash: $('#danger-flash'),
-  detectBar: $('#detect-bar'),
-  detectValue: $('#detect-value'),
-  alertText: $('#alert-text'),
-  moveMode: $('#move-mode'),
-  batteryValue: $('#battery-value'),
-  batteryBar: $('#battery-bar'),
-  noiseBar: $('#noise-bar'),
-  noiseValue: $('#noise-value'),
-  prompt: $('#prompt'),
-  mobileAction: $('#mobile-action'),
-};
 
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
@@ -146,7 +120,7 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = castShadow && !touchDevice;
+  mesh.castShadow = castShadow && QUALITY.shadows;
   mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
@@ -193,7 +167,7 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = !touchDevice;
+  mesh.castShadow = QUALITY.shadows;
   mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
@@ -312,46 +286,6 @@ function updateExitCounter() {
   exitCounterContext.fillText(`必要な鍵 ${state.keyCount} / ${REQUIRED_KEYS}`, 256, 64);
   exitCounterTexture.needsUpdate = true;
 }
-
-
-// Merge static box meshes into a few big meshes.
-// This removes hundreds of WebGL draw calls from the maze, walls, floors, ceiling,
-// covers, and exit props while keeping the existing collision data intact.
-function mergeStaticSceneBoxes() {
-  const batches = new Map();
-  const sourceMeshes = [];
-  for (const child of [...scene.children]) {
-    if (!child.isMesh || child.parent !== scene) continue;
-    if (!child.geometry || child.geometry.type !== 'BoxGeometry') continue;
-    if (!child.material) continue;
-    const key = child.material.uuid;
-    if (!batches.has(key)) batches.set(key, { material: child.material, geometries: [] });
-    child.updateMatrixWorld(true);
-    const geometry = child.geometry.clone();
-    geometry.applyMatrix4(child.matrixWorld);
-    batches.get(key).geometries.push(geometry);
-    sourceMeshes.push(child);
-  }
-
-  for (const mesh of sourceMeshes) {
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-  }
-
-  for (const { material, geometries } of batches.values()) {
-    if (geometries.length === 0) continue;
-    const mergedGeometry = mergeGeometries(geometries, false);
-    for (const geometry of geometries) geometry.dispose();
-    if (!mergedGeometry) continue;
-    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
-    mergedMesh.castShadow = false;
-    mergedMesh.receiveShadow = true;
-    mergedMesh.frustumCulled = false;
-    scene.add(mergedMesh);
-  }
-}
-
-mergeStaticSceneBoxes();
 
 // Five keys are sampled from different side-route locations every playthrough.
 const keyCandidates = [
@@ -1163,12 +1097,6 @@ const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const toPlayer = new THREE.Vector3();
-const enemyEyeTemp = new THREE.Vector3();
-const playerEyeTemp = new THREE.Vector3();
-const enemyForwardTemp = new THREE.Vector3();
-const enemyMoveDirection = new THREE.Vector3();
-const lockerInsideTemp = new THREE.Vector3();
-const radarForwardTemp = new THREE.Vector3();
 const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
@@ -1212,9 +1140,8 @@ function updatePlayer(dt) {
 function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
   state.noise = 0;
-  lockerInsideTemp.set(0, 0.12, 0.39);
-  state.currentLocker.group.localToWorld(lockerInsideTemp);
-  camera.position.copy(lockerInsideTemp);
+  const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
+  camera.position.copy(inside);
   camera.rotation.y = state.lockerFrontYaw + state.lockerLookOffset;
   camera.rotation.x = 0;
   camera.rotation.z = 0;
@@ -1222,40 +1149,25 @@ function updateLockerView() {
 
 function updateEnemy(dt, time) {
   if (state.ended) return;
-
-  const dxToPlayer = camera.position.x - enemy.position.x;
-  const dzToPlayer = camera.position.z - enemy.position.z;
-  const distance = Math.hypot(dxToPlayer, dzToPlayer);
+  const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const exitGraceActive = time < state.lockerExitGraceUntil;
-  const canSensePlayer = !state.hidden && !exitGraceActive;
-
-  // Heavy checks such as line-of-sight/capture should not run when the player is far away.
-  // The enemy can still move, patrol, investigate, and react to sounds; only direct capture
-  // and visual detection are gated by distance/facing first.
+  let enemyEye = null;
+  let playerEye = null;
   let visible = false;
-  let checkingSameCover = false;
-  let nearbySharedCover = -1;
-
-  if (canSensePlayer && distance <= PERFORMANCE.enemySenseFarDistance) {
-    enemyEyeTemp.set(enemy.position.x, enemy.position.y + 1.7, enemy.position.z);
-    playerEyeTemp.copy(camera.position);
-    toPlayer.subVectors(playerEyeTemp, enemyEyeTemp);
+  if (!state.hidden && !exitGraceActive && distance < 10.5) {
+    enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
+    playerEye = camera.position.clone();
+    toPlayer.subVectors(playerEye, enemyEye);
     toPlayer.y = 0;
-
-    enemyForwardTemp.set(0, 0, 1).applyQuaternion(enemy.quaternion);
-    const facing = enemyForwardTemp.dot(toPlayer.normalize());
-
-    if (distance < VISION_DISTANCE && facing > 0.84) {
-      visible = hasLineOfSight(enemyEyeTemp, playerEyeTemp);
-    }
-
-    if (enemyData.mode === 'SEARCHING') {
-      nearbySharedCover = coverPoints.findIndex((cover) =>
-        Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
-        && Math.hypot(enemy.position.x - cover.x, enemy.position.z - cover.z) < 2.45);
-    }
+    const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
+    const facing = enemyForward.dot(toPlayer.clone().normalize());
+    visible = facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
   }
-
+  const nearbySharedCover = !state.hidden && !exitGraceActive && enemyData.mode === 'SEARCHING' && distance < 8
+    ? coverPoints.findIndex((cover) =>
+      Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
+      && Math.hypot(enemy.position.x - cover.x, enemy.position.z - cover.z) < 2.45)
+    : -1;
   if (nearbySharedCover >= 0 && (nearbySharedCover !== enemyData.coverCheckIndex || time >= enemyData.nextCoverCheckAt)) {
     enemyData.coverCheckIndex = nearbySharedCover;
     enemyData.coverCheckSuccess = Math.random() < 0.45 + enemyData.alertMemory * 0.35;
@@ -1267,7 +1179,7 @@ function updateEnemy(dt, time) {
     enemyData.coverCheckIndex = -1;
     enemyData.coverCheckSuccess = false;
   }
-  checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess;
+  const checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess;
 
   if (visible) {
     state.detection += (13 - distance) * 13 * (1 + enemyData.alertMemory * 0.45) * dt;
@@ -1282,7 +1194,7 @@ function updateEnemy(dt, time) {
   }
   if (checkingSameCover) state.detection += (72 + enemyData.alertMemory * 35) * dt;
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
-  if (canSensePlayer && distance < PERFORMANCE.enemyContactDistance) state.detection += 90 * dt;
+  if (!state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
 
   if (visible && state.detection <= 70) {
@@ -1328,8 +1240,8 @@ function updateEnemy(dt, time) {
   }
   const target = enemyData.path[0];
   if (target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
-    enemyMoveDirection.set(target.x - enemy.position.x, 0, target.z - enemy.position.z);
-    if (enemyMoveDirection.length() < 0.18) {
+    const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
+    if (direction.length() < 0.18) {
       enemyData.path.shift();
       if (enemyData.path.length === 0 && enemyData.mode === 'SEARCHING') {
         enemyData.lookBaseYaw = enemy.rotation.y;
@@ -1337,9 +1249,9 @@ function updateEnemy(dt, time) {
       }
     }
     else {
-      enemyMoveDirection.normalize();
-      enemy.position.addScaledVector(enemyMoveDirection, enemyData.speed * dt);
-      enemy.rotation.y = Math.atan2(enemyMoveDirection.x, enemyMoveDirection.z);
+      direction.normalize();
+      enemy.position.addScaledVector(direction, enemyData.speed * dt);
+      enemy.rotation.y = Math.atan2(direction.x, direction.z);
       enemyData.isMoving = true;
     }
   }
@@ -1355,18 +1267,17 @@ function updateEnemy(dt, time) {
   }
   enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
-  ui.dangerFlash.style.opacity = state.alert === 'HUNTING'
+  $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
-
   let clearAtCloseRange = false;
-  if (canSensePlayer && distance < PERFORMANCE.enemyCaptureDistance) {
-    enemyEyeTemp.set(enemy.position.x, enemy.position.y + 1.7, enemy.position.z);
-    playerEyeTemp.copy(camera.position);
-    clearAtCloseRange = hasLineOfSight(enemyEyeTemp, playerEyeTemp);
+  if (!state.hidden && !exitGraceActive && distance < 1.45) {
+    if (!enemyEye) enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
+    if (!playerEye) playerEye = camera.position.clone();
+    clearAtCloseRange = hasLineOfSight(enemyEye, playerEye);
   }
   const fullyDetected = state.detection >= 99.5 && (visible || checkingSameCover);
-  if (canSensePlayer && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
+  if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
 }
 
 function updateInteraction() {
@@ -1389,24 +1300,25 @@ function updateInteraction() {
       ? '[ E ] 鍵を使って脱出'
       : `[ E ] 出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
   }
-  ui.prompt.textContent = prompt;
+  $('#prompt').textContent = prompt;
+  const mobileAction = $('#mobile-action');
   const actionLabel = prompt.replace(/^\[ E \]\s*/, '');
-  ui.mobileAction.textContent = actionLabel || '調べる';
-  ui.mobileAction.classList.toggle('visible', mobileInput.active && Boolean(prompt) && !state.caught);
+  mobileAction.textContent = actionLabel || '調べる';
+  mobileAction.classList.toggle('visible', mobileInput.active && Boolean(prompt) && !state.caught);
 }
 
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
 const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている' };
 function updateHUD() {
-  ui.noiseBar.style.width = `${state.noise}%`;
-  ui.noiseValue.textContent = String(Math.round(state.noise)).padStart(2, '0');
-  ui.detectBar.style.width = `${state.detection}%`;
-  ui.detectValue.textContent = String(Math.round(state.detection)).padStart(2, '0');
-  ui.alertText.textContent = alertLabels[state.alert];
-  ui.alertText.parentElement.classList.toggle('danger', state.alert === 'HUNTING');
-  ui.moveMode.textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
-  ui.batteryValue.textContent = `${Math.ceil(state.battery)}%`;
-  ui.batteryBar.style.width = `${state.battery}%`;
+  $('#noise-bar').style.width = `${state.noise}%`;
+  $('#noise-value').textContent = String(Math.round(state.noise)).padStart(2, '0');
+  $('#detect-bar').style.width = `${state.detection}%`;
+  $('#detect-value').textContent = String(Math.round(state.detection)).padStart(2, '0');
+  $('#alert-text').textContent = alertLabels[state.alert];
+  $('#alert-text').parentElement.classList.toggle('danger', state.alert === 'HUNTING');
+  $('#move-mode').textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
+  $('#battery-value').textContent = `${Math.ceil(state.battery)}%`;
+  $('#battery-bar').style.width = `${state.battery}%`;
 }
 
 function updateLight(time) {
@@ -1491,7 +1403,7 @@ function updateRadar(dt, time) {
   radar.restore();
 
   const enemyPoint = radarPoint(enemy.position.x, enemy.position.z);
-  const radarForward = radarForwardTemp.set(0, 0, 1).applyQuaternion(enemy.quaternion);
+  const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
   const visionDirection = Math.atan2(radarForward.z, radarForward.x);
   const visionHalfAngle = VISION_HALF_ANGLE;
   radar.beginPath();
@@ -1527,30 +1439,28 @@ function updateRadar(dt, time) {
   radar.stroke();
 }
 
-
-const perfPanel = document.createElement('div');
-perfPanel.id = 'perf-panel';
-perfPanel.textContent = 'PERF --';
-document.body.append(perfPanel);
-let perfFrames = 0;
-let perfTime = 0;
-let perfFps = 0;
-function updatePerformancePanel(dt, time) {
-  perfFrames += 1;
-  perfTime += dt;
-  if (perfTime < 1 / PERFORMANCE.diagnosticHz) return;
-  perfFps = Math.round(perfFrames / perfTime);
-  perfFrames = 0;
-  perfTime = 0;
-  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-  perfPanel.textContent = `FPS ${perfFps} / draw ${renderer.info.render.calls} / tris ${renderer.info.render.triangles} / ${size.x}x${size.y}`;
-}
-
 let nextVisionUpdate = 0;
 let nextHudUpdate = 0;
 let nextInteractionUpdate = 0;
 let nextLightUpdate = 0;
 let radarAccumulator = 1;
+const perfPanel = document.createElement('div');
+perfPanel.id = 'perf-panel';
+perfPanel.textContent = 'FPS -- / draw -- / 1280x720 TRUE 720P';
+document.body.append(perfPanel);
+let perfFrames = 0;
+let perfTime = 0;
+function updatePerformancePanel(dt) {
+  perfFrames += 1;
+  perfTime += dt;
+  if (perfTime < 0.5) return;
+  const fps = Math.round(perfFrames / perfTime);
+  perfFrames = 0;
+  perfTime = 0;
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  perfPanel.textContent = `FPS ${fps} / draw ${renderer.info.render.calls} / ${size.x}x${size.y} / TRUE 720P`;
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -1563,32 +1473,32 @@ function animate() {
     updateEnemy(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
-      nextVisionUpdate = time + 1 / PERFORMANCE.visionHz;
+      nextVisionUpdate = time + 1 / QUALITY.visionHz;
     }
     if (time >= nextInteractionUpdate) {
       updateInteraction();
-      nextInteractionUpdate = time + 1 / PERFORMANCE.interactionHz;
+      nextInteractionUpdate = time + 1 / QUALITY.interactionHz;
     }
     if (time >= nextHudUpdate) {
       updateHUD();
-      nextHudUpdate = time + 1 / PERFORMANCE.hudHz;
+      nextHudUpdate = time + 1 / QUALITY.hudHz;
     }
     if (time >= nextLightUpdate) {
       updateLight(time);
-      nextLightUpdate = time + 1 / PERFORMANCE.lightHz;
+      nextLightUpdate = time + 1 / QUALITY.lightHz;
     }
     updateAudio(time);
   }
   radarAccumulator += dt;
-  if (radarAccumulator >= 1 / PERFORMANCE.radarHz) {
+  if (radarAccumulator >= 1 / QUALITY.radarHz) {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
   renderer.render(scene, camera);
-  updatePerformancePanel(dt, time);
+  updatePerformancePanel(dt);
 }
 
 chooseRandomEnemyRoute();
 animate();
 
-addEventListener('resize', resizeRenderer);
+addEventListener('resize', resizeVirtualScreen);

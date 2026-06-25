@@ -1,40 +1,49 @@
-# AI HANDOFF - IT HEARS YOU
+# AI_HANDOFF - IT HEARS YOU
 
-## 2026-06-25 Deep performance pass
+## 2026-06-25 performance follow-up
 
-User report: 4K fullscreen/maximized play remains heavy even after render-resolution cap, light reduction, enemy-distance gating, and HUD/radar throttling.
+### User-reported issue
+- 4K display + maximized window still causes heavy frame drops.
+- Previous builds did not visibly show the FPS/draw overlay, so the user could not confirm that the intended build was running.
 
-### Important conclusion
-The previous fixes likely missed the biggest bottleneck: many separate static `BoxGeometry` meshes were rendered as individual WebGL draw calls. In a large maze, floors, ceilings, walls, covers, and exit props create many separate scene meshes. Lowering internal resolution alone does not solve CPU/driver overhead from many draw calls.
+### Important finding
+Previous fixes mainly capped the WebGL canvas render size, but the rest of the app (`#app`, HUD, full-screen CSS overlays, radar canvas, vignette, danger flash, title screens) still used full viewport-sized fixed positioning. On a 4K maximized window, that can still force large CSS/compositor work even if WebGL itself is reduced.
 
-### Changes made in this pass
-- Added `mergeGeometries` from `three/examples/jsm/utils/BufferGeometryUtils.js`.
-- Added `mergeStaticSceneBoxes()` after static maze/cover/exit creation and before dynamic key/enemy creation.
-  - It scans top-level static `BoxGeometry` meshes in `scene`.
-  - It clones and transforms their geometry into world space.
-  - It groups them by material and merges them into a few large meshes.
-  - It removes the original separate box meshes.
-  - Existing `colliders` data is kept unchanged, so movement/LOS behavior should remain intact.
-- Reduced repeated per-frame UI work:
-  - Cached `#noise-bar`, `#noise-value`, `#prompt`, and `#mobile-action` DOM references.
-  - HUD updates throttled to `PERFORMANCE.hudHz`.
-  - Interaction prompt updates throttled to `PERFORMANCE.interactionHz`.
-  - Light/key animation updates throttled to `PERFORMANCE.lightHz`.
-  - Radar updates reduced to `PERFORMANCE.radarHz`.
-  - Enemy vision line updates reduced to `PERFORMANCE.visionHz`.
-- Removed per-radar-frame vector allocation by reusing `radarForwardTemp`.
-- Removed per-hidden-frame locker vector allocation by reusing `lockerInsideTemp`.
-- Added on-screen performance panel at bottom-right:
-  - FPS
-  - WebGL draw calls
-  - triangles
-  - drawing buffer size
+### Current fix in this package
+Implemented a true virtual 720p screen:
+- `src/main.js`
+  - Added `VIRTUAL_WIDTH = 1280` and `VIRTUAL_HEIGHT = 720`.
+  - Camera aspect is fixed to 16:9 virtual resolution.
+  - WebGL drawing buffer is fixed to `1280x720` with `pixelRatio = 1`.
+  - `resizeVirtualScreen()` only updates CSS scale via `--game-scale`; it does **not** resize WebGL to the physical window.
+  - Shadows and antialiasing are disabled.
+  - HUD/radar/light/vision/interaction updates are throttled.
+  - Enemy line-of-sight/capture checks are gated by distance.
+  - Added always-visible diagnostic panel text: `FPS ... / draw ... / 1280x720 / TRUE 720P`.
+- `src/style.css`
+  - `#app` is fixed at `1280px x 720px` and scaled with CSS transform.
+  - `#game` is fixed at `1280px x 720px`.
+  - Full-screen UI layers were changed from viewport `position: fixed` to `position: absolute` inside the virtual 720p app where appropriate.
+  - Added `#perf-panel` style with high z-index.
 
-### Expected result
-If the bottleneck was draw-call overhead, `draw` in the performance panel should be much lower than before. If FPS is still low while `draw` is low and drawing buffer is capped, the next suspect is browser/GPU/driver, audio, or CSS compositing rather than maze object count.
+### Verification
+- `npm run build` succeeds.
+- The generated `dist/` folder is included in this ZIP.
 
-### Build status
-`npm run build` completed successfully.
+### How to confirm the correct build is running
+When launched, the bottom-left overlay must show:
+`FPS -- / draw -- / 1280x720 TRUE 720P`
+then update to:
+`FPS <number> / draw <number> / 1280x720 / TRUE 720P`
 
-### Notes for next AI
-Do not re-add a hard 30 FPS limiter. The user reported that made the stutter worse. Prefer actual bottleneck reduction and diagnostics.
+If this text is not visible, the user is not running this build or old cached/deployed files are still being served.
+
+### Next debugging steps if still heavy
+Ask for the bottom-left overlay values:
+- FPS
+- draw
+- resolution text
+
+If the resolution is not `1280x720`, the deployment is stale or not using this package.
+If draw count is very high, inspect scene object/material counts next.
+If draw count is normal but FPS low, inspect CSS/compositor and audio scheduling next.
