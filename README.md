@@ -1,31 +1,32 @@
 # IT HEARS YOU
 
-Three.js + Vite で制作した、一人称視点の短編3Dステルスホラーゲームです。
+A compact browser horror prototype built with Vite + Three.js.
 
-## 操作
-
-- `WASD`: 移動
-- `Mouse`: 視点操作
-- `Shift`: 走る（速いが敵に気づかれやすい）
-- `E`: 調べる / ロッカーに隠れる
-- `F`: 懐中電灯のON/OFF
-
-## ローカル起動
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-## GitHub Pages
+## Build
 
-`main` ブランチへpushすると、GitHub Actionsが自動でビルド・公開します。リポジトリの **Settings → Pages → Source** は **GitHub Actions** を選択してください。
+```bash
+npm run build
+```
 
+## 4K performance version
 
-## Performance notes
+This build is tuned for 4K fullscreen/maximized windows.
 
-This build keeps the game visually fullscreen, but caps the internal WebGL render buffer around 1280x720.
-It also skips expensive enemy line-of-sight and capture checks while the player is outside the enemy's direct sensing range.
-The previous 30 FPS limiter approach was not used because it can increase visible stutter on some displays.
+Main performance policy:
+- The visible canvas still fills the browser window.
+- Internal WebGL rendering is capped at 960x540 and then upscaled.
+- Hard 30 FPS limiting is not used because it caused worse stutter.
+- Shadow rendering is disabled.
+- Dynamic point lights are heavily reduced.
+- Enemy capture/line-of-sight checks are skipped while the player is far away.
+- Radar, HUD, light animation, and enemy vision debug lines are throttled or disabled.
+- Fullscreen CSS gradients/shadows are simplified.
 
-See `AI_HANDOFF.md` for the implementation handoff notes.
+See `AI_HANDOFF.md` for implementation notes and next debugging steps.

@@ -14,15 +14,26 @@ const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, t
 // A 3840x2160 WebGL buffer is over 8 million pixels per frame; this game is designed to
 // render internally around 720p and be upscaled by CSS.
 const PERFORMANCE = {
-  maxRenderWidth: 1280,
-  maxRenderHeight: 720,
+  // 4K環境で重い場合、GPU負荷は解像度だけでなく
+  // 画面全体に当たるライト数・HUD描画・視界線描画でも増えます。
+  // そのため標準を 960x540 + ライト削減に寄せます。
+  maxRenderWidth: 960,
+  maxRenderHeight: 540,
   pixelRatio: 1,
+  corridorLightLimit: 2,
+  keyLightsEnabled: false,
+  exitLightEnabled: false,
+  enemyVisionEnabled: false,
+  radarEnabled: true,
+  radarHz: 8,
+  hudHz: 10,
+  lightAnimationHz: 15,
   enemySenseFarDistance: 14,
   enemyCaptureDistance: 1.45,
   enemyContactDistance: 1.8,
 };
 
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', precision: 'mediump' });
 renderer.setPixelRatio(PERFORMANCE.pixelRatio);
 function resizeRenderer() {
   const width = Math.max(1, innerWidth);
@@ -44,12 +55,14 @@ function resizeRenderer() {
 resizeRenderer();
 renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1;
 $('#game').append(renderer.domElement);
 
 const ui = {
   dangerFlash: $('#danger-flash'),
+  noiseBar: $('#noise-bar'),
+  noiseValue: $('#noise-value'),
   detectBar: $('#detect-bar'),
   detectValue: $('#detect-value'),
   alertText: $('#alert-text'),
@@ -57,6 +70,7 @@ const ui = {
   batteryValue: $('#battery-value'),
   batteryBar: $('#battery-bar'),
 };
+const hudCache = { noise: -1, detection: -1, alert: '', moveMode: '', battery: -1 };
 
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
@@ -135,8 +149,8 @@ for (const [gx, fromZ, toZ] of [[4, 5, 8], [5, 11, 14], [7, 2, 5], [8, 14, 17]])
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = castShadow && !touchDevice;
-  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
   scene.add(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
   return mesh;
@@ -167,7 +181,7 @@ for (const key of walkable) {
     const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xb8c3a1, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
-    if (corridorLightCount < 10) {
+    if (corridorLightCount < PERFORMANCE.corridorLightLimit) {
       const light = new THREE.PointLight(0xc2cbaa, 10, 10, 1.65);
       light.position.set(pos.x, 3.82, pos.z);
       scene.add(light);
@@ -182,8 +196,8 @@ scene.add(new THREE.AmbientLight(0x354139, 0.38));
 function localBox(group, x, y, z, w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
-  mesh.castShadow = !touchDevice;
-  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
   group.add(mesh);
   return mesh;
 }
@@ -273,9 +287,9 @@ addCover(7, 5, 0, -1.02, 'cabinet');
 const exitPosition = worldFromGrid(6, 0);
 const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z - 1.84, 2.15, 2.9, 0.14, material(0x303a33, 0.48, 0.6));
 addBox(exitPosition.x, 3.45, exitPosition.z - 1.68, 1.2, 0.36, 0.08, material(0x1d6243, 0.35));
-const exitLight = new THREE.PointLight(0x3acb88, 4.5, 5);
+const exitLight = new THREE.PointLight(0x3acb88, 2.2, 4);
 exitLight.position.set(exitPosition.x, 3.4, exitPosition.z - 0.7);
-scene.add(exitLight);
+if (PERFORMANCE.exitLightEnabled) scene.add(exitLight);
 
 const exitCounterCanvas = document.createElement('canvas');
 exitCounterCanvas.width = 512;
@@ -325,9 +339,9 @@ const keyItems = shuffledKeyCandidates.map(([gx, gz], index) => {
   group.add(tooth);
   group.position.set(keySpawn.x + (index % 2 ? -0.6 : 0.6), 1.05, keySpawn.z);
   scene.add(group);
-  const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
+  const light = new THREE.PointLight(0xe2c466, 0.8, 2.2);
   light.position.copy(group.position);
-  scene.add(light);
+  if (PERFORMANCE.keyLightsEnabled) scene.add(light);
   return { group, light, collected: false, baseY: 1.05, phase: index * 0.9 };
 });
 updateExitCounter();
@@ -336,7 +350,7 @@ updateExitCounter();
 const enemy = new THREE.Group();
 const enemyBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 1.15, 7, 10), material(0x101411, 0.8));
 enemyBody.position.y = 1.05;
-enemyBody.castShadow = true;
+enemyBody.castShadow = false;
 enemy.add(enemyBody);
 const enemyHead = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 9), material(0x151916, 0.85));
 enemyHead.position.y = 2;
@@ -365,7 +379,7 @@ const enemyVisionMaterial = new THREE.LineBasicMaterial({
 });
 const enemyVisionLines = new THREE.LineSegments(enemyVisionGeometry, enemyVisionMaterial);
 enemyVisionLines.frustumCulled = false;
-scene.add(enemyVisionLines);
+if (PERFORMANCE.enemyVisionEnabled) scene.add(enemyVisionLines);
 
 function rayColliderEntry(originX, originZ, dx, dz, collider, maxDistance, padding = 0.02) {
   let near = 0;
@@ -419,6 +433,7 @@ function updateEnemyVision() {
     visionPositions[cursor + 4] = 0.08;
     visionPositions[cursor + 5] = enemy.position.z + dz * distance;
   }
+  if (!PERFORMANCE.enemyVisionEnabled) return;
   enemyVisionMaterial.opacity = state.alert === 'HUNTING' ? 0.78 : 0.48;
   enemyVisionGeometry.attributes.position.needsUpdate = true;
 }
@@ -517,7 +532,7 @@ function chooseCoverSearchRoute() {
 
 // Flashlight.
 const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
-flashlight.castShadow = !touchDevice;
+flashlight.castShadow = false;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
@@ -1345,15 +1360,35 @@ function updateInteraction() {
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
 const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている' };
 function updateHUD() {
-  $('#noise-bar').style.width = `${state.noise}%`;
-  $('#noise-value').textContent = String(Math.round(state.noise)).padStart(2, '0');
-  ui.detectBar.style.width = `${state.detection}%`;
-  ui.detectValue.textContent = String(Math.round(state.detection)).padStart(2, '0');
-  ui.alertText.textContent = alertLabels[state.alert];
-  ui.alertText.parentElement.classList.toggle('danger', state.alert === 'HUNTING');
-  ui.moveMode.textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
-  ui.batteryValue.textContent = `${Math.ceil(state.battery)}%`;
-  ui.batteryBar.style.width = `${state.battery}%`;
+  const noise = Math.round(state.noise);
+  const detection = Math.round(state.detection);
+  const battery = Math.ceil(state.battery);
+  const moveMode = state.hidden ? 'HIDING' : state.moveMode;
+
+  if (hudCache.noise !== noise) {
+    hudCache.noise = noise;
+    ui.noiseBar.style.width = `${noise}%`;
+    ui.noiseValue.textContent = String(noise).padStart(2, '0');
+  }
+  if (hudCache.detection !== detection) {
+    hudCache.detection = detection;
+    ui.detectBar.style.width = `${detection}%`;
+    ui.detectValue.textContent = String(detection).padStart(2, '0');
+  }
+  if (hudCache.alert !== state.alert) {
+    hudCache.alert = state.alert;
+    ui.alertText.textContent = alertLabels[state.alert];
+    ui.alertText.parentElement.classList.toggle('danger', state.alert === 'HUNTING');
+  }
+  if (hudCache.moveMode !== moveMode) {
+    hudCache.moveMode = moveMode;
+    ui.moveMode.textContent = movementLabels[moveMode];
+  }
+  if (hudCache.battery !== battery) {
+    hudCache.battery = battery;
+    ui.batteryValue.textContent = `${battery}%`;
+    ui.batteryBar.style.width = `${battery}%`;
+  }
 }
 
 function updateLight(time) {
@@ -1476,6 +1511,9 @@ function updateRadar(dt, time) {
 
 let nextVisionUpdate = 0;
 let radarAccumulator = 1;
+let hudAccumulator = 1;
+let lightAccumulator = 1;
+let lastLightUpdateTime = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -1486,17 +1524,26 @@ function animate() {
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
-    if (time >= nextVisionUpdate) {
+    if (PERFORMANCE.enemyVisionEnabled && time >= nextVisionUpdate) {
       updateEnemyVision();
-      nextVisionUpdate = time + 1 / 12;
+      nextVisionUpdate = time + 1 / 8;
     }
     updateInteraction();
-    updateHUD();
-    updateLight(time);
+    hudAccumulator += dt;
+    if (hudAccumulator >= 1 / PERFORMANCE.hudHz) {
+      updateHUD();
+      hudAccumulator = 0;
+    }
+    lightAccumulator += dt;
+    if (lightAccumulator >= 1 / PERFORMANCE.lightAnimationHz) {
+      updateLight(time);
+      lastLightUpdateTime = time;
+      lightAccumulator = 0;
+    }
     updateAudio(time);
   }
   radarAccumulator += dt;
-  if (radarAccumulator >= 1 / 20) {
+  if (PERFORMANCE.radarEnabled && radarAccumulator >= 1 / PERFORMANCE.radarHz) {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
