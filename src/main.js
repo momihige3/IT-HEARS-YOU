@@ -447,6 +447,10 @@ const enemyData = {
   coverLookYaw: 0,
   coverPeekUntil: 0,
   coverPeekYaw: 0,
+  blockedChaseSince: 0,
+  passByUntil: 0,
+  lookBackUntil: 0,
+  lookBackYaw: 0,
 };
 
 function nearestNode(x, z) {
@@ -517,6 +521,26 @@ function chooseCoverSearchRoute() {
       enemyData.lookAroundUntil = clock.elapsedTime + 1.0 + Math.random() * 0.8;
     }
   }
+}
+
+function choosePassByRoute(time) {
+  const fromEnemyToPlayer = new THREE.Vector3(
+    camera.position.x - enemy.position.x,
+    0,
+    camera.position.z - enemy.position.z,
+  );
+  if (fromEnemyToPlayer.lengthSq() < 0.001) fromEnemyToPlayer.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+  fromEnemyToPlayer.normalize();
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const sideways = new THREE.Vector3(fromEnemyToPlayer.z * side, 0, -fromEnemyToPlayer.x * side);
+  const targetX = camera.position.x + fromEnemyToPlayer.x * 4.5 + sideways.x * (1.4 + Math.random() * 1.8);
+  const targetZ = camera.position.z + fromEnemyToPlayer.z * 4.5 + sideways.z * (1.4 + Math.random() * 1.8);
+  setEnemyDestination(targetX, targetZ, 'PASSING_BY');
+  enemyData.passByUntil = time + 4.8;
+  enemyData.lookBackUntil = 0;
+  enemyData.lookBackYaw = Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z)
+    + (Math.random() < 0.5 ? -0.75 : 0.75);
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.25);
 }
 
 // Flashlight.
@@ -702,6 +726,7 @@ function emitPlayerSound(strength, baseHearingRadius) {
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
   if (distance <= hearingRadius) {
     const now = clock.elapsedTime;
+    if (enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
     enemyData.lastHeardAt = now;
     enemyData.lastHeardPosition = { x: event.x, z: event.z };
     if (now - enemyData.lastMemoryGainAt > 0.85) {
@@ -922,6 +947,10 @@ function respawnPlayer() {
     coverLookYaw: 0,
     coverPeekUntil: 0,
     coverPeekYaw: 0,
+    blockedChaseSince: 0,
+    passByUntil: 0,
+    lookBackUntil: 0,
+    lookBackYaw: 0,
   });
   soundEvents.length = 0;
   chooseRandomEnemyRoute();
@@ -1205,7 +1234,27 @@ function updateEnemy(dt, time) {
   const enemyForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
   const facing = enemyForward.dot(toPlayer.clone().normalize());
   const exitGraceActive = time < state.lockerExitGraceUntil;
-  const visible = !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && hasLineOfSight(enemyEye, playerEye);
+  const lineOfSightToPlayer = hasLineOfSight(enemyEye, playerEye);
+  let passByActive = enemyData.mode === 'PASSING_BY' && time < enemyData.passByUntil;
+  const visible = !passByActive && !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && lineOfSightToPlayer;
+  const blockedChase = !state.hidden
+    && !exitGraceActive
+    && enemyData.mode === 'HUNTING'
+    && distance < 4.8
+    && !lineOfSightToPlayer;
+  if (blockedChase) {
+    if (!enemyData.blockedChaseSince) enemyData.blockedChaseSince = time;
+    if (time - enemyData.blockedChaseSince > 0.65) {
+      state.detection = Math.min(state.detection, 18);
+      state.alert = 'UNNOTICED';
+      enemyData.alertMemory = Math.max(0, enemyData.alertMemory - 0.28);
+      enemyData.blockedChaseSince = 0;
+      choosePassByRoute(time);
+      passByActive = true;
+    }
+  } else {
+    enemyData.blockedChaseSince = 0;
+  }
   const nearbySharedCover = !state.hidden && !exitGraceActive && enemyData.mode === 'SEARCHING'
     ? coverPoints.findIndex((cover) =>
       Math.hypot(camera.position.x - cover.x, camera.position.z - cover.z) < 1.75
@@ -1243,7 +1292,7 @@ function updateEnemy(dt, time) {
   }
   if (checkingSameCover) state.detection += (72 + enemyData.alertMemory * 35) * dt;
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
-  if (!state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
+  if (!passByActive && !state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
   state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
 
   if (visible && state.detection <= 70) {
@@ -1259,7 +1308,11 @@ function updateEnemy(dt, time) {
     enemyData.lookAroundUntil = time + 1.1;
   }
 
-  if (state.detection > 70 && !state.hidden) {
+  if (passByActive) {
+    state.alert = 'UNNOTICED';
+    enemyData.speed = 2.6;
+    state.detection = Math.max(0, state.detection - 42 * dt);
+  } else if (state.detection > 70 && !state.hidden) {
     state.alert = 'HUNTING';
     enemyData.mode = 'HUNTING';
     enemyData.speed = 5.2 + state.detection * 0.006;
@@ -1284,8 +1337,10 @@ function updateEnemy(dt, time) {
 
   enemyData.isMoving = false;
   if (enemyData.path.length === 0) {
-    if (enemyData.mode === 'SEARCHING' && time >= enemyData.lookAroundUntil) chooseCoverSearchRoute();
-    else if (!['INVESTIGATING', 'SEARCHING'].includes(enemyData.mode)) chooseRandomEnemyRoute();
+    if (enemyData.mode === 'PASSING_BY' && time < enemyData.passByUntil) {
+      enemyData.lookBackUntil = time + 0.7 + Math.random() * 0.75;
+    } else if (enemyData.mode === 'SEARCHING' && time >= enemyData.lookAroundUntil) chooseCoverSearchRoute();
+    else if (!['INVESTIGATING', 'SEARCHING', 'PASSING_BY'].includes(enemyData.mode)) chooseRandomEnemyRoute();
   }
   const target = enemyData.path[0];
   if (target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
@@ -1314,12 +1369,23 @@ function updateEnemy(dt, time) {
     );
     enemy.rotation.y += turnDelta * Math.min(1, dt * 7.5);
   }
+  if (enemyData.mode === 'PASSING_BY' && time < enemyData.lookBackUntil) {
+    const turnDelta = Math.atan2(
+      Math.sin(enemyData.lookBackYaw - enemy.rotation.y),
+      Math.cos(enemyData.lookBackYaw - enemy.rotation.y),
+    );
+    enemy.rotation.y += turnDelta * Math.min(1, dt * 5.2);
+  } else if (enemyData.mode === 'PASSING_BY' && time >= enemyData.passByUntil) {
+    enemyData.mode = 'ROAMING';
+    enemyData.path = [];
+    enemyData.lookBackUntil = 0;
+  }
   enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? String(0.13 + Math.sin(time * 7) * 0.07)
     : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
-  const clearAtCloseRange = distance < 1.45 && hasLineOfSight(enemyEye, playerEye);
+  const clearAtCloseRange = !passByActive && distance < 1.45 && lineOfSightToPlayer;
   const fullyDetected = state.detection >= 99.5 && (visible || checkingSameCover);
   if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
 }

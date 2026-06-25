@@ -19,13 +19,16 @@
 - 遮蔽物ごとに横・裏を確認する候補地点を作る `coverSearchNodes()` を追加。
 - 探索中の敵が遮蔽物周辺へ移動し、到着後に遮蔽物方向へ見回すように変更。
 - プレイヤーと敵が同じ遮蔽物付近にいる場合、警戒度に応じた確率で「覗き込み」を行い、成功した時だけ感知度が伸びるように変更。
+- 追跡中に遮蔽物でプレイヤーへ視線が通らず、近距離で詰まった場合は `PASSING_BY` に切り替える。
+- `PASSING_BY` 中は感知度と警戒状態を強制的に落とし、プレイヤー付近を通り過ぎた後にランダムな角度で振り返る。
+- `PASSING_BY` 中は短時間だけ新しい足音への反応を無視し、同じ遮蔽物前で追跡へ戻る往復を抑える。
 - 捕獲後リスポーン時に、遮蔽物覗き込み関連のAI状態もリセット。
 - バック音を発振音中心から、低く丸めたループ空気音、ゆっくりしたフィルター揺れ、軽い反響へ変更。
 
 ### 次に見るべき場所
 - 敵がまだ遮蔽物裏を見つけにくい場合:
-  - [src/main.js](src/main.js) の `coverSearchNodes()`、`chooseCoverSearchRoute()`、`updateEnemy()` 内の `nearbySharedCover` 周辺を確認。
-  - `coverCheckSuccess` の確率、`coverPeekUntil` の時間、`nearbySharedCover` の距離条件を調整。
+  - [src/main.js](src/main.js) の `coverSearchNodes()`、`chooseCoverSearchRoute()`、`choosePassByRoute()`、`updateEnemy()` 内の `nearbySharedCover` / `blockedChase` 周辺を確認。
+  - `coverCheckSuccess` の確率、`coverPeekUntil` の時間、`nearbySharedCover` の距離条件、`blockedChase` の距離と時間を調整。
 - 4Kでまだ重い場合:
   - 左下の FPS / draw / tris / render / window を見る。
   - FPS低い + draw/tris高い: メッシュ結合、3D視覚ライン削除、マップ縮小を検討。
