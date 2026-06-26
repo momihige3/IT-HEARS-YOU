@@ -57,3 +57,22 @@
 - One healing item is guaranteed at game start/respawn.
 - Healing items cannot be consumed while HP is full.
 - Roar knockdown emits a small stumble sound with radius 6, equal to x2 walking radius, causing a small alert increase.
+
+## 2026-06-26 Mobile / Coin / Shop Update
+
+Implemented:
+- Mobile text selection, long-press menu, pinch zoom, and double-tap zoom are disabled.
+- Mobile run/light/action buttons are larger and use pointerdown handlers so they can be used while the movement pad is active.
+- Base flashlight range is reduced by half.
+- Coins spawn every 30 seconds at safe random map positions.
+- A single shop is generated at a safe random map position.
+- Shop purchases:
+  - Heal: 1 coin, cannot heal at full HP.
+  - Noise half: 3 coins, halves player movement noise strength and radius.
+  - Breaker duration x2: 4 coins, doubles breaker ON duration.
+  - Light range x2: 5 coins, doubles flashlight cone and reach from the reduced base range.
+- Coin count is displayed in the HUD.
+
+Build:
+- `node node_modules/vite/bin/vite.js build` succeeded locally before node_modules/package-lock cleanup.
+- package-lock.json was removed to avoid internal registry URLs in GitHub Actions.

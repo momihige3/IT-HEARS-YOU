@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'HP-BALANCE-BREAKER-HEAL-NOISE-20260626';
+const PERF_BUILD_ID = 'MOBILE-COIN-SHOP-LIGHT-20260626';
 const INTERNAL_MAX_W = 1280;
 const INTERNAL_MAX_H = 720;
 const scene = new THREE.Scene();
@@ -33,6 +33,21 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
 $('#game').append(renderer.domElement);
+// Mobile play protection: disable text selection, long-press menu, pinch-zoom, and double-tap zoom.
+document.addEventListener('contextmenu', (event) => {
+  if (touchDevice) event.preventDefault();
+}, { passive: false });
+document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (event) => event.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (event) => {
+  if (touchDevice && event.touches.length > 1) event.preventDefault();
+}, { passive: false });
+let lastTouchEndAt = 0;
+document.addEventListener('touchend', (event) => {
+  const now = performance.now();
+  if (touchDevice && now - lastTouchEndAt < 320) event.preventDefault();
+  lastTouchEndAt = now;
+}, { passive: false });
 const perfPanel = $('#perf-panel');
 let perfFrames = 0;
 let perfLast = performance.now();
@@ -51,6 +66,13 @@ const state = {
   flashlight: true,
   battery: 100,
   hp: 100,
+  coins: 0,
+  nearShop: false,
+  shopOpen: false,
+  nextCoinAt: 0,
+  noiseMultiplier: 1,
+  breakerDurationMultiplier: 1,
+  lightRangeMultiplier: 1,
   screenFlashUntil: 0,
   screenFlashColor: 'red',
   nextHealAt: 0,
@@ -91,6 +113,8 @@ const soundEvents = [];
 const sonarReveals = [];
 const noiseTraps = [];
 const healItems = [];
+const coinItems = [];
+let shop = null;
 const CELL = 4;
 const GRID_W = 13;
 const GRID_H = 19;
@@ -848,7 +872,9 @@ function choosePassByRoute(time) {
 }
 
 // Flashlight.
-const flashlight = new THREE.SpotLight(0xf4f1dc, 117, 138, Math.PI / 2.75, 0.86, 1.8);
+const BASE_FLASHLIGHT_DISTANCE = 69;
+const BASE_FLASHLIGHT_ANGLE = Math.PI / 5.5;
+const flashlight = new THREE.SpotLight(0xf4f1dc, 117, BASE_FLASHLIGHT_DISTANCE, BASE_FLASHLIGHT_ANGLE, 0.86, 1.8);
 flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
@@ -1157,8 +1183,8 @@ function updateAudio(time) {
   const moving = state.noise > 0 && !state.hidden;
   if (moving && time > audio.nextStep) {
     const settings = state.moveMode === 'RUNNING'
-      ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 21 }
-      : { volume: 0.46, pitch: 1, interval: 0.44, radius: 3 };
+      ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 21 * state.noiseMultiplier }
+      : { volume: 0.46, pitch: 1, interval: 0.44, radius: 3 * state.noiseMultiplier };
     playFootstep(settings.volume, settings.pitch, 0);
     emitPlayerSound(state.noise, settings.radius);
     audio.nextStep = time + settings.interval;
@@ -1225,7 +1251,7 @@ function showToast(text) {
 
 function setBreaker(on) {
   state.breakerOn = on;
-  state.breakerOutAt = on ? clock.elapsedTime + 180 : Infinity;
+  state.breakerOutAt = on ? clock.elapsedTime + 180 * state.breakerDurationMultiplier : Infinity;
   breakerLight.color.set(on ? 0x7dffad : 0xff6d4d);
   breakerLight.intensity = on ? 2.6 : 0.35;
   breakerSwitch.material.color.set(on ? 0x7dffad : 0xff6d4d);
@@ -1296,6 +1322,10 @@ function interact() {
     else showToast('ブレーカーは入っている');
     return;
   }
+  if (state.nearShop) {
+    openShop();
+    return;
+  }
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
   if (nearbyKey) {
     nearbyKey.collected = true;
@@ -1333,6 +1363,13 @@ function respawnPlayer() {
   state.flashlight = true;
   state.battery = 100;
   state.hp = 100;
+  state.coins = 0;
+  state.nearShop = false;
+  state.shopOpen = false;
+  state.nextCoinAt = 0;
+  state.noiseMultiplier = 1;
+  state.breakerDurationMultiplier = 1;
+  state.lightRangeMultiplier = 1;
   state.screenFlashUntil = 0;
   state.nextHealAt = 0;
   state.detection = 0;
@@ -1341,6 +1378,7 @@ function respawnPlayer() {
   state.noise = 0;
   state.nearLocker = null;
   state.nearBreaker = false;
+  state.nearShop = false;
   state.currentLocker = null;
   state.breakerOn = false;
   state.breakerOutAt = Infinity;
@@ -1401,7 +1439,11 @@ function respawnPlayer() {
   noiseTraps.length = 0;
   for (const item of healItems) { scene.remove(item.group); scene.remove(item.light); }
   healItems.length = 0;
+  for (const coin of coinItems) { scene.remove(coin.group); scene.remove(coin.light); }
+  coinItems.length = 0;
+  if (shop) shop.group.visible = true;
   spawnHealItem(clock.elapsedTime, true);
+  scheduleNextCoin(clock.elapsedTime);
   scheduleNextHeal(clock.elapsedTime);
   chooseRandomEnemyRoute();
   showToast('意識を取り戻した');
@@ -1485,7 +1527,7 @@ $('#settings-quit').addEventListener('click', () => {
   location.reload();
 });
 controls.addEventListener('unlock', () => {
-  if (state.started && !state.ended && !state.caught && !state.settingsOpen) openSettings();
+  if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen) openSettings();
 });
 $('#start-button').addEventListener('click', () => {
   state.started = true;
@@ -1495,9 +1537,14 @@ $('#start-button').addEventListener('click', () => {
     spawnHealItem(clock.elapsedTime, true);
     scheduleNextHeal(clock.elapsedTime);
   }
+  if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime - 30);
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   lockPointer();
+});
+$('#shop-close')?.addEventListener('click', closeShop);
+document.querySelectorAll('[data-shop-buy]').forEach((button) => {
+  button.addEventListener('click', () => buyShopItem(button.dataset.shopBuy));
 });
 $('#restart-button').addEventListener('click', () => {
   state.allowExit = true;
@@ -1507,6 +1554,7 @@ renderer.domElement.addEventListener('click', () => {
   if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
 addEventListener('keydown', (event) => {
+  if (event.code === 'Escape' && state.shopOpen) { closeShop(); return; }
   if (state.started && !state.ended && (event.ctrlKey || event.metaKey)) event.preventDefault();
 }, { capture: true });
 addEventListener('keydown', (event) => {
@@ -1578,16 +1626,29 @@ function setupTouchStick(element, onChange) {
 }
 
 setupTouchStick($('#move-stick'), (x, y) => { mobileInput.moveX = x; mobileInput.moveY = y; });
-$('#mobile-run-toggle').addEventListener('click', () => {
+function bindMobileButton(selector, handler) {
+  const element = $(selector);
+  if (!element) return;
+  element.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handler(event);
+  }, { passive: false });
+  element.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+}
+bindMobileButton('#mobile-run-toggle', () => {
   mobileInput.running = !mobileInput.running;
   $('#mobile-run-toggle').classList.toggle('running', mobileInput.running);
   $('#mobile-run-toggle').textContent = mobileInput.running ? '走行中' : '歩行中';
 });
-$('#mobile-flashlight').addEventListener('click', () => {
+bindMobileButton('#mobile-flashlight', () => {
   state.flashlight = !state.flashlight;
   $('#mobile-flashlight').classList.toggle('active', state.flashlight);
 });
-$('#mobile-action').addEventListener('click', interact);
+bindMobileButton('#mobile-action', interact);
 
 let cameraSwipePointer = null;
 let cameraSwipeX = 0;
@@ -1816,6 +1877,165 @@ function updateHealItems(dt, time) {
   }
 }
 
+
+
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xd6a842, roughness: 0.36, metalness: 0.65, emissive: 0x3a2505, emissiveIntensity: 0.28 });
+const shopMat = new THREE.MeshStandardMaterial({ color: 0x2d4b68, roughness: 0.62, metalness: 0.1, emissive: 0x061423, emissiveIntensity: 0.24 });
+const shopAccentMat = new THREE.MeshBasicMaterial({ color: 0x9fe7ff });
+
+function scheduleNextCoin(time) {
+  state.nextCoinAt = time + 30;
+}
+
+function canPlaceCoinAt(x, z) {
+  if (!isSafeSpawnPoint(x, z, 0.55)) return false;
+  if (horizontalDistance({ x, z }, camera.position) < 3.2) return false;
+  if (horizontalDistance({ x, z }, exitDoor.position) < 2.6) return false;
+  if (horizontalDistance({ x, z }, breakerPanel.position) < 2.0) return false;
+  if (shop && horizontalDistance({ x, z }, shop) < 3.2) return false;
+  if (keyItems.some((item) => !item.collected && horizontalDistance({ x, z }, item.group.position) < 1.7)) return false;
+  if (healItems.some((item) => horizontalDistance({ x, z }, item) < 1.7)) return false;
+  if (noiseTraps.some((trap) => !trap.triggered && horizontalDistance({ x, z }, trap) < 1.6)) return false;
+  if (coinItems.some((coin) => horizontalDistance({ x, z }, coin) < 3.0)) return false;
+  return true;
+}
+
+function spawnCoin(time) {
+  const candidates = walkableNodes
+    .filter((node) => canPlaceCoinAt(node.x, node.z))
+    .sort(() => Math.random() - 0.5);
+  const node = candidates[0];
+  if (!node) return;
+  const group = new THREE.Group();
+  const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.045, 20), coinMat);
+  coin.rotation.x = Math.PI / 2;
+  group.add(coin);
+  group.position.set(node.x, 0.72, node.z);
+  scene.add(group);
+  const light = new THREE.PointLight(0xffcc62, 0.7, 2.8);
+  light.position.copy(group.position).add(new THREE.Vector3(0, 0.3, 0));
+  scene.add(light);
+  coinItems.push({ group, light, x: node.x, z: node.z, baseY: 0.72, phase: Math.random() * Math.PI * 2, removeAt: time + 150 });
+  if (coinItems.length > 8) {
+    const old = coinItems.shift();
+    scene.remove(old.group);
+    scene.remove(old.light);
+  }
+}
+
+function updateCoins(dt, time) {
+  if (!state.nextCoinAt) scheduleNextCoin(time);
+  if (state.started && time >= state.nextCoinAt) {
+    spawnCoin(time);
+    scheduleNextCoin(time);
+  }
+  for (let i = coinItems.length - 1; i >= 0; i -= 1) {
+    const coin = coinItems[i];
+    coin.group.rotation.y += dt * 2.7;
+    coin.group.position.y = coin.baseY + Math.sin(time * 2.8 + coin.phase) * 0.05;
+    coin.light.position.copy(coin.group.position).add(new THREE.Vector3(0, 0.28, 0));
+    if (!state.hidden && horizontalDistance(camera.position, coin) < 1.25) {
+      state.coins += 1;
+      playKeySound(0.46);
+      scene.remove(coin.group);
+      scene.remove(coin.light);
+      coinItems.splice(i, 1);
+      continue;
+    }
+    if (time >= coin.removeAt) {
+      scene.remove(coin.group);
+      scene.remove(coin.light);
+      coinItems.splice(i, 1);
+    }
+  }
+}
+
+function canPlaceShopAt(x, z) {
+  if (!isSafeSpawnPoint(x, z, 0.86)) return false;
+  if (horizontalDistance({ x, z }, camera.position) < 5.5) return false;
+  if (horizontalDistance({ x, z }, enemyStart) < 4.5) return false;
+  if (horizontalDistance({ x, z }, exitDoor.position) < 4.0) return false;
+  if (horizontalDistance({ x, z }, breakerPanel.position) < 4.0) return false;
+  if (keyItems.some((item) => horizontalDistance({ x, z }, item.group.position) < 3.0)) return false;
+  return true;
+}
+
+function createShop() {
+  const candidates = walkableNodes
+    .filter((node) => canPlaceShopAt(node.x, node.z))
+    .sort(() => Math.random() - 0.5);
+  const node = candidates[0] || walkableNodes[Math.floor(walkableNodes.length / 2)];
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 0.42), shopMat);
+  body.position.y = 0.86;
+  group.add(body);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.24, 0.05), shopAccentMat);
+  sign.position.set(0, 1.56, 0.25);
+  group.add(sign);
+  const coinMark = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.025, 16), coinMat);
+  coinMark.position.set(0, 1.56, 0.3);
+  coinMark.rotation.x = Math.PI / 2;
+  group.add(coinMark);
+  group.position.set(node.x, 0, node.z);
+  scene.add(group);
+  shop = { group, x: node.x, z: node.z };
+}
+
+function setShopMessage(text) {
+  const message = $('#shop-message');
+  if (message) message.textContent = text;
+}
+
+function openShop() {
+  state.shopOpen = true;
+  $('#shop-screen')?.classList.add('visible');
+  setShopMessage(`所持コイン：${state.coins}`);
+  if (controls.isLocked) controls.unlock();
+}
+
+function closeShop() {
+  state.shopOpen = false;
+  $('#shop-screen')?.classList.remove('visible');
+  if (state.started && !state.ended && !state.caught && !mobileInput.active) lockPointer();
+}
+
+function spendCoins(cost) {
+  if (state.coins < cost) return false;
+  state.coins -= cost;
+  updateHUD();
+  return true;
+}
+
+function buyShopItem(type) {
+  if (type === 'heal') {
+    if (state.hp >= 100) return setShopMessage('HP満タンなので回復できない');
+    if (!spendCoins(1)) return setShopMessage('コインが足りない');
+    healPlayer(100);
+    return setShopMessage(`全回復した / 所持コイン：${state.coins}`);
+  }
+  if (type === 'noise') {
+    if (state.noiseMultiplier <= 0.5) return setShopMessage('ノイズ半減は購入済み');
+    if (!spendCoins(3)) return setShopMessage('コインが足りない');
+    state.noiseMultiplier = 0.5;
+    return setShopMessage(`ノイズ音が半分になった / 所持コイン：${state.coins}`);
+  }
+  if (type === 'breaker') {
+    if (state.breakerDurationMultiplier >= 2) return setShopMessage('ブレーカー強化は購入済み');
+    if (!spendCoins(4)) return setShopMessage('コインが足りない');
+    state.breakerDurationMultiplier = 2;
+    if (state.breakerOn) state.breakerOutAt = clock.elapsedTime + Math.max(0, state.breakerOutAt - clock.elapsedTime) * 2;
+    return setShopMessage(`ブレーカーON時間が2倍になった / 所持コイン：${state.coins}`);
+  }
+  if (type === 'light') {
+    if (state.lightRangeMultiplier >= 2) return setShopMessage('ライト範囲強化は購入済み');
+    if (!spendCoins(5)) return setShopMessage('コインが足りない');
+    state.lightRangeMultiplier = 2;
+    return setShopMessage(`ライト範囲が2倍になった / 所持コイン：${state.coins}`);
+  }
+}
+
+createShop();
+
 function scheduleNextRoar(time) {
   state.nextRoarAt = time + 60 + Math.random() * 120;
 }
@@ -1878,7 +2098,7 @@ function updatePlayer(dt) {
   const running = keys.ShiftLeft || keys.ShiftRight || mobileInput.running;
   const speed = running ? 4.7 : 2.35;
   state.moveMode = running ? 'RUNNING' : 'WALKING';
-  state.noise = active ? (running ? 88 : 38) : 0;
+  state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   const nextX = camera.position.x + move.x * speed * dt;
   const nextZ = camera.position.z + move.z * speed * dt;
   if (canMoveTo(nextX, camera.position.z)) camera.position.x = nextX;
@@ -2136,9 +2356,11 @@ function updateInteraction() {
   let prompt = '';
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
   state.nearBreaker = horizontalDistance(camera.position, breakerPanel.position) < 2.35;
+  state.nearShop = Boolean(shop && horizontalDistance(camera.position, shop) < 2.6);
   if (state.hidden) prompt = '[ E ] ロッカーから出る';
   else if (state.nearLocker) prompt = '[ E ] ロッカーの中に隠れる';
   else if (state.nearBreaker) prompt = state.breakerOn ? '[ E ] ブレーカーは入っている' : '[ E ] ブレーカーを入れる';
+  else if (state.nearShop) prompt = '[ E ] ショップを開く';
   else if (nearbyKey) prompt = `[ E ] 鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
   else if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
     prompt = state.keyCount >= REQUIRED_KEYS
@@ -2166,6 +2388,8 @@ function updateHUD() {
   $('#battery-bar').style.width = `${state.battery}%`;
   const hpBar = $('#hp-bar');
   if (hpBar) hpBar.style.width = `${state.hp}%`;
+  const coinValue = $('#coin-value');
+  if (coinValue) coinValue.textContent = String(state.coins);
 }
 
 function updateLight(time) {
@@ -2177,7 +2401,10 @@ function updateLight(time) {
   camera.getWorldDirection(forward);
   lockerViewLight.target.position.copy(camera.position).addScaledVector(forward, 5);
   flashlight.position.copy(camera.position).addScaledVector(forward, 0.12);
-  flashlight.target.position.copy(camera.position).addScaledVector(forward, 24);
+  const flashlightReach = BASE_FLASHLIGHT_DISTANCE * state.lightRangeMultiplier;
+  flashlight.distance = flashlightReach;
+  flashlight.angle = Math.min(Math.PI / 2.75, BASE_FLASHLIGHT_ANGLE * state.lightRangeMultiplier);
+  flashlight.target.position.copy(camera.position).addScaledVector(forward, Math.max(12, flashlightReach * 0.18));
   fillLight.position.copy(camera.position);
   flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1);
   for (const item of keyItems) {
@@ -2350,13 +2577,14 @@ function animate() {
   const time = clock.elapsedTime;
   if (state.caught) {
     updateCaughtCutscene(time);
-  } else if (state.started && !state.ended && !state.settingsOpen) {
+  } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen) {
     updateSonarRoar(time);
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
     updateNoiseTraps(dt, time);
     updateHealItems(dt, time);
+    updateCoins(dt, time);
     updateSonarModel(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();

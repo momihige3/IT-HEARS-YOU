@@ -49,3 +49,12 @@ Important: package-lock is intentionally omitted because older generated locks m
 - One healing item is guaranteed at game start and respawn.
 - Healing items cannot be consumed at full HP.
 - Roar knockdown emits a small stumble sound with radius 6 and slight alert gain.
+
+### 2026-06-26 update
+
+- Mobile browser gestures are disabled for gameplay.
+- Mobile operation buttons were enlarged and changed to pointer input for simultaneous movement and button operation.
+- Flashlight base range was reduced by half.
+- Coins now spawn every 30 seconds.
+- A random shop sells healing, noise reduction, breaker duration, and flashlight range upgrades.
+- package-lock.json is intentionally omitted; GitHub Actions uses public npm install.

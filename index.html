@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#050706" />
     <title>IT HEARS YOU - PERF CONFIRMED 960</title>
     <link rel="stylesheet" href="./src/style.css" />
@@ -20,6 +20,7 @@
       <header id="hud">
         <div class="objective"><span>目的</span><strong id="objective-text">鍵を探す 0 / 5</strong></div>
         <div id="hp-panel"><span>HP</span><div class="hp-meter"><i id="hp-bar"></i></div></div>
+        <div id="coin-panel"><span>COIN</span><strong id="coin-value">0</strong></div>
         <div class="status-cluster">
           <div class="status-row"><span>物音</span><div class="meter"><i id="noise-bar"></i></div><b id="noise-value">00</b></div>
           <div class="status-row"><span>敵の感知</span><div class="meter detection"><i id="detect-bar"></i></div><b id="detect-value">00</b></div>
@@ -90,6 +91,19 @@
           <p class="setting-note">マウス加速を使わない、一定速度の視点操作です。</p>
           <button id="settings-close">ゲームに戻る</button>
           <button id="settings-quit" class="danger-button">ゲームを終了してタイトルへ</button>
+        </div>
+      </section>
+
+
+      <section id="shop-screen" class="screen shop-screen">
+        <div class="shop-card">
+          <p class="eyebrow">購買部</p><h2>SHOP</h2>
+          <p id="shop-message">所持コイン：0</p>
+          <button data-shop-buy="heal">回復：1コイン</button>
+          <button data-shop-buy="noise">ノイズ半減：3コイン</button>
+          <button data-shop-buy="breaker">ブレーカーON時間2倍：4コイン</button>
+          <button data-shop-buy="light">ライト範囲2倍：5コイン</button>
+          <button id="shop-close" class="secondary-button">閉じる</button>
         </div>
       </section>
 
