@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'ROOM-BREAKER-FLASHLIGHT-20260626';
+const PERF_BUILD_ID = 'SPAWN-PLATE-TRAP-FIX-20260626';
 const INTERNAL_MAX_W = 1280;
 const INTERNAL_MAX_H = 720;
 const scene = new THREE.Scene();
@@ -56,6 +56,7 @@ const state = {
   nextRoarAt: 0,
   roarUntil: 0,
   nextSoundRippleAt: 0,
+  nextTrapAt: 0,
   detection: 0,
   alert: 'UNNOTICED',
   moveMode: 'WALKING',
@@ -82,6 +83,7 @@ const colliders = [];
 const lockers = [];
 const soundEvents = [];
 const sonarReveals = [];
+const noiseTraps = [];
 const CELL = 4;
 const GRID_W = 13;
 const GRID_H = 19;
@@ -381,6 +383,20 @@ const walkableNodes = [...walkable].map((key) => {
   const pos = worldFromGrid(gx, gz);
   return { gx, gz, x: pos.x, z: pos.z, key };
 });
+
+function hasColliderOverlap(x, z, padding = 0.42) {
+  return colliders.some((collider) =>
+    Math.abs(x - collider.x) < collider.hw + padding && Math.abs(z - collider.z) < collider.hz + padding);
+}
+
+function isSafeSpawnPoint(x, z, padding = 0.46) {
+  return !hasColliderOverlap(x, z, padding);
+}
+
+function findSafeNode(filter = () => true, fallback = null) {
+  const choices = walkableNodes.filter((node) => filter(node) && isSafeSpawnPoint(node.x, node.z, 0.48));
+  return choices[Math.floor(Math.random() * choices.length)] || fallback || walkableNodes.find((node) => isSafeSpawnPoint(node.x, node.z, 0.48)) || walkableNodes[0];
+}
 const exitRooms = schoolRooms.filter((room) => room.id !== 'breaker');
 const exitRoom = exitRooms[Math.floor(Math.random() * exitRooms.length)] || schoolRooms[1];
 const exitRoomCenter = roomCenter(exitRoom);
@@ -430,6 +446,7 @@ const breakerSwitch = addBox(
 const breakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
 breakerLight.position.set(breakerPosition.x + breakerWallSide * 1.35, 2.2, breakerPosition.z);
 scene.add(breakerLight);
+const breakerPlateSide = breakerWallSide < 0 ? 'west' : 'east';
 
 
 function addRoomFixtures(room) {
@@ -482,10 +499,42 @@ exitCounterCanvas.width = 512;
 exitCounterCanvas.height = 128;
 const exitCounterContext = exitCounterCanvas.getContext('2d');
 const exitCounterTexture = new THREE.CanvasTexture(exitCounterCanvas);
-const exitCounter = new THREE.Sprite(new THREE.SpriteMaterial({ map: exitCounterTexture, transparent: true, depthTest: true }));
-exitCounter.position.set(exitPosition.x, 3.45, exitPosition.z);
-exitCounter.scale.set(3.8, 0.95, 1);
+exitCounterTexture.colorSpace = THREE.SRGBColorSpace;
+const exitCounter = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.8, 0.95),
+  new THREE.MeshBasicMaterial({ map: exitCounterTexture, transparent: true, depthTest: true }),
+);
+const exitPlateOffset = exitWallSide === 'west' ? 0.105 : -0.105;
+exitCounter.position.set(exitPosition.x + exitPlateOffset, 3.2, exitPosition.z);
+exitCounter.rotation.y = exitWallSide === 'west' ? Math.PI / 2 : -Math.PI / 2;
 scene.add(exitCounter);
+
+function makeWallTextPlate(text, x, y, z, side, width = 1.35, height = 0.38, bg = 'rgba(235, 239, 222, .94)', fg = '#203028') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#3b4c43';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  ctx.fillStyle = fg;
+  ctx.font = 'bold 58px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+  const offset = side === 'west' ? 0.108 : -0.108;
+  mesh.position.set(x + offset, y, z);
+  mesh.rotation.y = side === 'west' ? Math.PI / 2 : -Math.PI / 2;
+  scene.add(mesh);
+  return mesh;
+}
+makeWallTextPlate('出口', exitPosition.x, 2.35, exitPosition.z, exitWallSide, 1.15, 0.36);
+makeWallTextPlate('ブレーカー', breakerPanel.position.x, 2.38, breakerPanel.position.z, breakerPlateSide, 1.55, 0.38, 'rgba(238, 229, 198, .94)', '#2f2a1d');
 
 function updateExitCounter() {
   exitCounterContext.clearRect(0, 0, 512, 128);
@@ -502,14 +551,41 @@ function updateExitCounter() {
   exitCounterTexture.needsUpdate = true;
 }
 
-// Five keys are sampled from different side-route locations every playthrough.
+// Five keys are sampled from safe positions that do not overlap furniture, lockers, walls, breaker, or exit.
+const keyOffsets = [
+  [0, 0], [0.72, 0], [-0.72, 0], [0, 0.72], [0, -0.72],
+  [0.62, 0.62], [-0.62, 0.62], [0.62, -0.62], [-0.62, -0.62],
+];
+function findSafePickupPosition(node, used = []) {
+  const base = worldFromGrid(node.gx, node.gz);
+  for (const [ox, oz] of keyOffsets.sort(() => Math.random() - 0.5)) {
+    const x = base.x + ox;
+    const z = base.z + oz;
+    if (horizontalDistance({ x, z }, exitDoor.position) < 3.2) continue;
+    if (horizontalDistance({ x, z }, breakerPanel.position) < 2.2) continue;
+    if (used.some((p) => Math.hypot(p.x - x, p.z - z) < 2.25)) continue;
+    if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 1.65)) continue;
+    if (!isSafeSpawnPoint(x, z, 0.78)) continue;
+    return { x, z };
+  }
+  return null;
+}
 const keyCandidates = walkableNodes
   .filter((node) => node.key !== exitNode.key && node.key !== breakerNode.key && Math.hypot(node.gx - 6, node.gz - 18) > 3)
-  .map((node) => [node.gx, node.gz]);
+  .sort(() => Math.random() - 0.5);
+const selectedKeySpawns = [];
+for (const node of keyCandidates) {
+  const pos = findSafePickupPosition(node, selectedKeySpawns);
+  if (pos) selectedKeySpawns.push(pos);
+  if (selectedKeySpawns.length >= REQUIRED_KEYS) break;
+}
+while (selectedKeySpawns.length < REQUIRED_KEYS) {
+  const node = findSafeNode((candidate) => Math.hypot(candidate.gx - 6, candidate.gz - 18) > 2);
+  const pos = findSafePickupPosition(node, selectedKeySpawns) || { x: node.x, z: node.z };
+  selectedKeySpawns.push(pos);
+}
 const keyMat = material(0xc2a44e, 0.25, 0.85);
-const shuffledKeyCandidates = [...keyCandidates].sort(() => Math.random() - 0.5).slice(0, REQUIRED_KEYS);
-const keyItems = shuffledKeyCandidates.map(([gx, gz], index) => {
-  const keySpawn = worldFromGrid(gx, gz);
+const keyItems = selectedKeySpawns.map((keySpawn, index) => {
   const group = new THREE.Group();
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), keyMat);
   ring.rotation.x = Math.PI / 2;
@@ -520,7 +596,7 @@ const keyItems = shuffledKeyCandidates.map(([gx, gz], index) => {
   const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.035, 0.06), keyMat);
   tooth.position.set(0.04, 0, 0.4);
   group.add(tooth);
-  group.position.set(keySpawn.x + (index % 2 ? -0.6 : 0.6), 1.05, keySpawn.z);
+  group.position.set(keySpawn.x, 1.05, keySpawn.z);
   scene.add(group);
   const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
   light.position.copy(group.position);
@@ -564,7 +640,8 @@ for (const side of [-1, 1]) {
   sonarPart(`${prefix}Foot`, new THREE.BoxGeometry(0.16, 0.08, 0.38), sonarSkinMat, [side * 0.18, -0.62, 0.19]);
 }
 enemy.scale.set(1.18, 1.18, 1.18);
-const enemyStart = worldFromGrid(1, 7);
+const enemyStartNode = findSafeNode((node) => Math.hypot(node.gx - 6, node.gz - 18) > 7 && node.key !== exitNode.key && node.key !== breakerNode.key, walkableNodes[0]);
+const enemyStart = new THREE.Vector3(enemyStartNode.x, 0, enemyStartNode.z);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
 scene.add(enemy);
 
@@ -941,6 +1018,39 @@ function playEnemyFootstep(volume, pan = 0) {
   impact.stop(ctx.currentTime + 0.24);
 }
 
+
+function playTrapSound(volume = 0.55, pan = 0) {
+  if (!audio || volume <= 0.006) return;
+  const { ctx, master, noiseBuffer } = audio;
+  const bus = ctx.createGain();
+  const scrape = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const chirp = ctx.createOscillator();
+  const chirpGain = ctx.createGain();
+  scrape.buffer = noiseBuffer;
+  scrape.playbackRate.value = 1.35;
+  filter.type = 'bandpass';
+  filter.frequency.value = 1450;
+  filter.Q.value = 2.4;
+  chirp.type = 'sine';
+  chirp.frequency.setValueAtTime(920, ctx.currentTime);
+  chirp.frequency.exponentialRampToValueAtTime(260, ctx.currentTime + 0.42);
+  chirpGain.gain.setValueAtTime(0.28, ctx.currentTime);
+  chirpGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.46);
+  bus.gain.setValueAtTime(volume, ctx.currentTime);
+  bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.72);
+  scrape.connect(filter).connect(bus);
+  chirp.connect(chirpGain).connect(bus);
+  if (ctx.createStereoPanner) {
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = THREE.MathUtils.clamp(pan, -1, 1);
+    bus.connect(panner).connect(master);
+  } else bus.connect(master);
+  scrape.start();
+  chirp.start();
+  chirp.stop(ctx.currentTime + 0.48);
+}
+
 function playLockerSound(opening) {
   if (!audio) return;
   const { ctx, master, noiseBuffer } = audio;
@@ -967,41 +1077,49 @@ function playLockerSound(opening) {
   clank.start();
 }
 
-function emitPlayerSound(strength, baseHearingRadius) {
+function reactToSoundEvent(event, now) {
+  const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
+  if (distance > event.hearingRadius) return;
+  if (enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
+  enemyData.lastHeardAt = now;
+  enemyData.lastHeardPosition = { x: event.x, z: event.z };
+  const strength = event.strength;
+  if (now - enemyData.lastMemoryGainAt > 0.85) {
+    enemyData.alertMemory = THREE.MathUtils.clamp(
+      enemyData.alertMemory + (strength > 70 ? 0.12 : 0.055),
+      0,
+      1,
+    );
+    enemyData.lastMemoryGainAt = now;
+  }
+  const noiseGain = (strength > 70 ? 5.5 : 1.8) * (1 + enemyData.alertMemory * 1.2);
+  state.detection = Math.max(state.detection, strength > 70 ? 20 : 10);
+  state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
+  if (state.alert === 'HUNTING' && state.detection > 70) {
+    setEnemyDestination(event.x, event.z, 'HUNTING');
+    return;
+  }
+  const firstReaction = enemyData.mode !== 'INVESTIGATING';
+  setEnemyDestination(event.x, event.z, 'INVESTIGATING');
+  enemyData.investigateUntil = now + 3.5 + strength * 0.025;
+  enemyData.searchUntil = now + 16;
+  enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
+  if (firstReaction) enemyData.pauseUntil = now + 0.7;
+}
+
+function emitWorldSound(x, z, strength, baseHearingRadius, forceRipple = false) {
   const hearingRadius = baseHearingRadius * (1 + enemyData.alertMemory * 0.28);
   const now = clock.elapsedTime;
-  const event = { x: camera.position.x, z: camera.position.z, strength, hearingRadius, age: 0, life: 2.4 };
-  if (now >= state.nextSoundRippleAt) {
+  const event = { x, z, strength, hearingRadius, age: 0, life: 2.4 };
+  if (forceRipple || now >= state.nextSoundRippleAt) {
     soundEvents.push(event);
     state.nextSoundRippleAt = now + 2.6;
   }
-  const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
-  if (distance <= hearingRadius) {
-    if (enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
-    enemyData.lastHeardAt = now;
-    enemyData.lastHeardPosition = { x: event.x, z: event.z };
-    if (now - enemyData.lastMemoryGainAt > 0.85) {
-      enemyData.alertMemory = THREE.MathUtils.clamp(
-        enemyData.alertMemory + (strength > 70 ? 0.12 : 0.055),
-        0,
-        1,
-      );
-      enemyData.lastMemoryGainAt = now;
-    }
-    const noiseGain = (strength > 70 ? 5.5 : 1.8) * (1 + enemyData.alertMemory * 1.2);
-    state.detection = Math.max(state.detection, strength > 70 ? 20 : 10);
-    state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
-    if (state.alert === 'HUNTING' && state.detection > 70) {
-      setEnemyDestination(event.x, event.z, 'HUNTING');
-      return;
-    }
-    const firstReaction = enemyData.mode !== 'INVESTIGATING';
-    setEnemyDestination(event.x, event.z, 'INVESTIGATING');
-    enemyData.investigateUntil = now + 3.5 + strength * 0.025;
-    enemyData.searchUntil = now + 16;
-    enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
-    if (firstReaction) enemyData.pauseUntil = now + 0.7;
-  }
+  reactToSoundEvent(event, now);
+}
+
+function emitPlayerSound(strength, baseHearingRadius) {
+  emitWorldSound(camera.position.x, camera.position.z, strength, baseHearingRadius, false);
 }
 
 function updateAudio(time) {
@@ -1203,6 +1321,7 @@ function respawnPlayer() {
   state.roarUntil = 0;
   scheduleNextRoar(clock.elapsedTime);
   state.nextSoundRippleAt = 0;
+  state.nextTrapAt = 0;
   state.lockerExitGraceUntil = clock.elapsedTime + 1;
   state.settingsOpen = false;
   mobileInput.moveX = mobileInput.moveY = 0;
@@ -1250,6 +1369,8 @@ function respawnPlayer() {
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
+  for (const trap of noiseTraps) { scene.remove(trap.mesh); trap.mesh.geometry.dispose(); }
+  noiseTraps.length = 0;
   chooseRandomEnemyRoute();
   showToast('意識を取り戻した');
   if (!mobileInput.active) lockPointer();
@@ -1476,6 +1597,73 @@ const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
 
+
+const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true, opacity: 0.42, depthWrite: false });
+const trapTriggeredMat = new THREE.MeshBasicMaterial({ color: 0xff5a42, transparent: true, opacity: 0.62, depthWrite: false });
+function scheduleNextTrap(time) {
+  state.nextTrapAt = time + 18 + Math.random() * 28;
+}
+
+function canPlaceTrapAt(x, z) {
+  if (!isSafeSpawnPoint(x, z, 0.64)) return false;
+  if (horizontalDistance({ x, z }, camera.position) < 3.5) return false;
+  if (horizontalDistance({ x, z }, exitDoor.position) < 2.4) return false;
+  if (horizontalDistance({ x, z }, breakerPanel.position) < 2.0) return false;
+  if (noiseTraps.some((trap) => !trap.triggered && Math.hypot(trap.x - x, trap.z - z) < 5.2)) return false;
+  return true;
+}
+
+function dropNoiseTrap(time) {
+  const baseNode = nearestNode(enemy.position.x, enemy.position.z);
+  const candidates = [baseNode, ...walkableNodes]
+    .filter(Boolean)
+    .filter((node) => Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) < 5.6)
+    .sort(() => Math.random() - 0.5);
+  const node = candidates.find((candidate) => canPlaceTrapAt(candidate.x, candidate.z));
+  if (!node) return;
+  const mesh = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.018, 6, 24), trapMat.clone());
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.set(node.x, 0.035, node.z);
+  scene.add(mesh);
+  noiseTraps.push({ mesh, x: node.x, z: node.z, createdAt: time, triggered: false, removeAt: time + 160 });
+  if (noiseTraps.length > 6) {
+    const old = noiseTraps.shift();
+    scene.remove(old.mesh);
+    old.mesh.geometry.dispose();
+  }
+}
+
+function updateNoiseTraps(dt, time) {
+  if (!state.nextTrapAt) scheduleNextTrap(time);
+  if (state.started && time >= state.nextTrapAt) {
+    dropNoiseTrap(time);
+    scheduleNextTrap(time);
+  }
+  for (let i = noiseTraps.length - 1; i >= 0; i -= 1) {
+    const trap = noiseTraps[i];
+    trap.mesh.rotation.z += dt * 0.8;
+    trap.mesh.material.opacity = trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
+    if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
+      trap.triggered = true;
+      trap.removeAt = time + 4.5;
+      trap.mesh.material = trapTriggeredMat.clone();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      const cameraRight = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+      const directionToTrap = new THREE.Vector3(trap.x - camera.position.x, 0, trap.z - camera.position.z).normalize();
+      playTrapSound(0.64, cameraRight.dot(directionToTrap));
+      emitWorldSound(trap.x, trap.z, 92, 24, true);
+      showToast('足元の罠が鳴った');
+    }
+    if (time >= trap.removeAt) {
+      scene.remove(trap.mesh);
+      trap.mesh.geometry.dispose();
+      noiseTraps.splice(i, 1);
+    }
+  }
+}
+
 function scheduleNextRoar(time) {
   state.nextRoarAt = time + 60 + Math.random() * 120;
 }
@@ -1591,6 +1779,11 @@ function updateSonarModel(dt, time) {
 
 function updateEnemy(dt, time) {
   if (state.ended) return;
+  if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.36)) {
+    const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
+    enemy.position.set(safe.x, 0, safe.z);
+    enemyData.path = [];
+  }
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
   const playerEye = camera.position.clone();
@@ -1727,6 +1920,8 @@ function updateEnemy(dt, time) {
         enemy.rotation.y = Math.atan2(direction.x, direction.z);
         enemyData.isMoving = true;
       } else {
+        const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
+        if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.36)) enemy.position.set(safe.x, 0, safe.z);
         enemyData.path = [];
         if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
         else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
@@ -1757,8 +1952,8 @@ function updateEnemy(dt, time) {
   enemy.position.y = enemyData.isMoving ? Math.abs(Math.sin(time * (enemyData.speed > 2 ? 5.5 : 3.5))) * 0.035 : 0;
 
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
-    ? String(0.13 + Math.sin(time * 7) * 0.07)
-    : state.hidden && distance < 6 ? String(0.05 + Math.sin(time * 4) * 0.025) : '0';
+    ? '0.12'
+    : state.hidden && distance < 6 ? '0.035' : '0';
   const clearAtCloseRange = !passByActive && distance < 1.45 && lineOfSightToPlayer;
   const fullyDetected = state.detection >= 99.5 && visible;
   if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
@@ -1819,7 +2014,7 @@ function updateLight(time) {
   flashlight.position.copy(camera.position).addScaledVector(forward, 0.12);
   flashlight.target.position.copy(camera.position).addScaledVector(forward, 24);
   fillLight.position.copy(camera.position);
-  flashlight.intensity = (Math.random() < 0.006 ? 27 : 117) * (state.battery < 15 ? 0.55 + Math.sin(time * 17) * 0.35 : 1);
+  flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1);
   for (const item of keyItems) {
     item.group.rotation.y = time * 0.9 + item.phase;
     item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;
@@ -1981,6 +2176,7 @@ function animate() {
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
+    updateNoiseTraps(dt, time);
     updateSonarModel(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
