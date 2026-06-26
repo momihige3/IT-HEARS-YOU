@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'TRAP-ROAR-SHAKE-FIX-20260626';
+const PERF_BUILD_ID = 'HP-BALANCE-BREAKER-HEAL-NOISE-20260626';
 const INTERNAL_MAX_W = 1280;
 const INTERNAL_MAX_H = 720;
 const scene = new THREE.Scene();
@@ -422,10 +422,13 @@ schoolLights.push(exitLight);
 
 const breakerRoom = schoolRooms.find((room) => room.id === 'breaker');
 const breakerCandidates = walkableNodes.filter((node) =>
-  node.key !== exitNode.key && breakerRoom && node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1 && node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1);
+  node.key !== exitNode.key && breakerRoom &&
+  node.gx === breakerRoom.gx0 &&
+  node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1);
 const breakerNode = breakerCandidates[Math.floor(Math.random() * breakerCandidates.length)] || walkableNodes[walkableNodes.length - 1];
 const breakerPosition = new THREE.Vector3(breakerNode.x, 0, breakerNode.z);
-const breakerWallSide = breakerNode.gx <= GRID_HALF_W ? -1 : 1;
+// ブレーカーは必ずブレーカー室の西側の壁へ貼り付ける。床置き・中央置きは禁止。
+const breakerWallSide = -1;
 const breakerPanel = addBox(
   breakerPosition.x + breakerWallSide * 1.72,
   1.45,
@@ -1095,14 +1098,15 @@ function reactToSoundEvent(event, now) {
   const strength = event.strength;
   if (now - enemyData.lastMemoryGainAt > 0.85) {
     enemyData.alertMemory = THREE.MathUtils.clamp(
-      enemyData.alertMemory + (strength > 70 ? 0.12 : 0.055),
+      enemyData.alertMemory + (strength > 70 ? 0.18 : 0.035),
       0,
       1,
     );
     enemyData.lastMemoryGainAt = now;
   }
-  const noiseGain = (strength > 70 ? 5.5 : 1.8) * (1 + enemyData.alertMemory * 1.2);
-  state.detection = Math.max(state.detection, strength > 70 ? 20 : 10);
+  // 歩き音は警戒度上昇をゆっくり、走り音はより危険にする。
+  const noiseGain = (strength > 70 ? 9.0 : 1.15) * (1 + enemyData.alertMemory * 1.2);
+  state.detection = Math.max(state.detection, strength > 70 ? 28 : 8);
   state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
   if (forceTrapResponse) {
     setEnemyDestination(event.x, event.z, 'TRAP_RUSH');
@@ -1154,7 +1158,7 @@ function updateAudio(time) {
   if (moving && time > audio.nextStep) {
     const settings = state.moveMode === 'RUNNING'
       ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 21 }
-      : { volume: 0.46, pitch: 1, interval: 0.44, radius: 2 };
+      : { volume: 0.46, pitch: 1, interval: 0.44, radius: 3 };
     playFootstep(settings.volume, settings.pitch, 0);
     emitPlayerSound(state.noise, settings.radius);
     audio.nextStep = time + settings.interval;
@@ -1397,6 +1401,8 @@ function respawnPlayer() {
   noiseTraps.length = 0;
   for (const item of healItems) { scene.remove(item.group); scene.remove(item.light); }
   healItems.length = 0;
+  spawnHealItem(clock.elapsedTime, true);
+  scheduleNextHeal(clock.elapsedTime);
   chooseRandomEnemyRoute();
   showToast('意識を取り戻した');
   if (!mobileInput.active) lockPointer();
@@ -1485,6 +1491,10 @@ $('#start-button').addEventListener('click', () => {
   state.started = true;
   initAudio();
   scheduleNextRoar(clock.elapsedTime);
+  if (healItems.length === 0) {
+    spawnHealItem(clock.elapsedTime, true);
+    scheduleNextHeal(clock.elapsedTime);
+  }
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   lockPointer();
@@ -1742,9 +1752,9 @@ function scheduleNextHeal(time) {
   state.nextHealAt = time + 60 + Math.random() * 60;
 }
 
-function canPlaceHealAt(x, z) {
+function canPlaceHealAt(x, z, allowNearPlayer = false) {
   if (!isSafeSpawnPoint(x, z, 0.78)) return false;
-  if (horizontalDistance({ x, z }, camera.position) < 5.5) return false;
+  if (!allowNearPlayer && horizontalDistance({ x, z }, camera.position) < 5.5) return false;
   if (horizontalDistance({ x, z }, exitDoor.position) < 3.2) return false;
   if (horizontalDistance({ x, z }, breakerPanel.position) < 2.2) return false;
   if (keyItems.some((item) => !item.collected && horizontalDistance({ x, z }, item.group.position) < 2.0)) return false;
@@ -1753,9 +1763,9 @@ function canPlaceHealAt(x, z) {
   return true;
 }
 
-function spawnHealItem(time) {
+function spawnHealItem(time, allowNearPlayer = false) {
   const candidates = walkableNodes
-    .filter((node) => canPlaceHealAt(node.x, node.z))
+    .filter((node) => canPlaceHealAt(node.x, node.z, allowNearPlayer))
     .sort(() => Math.random() - 0.5);
   const node = candidates[0];
   if (!node) return;
@@ -1791,9 +1801,8 @@ function updateHealItems(dt, time) {
     item.group.rotation.y += dt * 1.25;
     item.group.position.y = item.baseY + Math.sin(time * 2.2 + item.phase) * 0.055;
     item.light.position.copy(item.group.position).add(new THREE.Vector3(0, 0.35, 0));
-    if (!state.hidden && horizontalDistance(camera.position, item) < 1.45) {
+    if (!state.hidden && state.hp < 100 && horizontalDistance(camera.position, item) < 1.45) {
       healPlayer(30);
-      showToast('回復アイテムを使った　HP +30');
       scene.remove(item.group);
       scene.remove(item.light);
       healItems.splice(i, 1);
@@ -1826,6 +1835,8 @@ function triggerSonarRoar(time) {
     state.noise = 0;
     state.shakeUntil = Math.max(state.shakeUntil, time + 3);
     state.shakePower = Math.max(state.shakePower, 1.75);
+    // しりもち音：歩き音の2倍の範囲で、少しだけ警戒度を上げる。
+    emitWorldSound(camera.position.x, camera.position.z, 28, 6, true);
     mobileInput.moveX = mobileInput.moveY = 0;
     keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
   }
@@ -2154,9 +2165,7 @@ function updateHUD() {
   $('#battery-value').textContent = `${Math.ceil(state.battery)}%`;
   $('#battery-bar').style.width = `${state.battery}%`;
   const hpBar = $('#hp-bar');
-  const hpValue = $('#hp-value');
   if (hpBar) hpBar.style.width = `${state.hp}%`;
-  if (hpValue) hpValue.textContent = `${Math.ceil(state.hp)} / 100`;
 }
 
 function updateLight(time) {

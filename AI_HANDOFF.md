@@ -46,3 +46,14 @@
 - Random healing items spawn every 60-120 seconds.
 - Healing items restore 30 HP and trigger a green screen flash.
 - Healing items avoid walls, colliders, keys, breaker, exit, and active traps.
+
+## Gameplay Balance Update - 2026-06-26
+- HP number text removed; thick HP bar only.
+- Healing item pickup no longer shows toast/log.
+- Walking sound radius changed from 2 to 3 (x1.5).
+- Walking sound alert gain slowed.
+- Running sound alert gain increased.
+- Breaker is forced onto the breaker-room wall.
+- One healing item is guaranteed at game start/respawn.
+- Healing items cannot be consumed while HP is full.
+- Roar knockdown emits a small stumble sound with radius 6, equal to x2 walking radius, causing a small alert increase.
