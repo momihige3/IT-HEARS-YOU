@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'PERF-CONFIRMED-960-20260625';
+const PERF_BUILD_ID = 'ROOM-BREAKER-FLASHLIGHT-20260626';
 const INTERNAL_MAX_W = 1280;
 const INTERNAL_MAX_H = 720;
 const scene = new THREE.Scene();
@@ -136,6 +136,19 @@ const directions = [
   [0, -1],
 ];
 
+const schoolRooms = [
+  { id: 'breaker', name: 'ブレーカー室', gx0: 1, gx1: 3, gz0: 15, gz1: 17, connector: [[4, 16], [5, 16], [6, 16]], sign: { gx: 3.55, gz: 16, side: 'east' } },
+  { id: 'classroom-a', name: '1年A組', gx0: 9, gx1: 11, gz0: 14, gz1: 17, connector: [[8, 16], [7, 16], [6, 16]], sign: { gx: 8.45, gz: 16, side: 'west' } },
+  { id: 'science', name: '理科室', gx0: 1, gx1: 3, gz0: 1, gz1: 3, connector: [[4, 2], [5, 2], [6, 2]], sign: { gx: 3.55, gz: 2, side: 'east' } },
+  { id: 'nurse', name: '保健室', gx0: 9, gx1: 11, gz0: 1, gz1: 3, connector: [[8, 2], [7, 2], [6, 2]], sign: { gx: 8.45, gz: 2, side: 'west' } },
+  { id: 'staff', name: '職員室', gx0: 1, gx1: 4, gz0: 8, gz1: 10, connector: [[5, 9], [6, 9]], sign: { gx: 4.55, gz: 9, side: 'east' } },
+  { id: 'music', name: '音楽室', gx0: 8, gx1: 11, gz0: 8, gz1: 10, connector: [[7, 9], [6, 9]], sign: { gx: 7.45, gz: 9, side: 'west' } },
+];
+
+function getRoomAt(gx, gz) {
+  return schoolRooms.find((room) => gx >= room.gx0 && gx <= room.gx1 && gz >= room.gz0 && gz <= room.gz1) || null;
+}
+
 // Randomized school layout: a connected spine, classrooms, dead ends, and uneven loops.
 for (let gz = 0; gz < GRID_H; gz += 1) carve(6, gz);
 for (const gz of [2, 5, 8, 11, 14, 17]) {
@@ -164,6 +177,13 @@ carve(2, 17);
 carve(10, 1);
 carve(11, 1);
 
+for (const room of schoolRooms) {
+  for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
+    for (let gz = room.gz0; gz <= room.gz1; gz += 1) carve(gx, gz);
+  }
+  for (const [gx, gz] of room.connector) carve(gx, gz);
+}
+
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
@@ -180,7 +200,8 @@ for (const key of walkable) {
   const [gx, gz] = key.split(',').map(Number);
   const pos = worldFromGrid(gx, gz);
   navNodes.set(key, { key, gx, gz, x: pos.x, z: pos.z });
-  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, (gx === 1 || gx === 11 || gz === 2 || gz === 17) ? classroomFloorMat : floorMat, false, false, false);
+  const room = getRoomAt(gx, gz);
+  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, room ? classroomFloorMat : floorMat, false, false, false);
   addBox(pos.x, 4.25, pos.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat, false, false, false);
 
   for (const [dx, dz] of directions) {
@@ -337,8 +358,9 @@ exitLight.position.set(exitPosition.x, 3.4, exitPosition.z);
 scene.add(exitLight);
 schoolLights.push(exitLight);
 
+const breakerRoom = schoolRooms.find((room) => room.id === 'breaker');
 const breakerCandidates = walkableNodes.filter((node) =>
-  node.key !== exitNode.key && Math.hypot(node.gx - 6, node.gz - 18) > 4 && (node.gx + node.gz) % 2 === 1);
+  node.key !== exitNode.key && breakerRoom && node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1 && node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1);
 const breakerNode = breakerCandidates[Math.floor(Math.random() * breakerCandidates.length)] || walkableNodes[walkableNodes.length - 1];
 const breakerPosition = new THREE.Vector3(breakerNode.x, 0, breakerNode.z);
 const breakerWallSide = breakerNode.gx <= GRID_HALF_W ? -1 : 1;
@@ -370,35 +392,45 @@ const breakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
 breakerLight.position.set(breakerPosition.x + breakerWallSide * 1.35, 2.2, breakerPosition.z);
 scene.add(breakerLight);
 
-const floorLabels = [
-  { text: 'B1 ブレーカー室', gz: 17 },
-  { text: '1F 教室棟', gz: 12 },
-  { text: '2F 教室棟', gz: 7 },
-  { text: '3F 非常口候補', gz: 2 },
-];
-function makeSignTexture(text) {
+
+function addRoomFixtures(room) {
+  const center = worldFromGrid((room.gx0 + room.gx1) / 2, (room.gz0 + room.gz1) / 2);
+  if (room.id !== 'breaker') {
+    addBox(center.x, 1.02, center.z - 1.25, 2.15, 0.08, 0.72, classroomFloorMat, true, false, false);
+    addBox(center.x, 1.58, center.z + 1.58, 2.6, 1.05, 0.08, signMat, false, false, false);
+  } else {
+    addBox(center.x, 0.58, center.z + 1.1, 1.7, 1.16, 0.7, metalMat, true, false, false);
+  }
+}
+
+function addWallPlate(text, plateInfo) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
-  canvas.height = 128;
+  canvas.height = 160;
   const context = canvas.getContext('2d');
-  context.fillStyle = 'rgba(236, 241, 224, .82)';
-  context.fillRect(0, 0, 512, 128);
-  context.strokeStyle = '#41554a';
-  context.lineWidth = 6;
-  context.strokeRect(4, 4, 504, 120);
-  context.fillStyle = '#24322c';
-  context.font = 'bold 44px sans-serif';
+  context.fillStyle = 'rgba(235, 239, 222, .94)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = '#3b4c43';
+  context.lineWidth = 10;
+  context.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  context.fillStyle = '#203028';
+  context.font = 'bold 58px sans-serif';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText(text, 256, 64);
-  return new THREE.CanvasTexture(canvas);
+  context.fillText(text, canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.75, 0.55), new THREE.MeshBasicMaterial({ map: texture, transparent: true }));
+  const pos = worldFromGrid(plateInfo.gx, plateInfo.gz);
+  const offset = plateInfo.side === 'east' ? 0.08 : -0.08;
+  mesh.position.set(pos.x + offset, 2.55, pos.z);
+  mesh.rotation.y = plateInfo.side === 'east' ? Math.PI / 2 : -Math.PI / 2;
+  scene.add(mesh);
 }
-for (const label of floorLabels) {
-  const pos = worldFromGrid(6, label.gz);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeSignTexture(label.text), transparent: true, depthTest: true }));
-  sprite.position.set(pos.x, 3.05, pos.z);
-  sprite.scale.set(2.45, 0.62, 1);
-  scene.add(sprite);
+
+for (const room of schoolRooms) {
+  addRoomFixtures(room);
+  addWallPlate(room.name, room.sign);
 }
 
 const exitCounterCanvas = document.createElement('canvas');
@@ -684,12 +716,12 @@ function choosePassByRoute(time) {
 }
 
 // Flashlight.
-const flashlight = new THREE.SpotLight(0xf4f1dc, 78, 46, Math.PI / 5.5, 0.86, 1.8);
+const flashlight = new THREE.SpotLight(0xf4f1dc, 117, 138, Math.PI / 2.75, 0.86, 1.8);
 flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
 scene.add(flashlight);
 scene.add(flashlight.target);
-const fillLight = new THREE.PointLight(0xcbd5c1, 0.22, 2.2);
+const fillLight = new THREE.PointLight(0xcbd5c1, 0.36, 4.4);
 scene.add(fillLight);
 const lockerViewLight = new THREE.SpotLight(0x9cac9f, 20, 11, Math.PI / 5, 0.65, 1.35);
 lockerViewLight.visible = false;
@@ -987,12 +1019,15 @@ function setBreaker(on) {
 function updateSchoolLighting(time) {
   if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
   const power = state.breakerOn ? 1 : 0;
-  hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 2.8, power);
-  ambientLight.intensity = THREE.MathUtils.lerp(0.38, 2.35, power);
-  scene.fog.density = THREE.MathUtils.lerp(0.018, 0.0018, power);
-  scene.background.set(power ? 0x9eb0b7 : 0x080b08);
-  renderer.toneMappingExposure = THREE.MathUtils.lerp(1.08, 1.85, power);
-  for (const light of schoolLights) light.intensity = THREE.MathUtils.lerp(2.2, 14.5, power);
+  hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 3.8, power);
+  ambientLight.intensity = THREE.MathUtils.lerp(0.38, 3.25, power);
+  scene.fog.density = THREE.MathUtils.lerp(0.018, 0.0009, power);
+  scene.background.set(power ? 0xc8d4d8 : 0x080b08);
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(1.08, 2.25, power);
+  for (const light of schoolLights) {
+    light.intensity = THREE.MathUtils.lerp(2.2, 22.0, power);
+    light.distance = THREE.MathUtils.lerp(8, 22, power);
+  }
 }
 
 function enterLocker(locker) {
@@ -1391,7 +1426,9 @@ function updatePlayer(dt) {
     state.bob += dt * speed * (running ? 2.1 : 1.65);
     camera.position.y += Math.sin(state.bob * 3.6) * (running ? 0.038 : 0.022);
   }
-  if (state.flashlight) {
+  if (state.hidden) {
+    state.battery = Math.min(100, state.battery + dt * 1.35);
+  } else if (state.flashlight) {
     state.battery = Math.max(0, state.battery - dt * 0.18);
     if (state.battery <= 0) state.flashlight = false;
   } else {
@@ -1662,9 +1699,9 @@ function updateLight(time) {
   camera.getWorldDirection(forward);
   lockerViewLight.target.position.copy(camera.position).addScaledVector(forward, 5);
   flashlight.position.copy(camera.position).addScaledVector(forward, 0.12);
-  flashlight.target.position.copy(camera.position).addScaledVector(forward, 8);
+  flashlight.target.position.copy(camera.position).addScaledVector(forward, 24);
   fillLight.position.copy(camera.position);
-  flashlight.intensity = (Math.random() < 0.006 ? 18 : 78) * (state.battery < 15 ? 0.55 + Math.sin(time * 17) * 0.35 : 1);
+  flashlight.intensity = (Math.random() < 0.006 ? 27 : 117) * (state.battery < 15 ? 0.55 + Math.sin(time * 17) * 0.35 : 1);
   for (const item of keyItems) {
     item.group.rotation.y = time * 0.9 + item.phase;
     item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;

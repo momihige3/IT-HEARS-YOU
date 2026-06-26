@@ -52,3 +52,12 @@ Enemy update:
 - Turning the breaker ON brightens the school like daytime.
 - Breaker automatically turns OFF after exactly 180 seconds.
 - Breaker switch color changes red/off and green/on.
+
+## 2026-06-26 update
+
+- ロッカー内では懐中電灯ON/OFFに関係なくバッテリーが充電されます。
+- ブレーカーON時の明るさ範囲を拡大しました。
+- 懐中電灯を強化しました：明るさ1.5倍、照射角2倍、距離3倍。
+- 学校マップに部屋空間を追加しました。
+- 通路上の案内表示ではなく、入口横の壁プレートとして部屋名を表示します。
+- ブレーカー表示は実際のブレーカー室に配置されます。
