@@ -3,9 +3,9 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'MOBILE-COIN-SHOP-LIGHT-20260626';
-const INTERNAL_MAX_W = 1280;
-const INTERNAL_MAX_H = 720;
+const PERF_BUILD_ID = 'MOBILE-COIN-SHOP-FIX-20260627';
+const INTERNAL_MAX_W = 1920;
+const INTERNAL_MAX_H = 1080;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080b08);
 scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
@@ -1055,6 +1055,29 @@ function playEnemyFootstep(volume, pan = 0) {
   impact.stop(ctx.currentTime + 0.24);
 }
 
+function playCoinSound() {
+  if (!audio) return;
+  const { ctx, master } = audio;
+  const gain = ctx.createGain();
+  const first = ctx.createOscillator();
+  const second = ctx.createOscillator();
+  first.type = 'triangle';
+  second.type = 'sine';
+  first.frequency.setValueAtTime(880, ctx.currentTime);
+  first.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.09);
+  second.frequency.setValueAtTime(1760, ctx.currentTime + 0.045);
+  second.frequency.exponentialRampToValueAtTime(1180, ctx.currentTime + 0.18);
+  gain.gain.setValueAtTime(0.22, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+  first.connect(gain);
+  second.connect(gain);
+  gain.connect(master);
+  first.start();
+  second.start(ctx.currentTime + 0.04);
+  first.stop(ctx.currentTime + 0.16);
+  second.stop(ctx.currentTime + 0.22);
+}
+
 
 function playTrapSound(volume = 0.55, pan = 0) {
   if (!audio || volume <= 0.006) return;
@@ -1537,7 +1560,7 @@ $('#start-button').addEventListener('click', () => {
     spawnHealItem(clock.elapsedTime, true);
     scheduleNextHeal(clock.elapsedTime);
   }
-  if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime - 30);
+  if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   lockPointer();
@@ -1882,9 +1905,18 @@ function updateHealItems(dt, time) {
 const coinMat = new THREE.MeshStandardMaterial({ color: 0xd6a842, roughness: 0.36, metalness: 0.65, emissive: 0x3a2505, emissiveIntensity: 0.28 });
 const shopMat = new THREE.MeshStandardMaterial({ color: 0x2d4b68, roughness: 0.62, metalness: 0.1, emissive: 0x061423, emissiveIntensity: 0.24 });
 const shopAccentMat = new THREE.MeshBasicMaterial({ color: 0x9fe7ff });
+const MAX_ACTIVE_COINS = 10;
 
 function scheduleNextCoin(time) {
   state.nextCoinAt = time + 30;
+}
+
+function removeCoinAt(index) {
+  const coin = coinItems[index];
+  if (!coin) return;
+  scene.remove(coin.group);
+  scene.remove(coin.light);
+  coinItems.splice(index, 1);
 }
 
 function canPlaceCoinAt(x, z) {
@@ -1901,6 +1933,7 @@ function canPlaceCoinAt(x, z) {
 }
 
 function spawnCoin(time) {
+  if (coinItems.filter((coin) => !coin.collected).length >= MAX_ACTIVE_COINS) return;
   const candidates = walkableNodes
     .filter((node) => canPlaceCoinAt(node.x, node.z))
     .sort(() => Math.random() - 0.5);
@@ -1915,12 +1948,7 @@ function spawnCoin(time) {
   const light = new THREE.PointLight(0xffcc62, 0.7, 2.8);
   light.position.copy(group.position).add(new THREE.Vector3(0, 0.3, 0));
   scene.add(light);
-  coinItems.push({ group, light, x: node.x, z: node.z, baseY: 0.72, phase: Math.random() * Math.PI * 2, removeAt: time + 150 });
-  if (coinItems.length > 8) {
-    const old = coinItems.shift();
-    scene.remove(old.group);
-    scene.remove(old.light);
-  }
+  coinItems.push({ group, light, x: node.x, z: node.z, baseY: 0.72, phase: Math.random() * Math.PI * 2, removeAt: time + 150, collected: false });
 }
 
 function updateCoins(dt, time) {
@@ -1931,21 +1959,23 @@ function updateCoins(dt, time) {
   }
   for (let i = coinItems.length - 1; i >= 0; i -= 1) {
     const coin = coinItems[i];
+    if (coin.collected) {
+      removeCoinAt(i);
+      continue;
+    }
     coin.group.rotation.y += dt * 2.7;
     coin.group.position.y = coin.baseY + Math.sin(time * 2.8 + coin.phase) * 0.05;
     coin.light.position.copy(coin.group.position).add(new THREE.Vector3(0, 0.28, 0));
     if (!state.hidden && horizontalDistance(camera.position, coin) < 1.25) {
+      coin.collected = true;
       state.coins += 1;
-      playKeySound(0.46);
-      scene.remove(coin.group);
-      scene.remove(coin.light);
-      coinItems.splice(i, 1);
+      playCoinSound();
+      removeCoinAt(i);
+      updateHUD();
       continue;
     }
     if (time >= coin.removeAt) {
-      scene.remove(coin.group);
-      scene.remove(coin.light);
-      coinItems.splice(i, 1);
+      removeCoinAt(i);
     }
   }
 }
@@ -2006,29 +2036,36 @@ function spendCoins(cost) {
   return true;
 }
 
+const SHOP_PRICES = {
+  heal: 3,
+  noise: 20,
+  breaker: 20,
+  light: 10,
+};
+
 function buyShopItem(type) {
   if (type === 'heal') {
     if (state.hp >= 100) return setShopMessage('HP満タンなので回復できない');
-    if (!spendCoins(1)) return setShopMessage('コインが足りない');
+    if (!spendCoins(SHOP_PRICES.heal)) return setShopMessage(`コインが足りない（回復：${SHOP_PRICES.heal}コイン）`);
     healPlayer(100);
     return setShopMessage(`全回復した / 所持コイン：${state.coins}`);
   }
   if (type === 'noise') {
     if (state.noiseMultiplier <= 0.5) return setShopMessage('ノイズ半減は購入済み');
-    if (!spendCoins(3)) return setShopMessage('コインが足りない');
+    if (!spendCoins(SHOP_PRICES.noise)) return setShopMessage(`コインが足りない（ノイズ半減：${SHOP_PRICES.noise}コイン）`);
     state.noiseMultiplier = 0.5;
     return setShopMessage(`ノイズ音が半分になった / 所持コイン：${state.coins}`);
   }
   if (type === 'breaker') {
     if (state.breakerDurationMultiplier >= 2) return setShopMessage('ブレーカー強化は購入済み');
-    if (!spendCoins(4)) return setShopMessage('コインが足りない');
+    if (!spendCoins(SHOP_PRICES.breaker)) return setShopMessage(`コインが足りない（ブレーカー強化：${SHOP_PRICES.breaker}コイン）`);
     state.breakerDurationMultiplier = 2;
     if (state.breakerOn) state.breakerOutAt = clock.elapsedTime + Math.max(0, state.breakerOutAt - clock.elapsedTime) * 2;
     return setShopMessage(`ブレーカーON時間が2倍になった / 所持コイン：${state.coins}`);
   }
   if (type === 'light') {
     if (state.lightRangeMultiplier >= 2) return setShopMessage('ライト範囲強化は購入済み');
-    if (!spendCoins(5)) return setShopMessage('コインが足りない');
+    if (!spendCoins(SHOP_PRICES.light)) return setShopMessage(`コインが足りない（ライト範囲2倍：${SHOP_PRICES.light}コイン）`);
     state.lightRangeMultiplier = 2;
     return setShopMessage(`ライト範囲が2倍になった / 所持コイン：${state.coins}`);
   }
@@ -2357,15 +2394,16 @@ function updateInteraction() {
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
   state.nearBreaker = horizontalDistance(camera.position, breakerPanel.position) < 2.35;
   state.nearShop = Boolean(shop && horizontalDistance(camera.position, shop) < 2.6);
-  if (state.hidden) prompt = '[ E ] ロッカーから出る';
-  else if (state.nearLocker) prompt = '[ E ] ロッカーの中に隠れる';
-  else if (state.nearBreaker) prompt = state.breakerOn ? '[ E ] ブレーカーは入っている' : '[ E ] ブレーカーを入れる';
-  else if (state.nearShop) prompt = '[ E ] ショップを開く';
-  else if (nearbyKey) prompt = `[ E ] 鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
+  const actionPrefix = mobileInput.active ? '' : '[ E ] ';
+  if (state.hidden) prompt = `${actionPrefix}ロッカーから出る`;
+  else if (state.nearLocker) prompt = `${actionPrefix}ロッカーの中に隠れる`;
+  else if (state.nearBreaker) prompt = state.breakerOn ? `${actionPrefix}ブレーカーは入っている` : `${actionPrefix}ブレーカーを入れる`;
+  else if (state.nearShop) prompt = `${actionPrefix}ショップを開く`;
+  else if (nearbyKey) prompt = `${actionPrefix}鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
   else if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
     prompt = state.keyCount >= REQUIRED_KEYS
-      ? '[ E ] 鍵を使って脱出'
-      : `[ E ] 出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
+      ? `${actionPrefix}鍵を使って脱出`
+      : `${actionPrefix}出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
   }
   $('#prompt').textContent = prompt;
   const mobileAction = $('#mobile-action');

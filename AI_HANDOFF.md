@@ -76,3 +76,27 @@ Implemented:
 Build:
 - `node node_modules/vite/bin/vite.js build` succeeded locally before node_modules/package-lock cleanup.
 - package-lock.json was removed to avoid internal registry URLs in GitHub Actions.
+
+## Mobile / Coin / Shop Fix
+
+- Fixed coin pickup freeze by adding collected guard
+- Removed collected coins from scene and coins array immediately
+- Added coin pickup sound
+- Coin spawn capped at 10 active coins
+- Coin spawn runs every 30 seconds; if 10 active coins already exist, no extra coin is added
+- Updated shop prices:
+  - Heal: 3 coins
+  - Noise reduction: 20 coins
+  - Breaker duration x2: 20 coins
+  - Flashlight range x2: 10 coins
+- Purchase failures now show a coin shortage message and do not spend coins
+- Heal purchase is blocked when HP is full
+- Mobile UI hides PC key labels
+- Mobile HUD/minimap scaled up
+- Mobile safe area margin added
+- Internal render cap changed to 1920x1080
+
+### Notes
+- Coin pickup uses `coin.collected = true` before changing the coin count, then removes the coin via `removeCoinAt()`.
+- Coin items are not physical colliders; the active pickup target list is `coinItems`, and collected coins are removed from that array immediately.
+- Mobile PC-key removal is handled in `updateInteraction()` with `mobileInput.active` and in CSS by hiding `.controls` on touch landscape.

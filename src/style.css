@@ -234,3 +234,117 @@ html, body { touch-action: none; }
   }
   #coin-panel { transform: scale(.85); transform-origin: top left; }
 }
+
+@media (hover:none) and (pointer:coarse) and (orientation:landscape) {
+  :root {
+    --safe-left: max(5vw, env(safe-area-inset-left));
+    --safe-right: max(5vw, env(safe-area-inset-right));
+    --safe-top: max(5vh, env(safe-area-inset-top));
+    --safe-bottom: max(5vh, env(safe-area-inset-bottom));
+  }
+  .controls { display: none; }
+  #hud {
+    inset: var(--safe-top) var(--safe-right) auto var(--safe-left);
+    align-items: flex-start;
+    gap: 22px;
+  }
+  .objective strong { font-size: 27px; }
+  .objective span { font-size: 16px; }
+  .status-cluster { width: 520px; }
+  .status-row {
+    height: 44px;
+    grid-template-columns: 120px 1fr 52px;
+    gap: 16px;
+    font-size: 21px;
+  }
+  .meter { height: 12px; }
+  .alert-line {
+    margin-top: 12px;
+    font-size: 21px;
+    gap: 15px;
+  }
+  #alert-dot {
+    width: 16px;
+    height: 16px;
+  }
+  #hp-panel {
+    width: 520px;
+    grid-template-columns: 58px 1fr;
+    gap: 16px;
+    font-size: 22px;
+  }
+  .hp-meter { height: 28px; }
+  #coin-panel {
+    min-width: 168px;
+    padding: 12px 18px;
+    transform: none;
+  }
+  #coin-panel span { font-size: 17px; }
+  #coin-panel strong { font-size: 36px; }
+  #radar-panel {
+    right: calc(var(--safe-right) + 205px);
+    top: var(--safe-top);
+    width: 300px;
+    transform: none;
+  }
+  .radar-title span { font-size: 22px; }
+  .radar-title small { font-size: 15px; }
+  #minimap {
+    width: 300px;
+    height: 300px;
+  }
+  .radar-legend {
+    font-size: 15px;
+    gap: 18px;
+  }
+  .radar-legend i {
+    width: 10px;
+    height: 10px;
+  }
+  #prompt {
+    max-width: 72vw;
+    font-size: 25px;
+    padding: 14px 22px;
+  }
+  #mobile-controls {
+    inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  }
+  .touch-stick {
+    left: 0;
+    bottom: 0;
+    width: 270px;
+    height: 270px;
+  }
+  .touch-stick i {
+    width: 106px;
+    height: 106px;
+    margin: -53px;
+  }
+  .touch-stick span { font-size: 15px; }
+  #move-stick { left: 0; }
+  .mobile-right-buttons {
+    right: 0;
+    bottom: 0;
+  }
+  .mobile-right-buttons button {
+    width: 190px;
+    min-height: 104px;
+    font-size: 24px;
+  }
+  #mobile-action {
+    min-width: 430px;
+    min-height: 124px;
+    font-size: 29px;
+  }
+  #bottom-hud kbd,
+  .battery-panel kbd,
+  .mode-panel div { display: none; }
+  #build-marker {
+    left: var(--safe-left);
+    top: var(--safe-top);
+  }
+  #perf-panel {
+    left: var(--safe-left);
+    bottom: var(--safe-bottom);
+  }
+}
