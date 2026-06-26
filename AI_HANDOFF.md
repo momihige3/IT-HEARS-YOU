@@ -68,3 +68,17 @@
 - Kept render cap at 1280x720 for performance/quality balance.
 - Removed `package-lock.json` from handoff package to avoid internal npm registry URL failures in GitHub Actions.
 - Fixed `.github/workflows/deploy.yml` to install from public npm with `npm install --no-package-lock --registry=https://registry.npmjs.org/`.
+
+
+## 2026-06-26 Breaker / Door cleanup
+
+Completed:
+- Removed decorative wall-side doors generated in the walkable-cell loop because they were not usable and confused players.
+- Changed breaker placement from a mostly fixed lower-left area to random valid walkable nodes, excluding the exit and start-near area.
+- Breaker ON duration is now fixed to 180 seconds.
+- Breaker ON lighting is much brighter: hemisphere/ambient lights, corridor lights, fog density, exposure, and background are adjusted to feel like daytime.
+- Breaker switch has visual red/off and green/on state.
+
+Notes:
+- Keep the real exit door interactive. Do not re-add fake doors unless they have clear blocked/locked visual language or actual interactions.
+- If the daytime state is too bright, tune updateSchoolLighting() only; do not change the horror night baseline.

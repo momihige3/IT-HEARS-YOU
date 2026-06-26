@@ -202,11 +202,7 @@ for (const key of walkable) {
     }
   }
 
-  if ((gx + gz) % 4 === 0) {
-    const doorSide = gx < 6 ? -1 : 1;
-    addBox(pos.x + doorSide * 1.93, 1.34, pos.z, 0.08, 2.12, 1.08, doorMat, false, false, false);
-    addBox(pos.x + doorSide * 1.88, 2.7, pos.z, 0.06, 0.22, 1.15, signMat, false, false, false);
-  }
+  // Wall-side decorative doors were removed because they looked usable but had no interaction.
 }
 
 const hemisphereLight = new THREE.HemisphereLight(0x78877a, 0x111511, 0.54);
@@ -341,12 +337,37 @@ exitLight.position.set(exitPosition.x, 3.4, exitPosition.z);
 scene.add(exitLight);
 schoolLights.push(exitLight);
 
-const breakerNode = walkableNodes.find((node) => node.gx <= 2 && node.gz >= GRID_H - 3) || walkableNodes[walkableNodes.length - 1];
+const breakerCandidates = walkableNodes.filter((node) =>
+  node.key !== exitNode.key && Math.hypot(node.gx - 6, node.gz - 18) > 4 && (node.gx + node.gz) % 2 === 1);
+const breakerNode = breakerCandidates[Math.floor(Math.random() * breakerCandidates.length)] || walkableNodes[walkableNodes.length - 1];
 const breakerPosition = new THREE.Vector3(breakerNode.x, 0, breakerNode.z);
-const breakerPanel = addBox(breakerPosition.x - 1.72, 1.45, breakerPosition.z, 0.18, 1.35, 0.82, material(0x252b28, 0.55, 0.45), true);
-addBox(breakerPosition.x - 1.58, 1.78, breakerPosition.z, 0.05, 0.2, 0.46, material(0xb8c5b9, 0.32), false, false, false);
+const breakerWallSide = breakerNode.gx <= GRID_HALF_W ? -1 : 1;
+const breakerPanel = addBox(
+  breakerPosition.x + breakerWallSide * 1.72,
+  1.45,
+  breakerPosition.z,
+  0.18,
+  1.35,
+  0.82,
+  material(0x252b28, 0.55, 0.45),
+  true,
+  false,
+  false,
+);
+const breakerSwitch = addBox(
+  breakerPosition.x + breakerWallSide * 1.58,
+  1.78,
+  breakerPosition.z,
+  0.05,
+  0.2,
+  0.46,
+  material(0xff6d4d, 0.32),
+  false,
+  false,
+  false,
+);
 const breakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
-breakerLight.position.set(breakerPosition.x - 1.35, 2.2, breakerPosition.z);
+breakerLight.position.set(breakerPosition.x + breakerWallSide * 1.35, 2.2, breakerPosition.z);
 scene.add(breakerLight);
 
 const floorLabels = [
@@ -954,20 +975,24 @@ function showToast(text) {
 
 function setBreaker(on) {
   state.breakerOn = on;
-  state.breakerOutAt = on ? clock.elapsedTime + 120 + Math.random() * 480 : Infinity;
+  state.breakerOutAt = on ? clock.elapsedTime + 180 : Infinity;
   breakerLight.color.set(on ? 0x7dffad : 0xff6d4d);
-  breakerLight.intensity = on ? 1.6 : 0.35;
-  showToast(on ? 'ブレーカーを入れた' : 'ブレーカーが落ちた');
+  breakerLight.intensity = on ? 2.6 : 0.35;
+  breakerSwitch.material.color.set(on ? 0x7dffad : 0xff6d4d);
+  breakerSwitch.material.emissive = new THREE.Color(on ? 0x1b7a3f : 0x5a120c);
+  breakerSwitch.material.emissiveIntensity = on ? 0.75 : 0.35;
+  showToast(on ? 'ブレーカーを入れた：3分間、校内が明るくなる' : 'ブレーカーが落ちた');
 }
 
 function updateSchoolLighting(time) {
   if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
   const power = state.breakerOn ? 1 : 0;
-  hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 1.35, power);
-  ambientLight.intensity = THREE.MathUtils.lerp(0.38, 1.12, power);
-  scene.fog.density = THREE.MathUtils.lerp(0.018, 0.006, power);
-  renderer.toneMappingExposure = THREE.MathUtils.lerp(1.08, 1.38, power);
-  for (const light of schoolLights) light.intensity = THREE.MathUtils.lerp(2.2, 8.5, power);
+  hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 2.8, power);
+  ambientLight.intensity = THREE.MathUtils.lerp(0.38, 2.35, power);
+  scene.fog.density = THREE.MathUtils.lerp(0.018, 0.0018, power);
+  scene.background.set(power ? 0x9eb0b7 : 0x080b08);
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(1.08, 1.85, power);
+  for (const light of schoolLights) light.intensity = THREE.MathUtils.lerp(2.2, 14.5, power);
 }
 
 function enterLocker(locker) {

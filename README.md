@@ -43,3 +43,12 @@ Enemy update:
 - The enemy is now `SONAR`, a lightweight Three.js primitive monster model.
 - No external 3D model files are required.
 - Shadows remain disabled for performance.
+
+
+## 2026-06-26 Breaker update
+
+- Removed non-interactive decorative wall-side doors that looked usable.
+- Breaker panel is now placed randomly from valid walkable school nodes each run.
+- Turning the breaker ON brightens the school like daytime.
+- Breaker automatically turns OFF after exactly 180 seconds.
+- Breaker switch color changes red/off and green/on.
