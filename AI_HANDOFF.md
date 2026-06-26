@@ -28,3 +28,11 @@
 ### Build note
 - `npm run build` was not executed in this sandbox because dependencies are not installed here (`vite: not found`).
 - GitHub Actions should install via public npm using the included workflow.
+
+## 2026-06-26 Trap Visibility / Forced Response / Roar Shake
+- Noise traps are now invisible while the breaker is OFF (`trap.mesh.visible = state.breakerOn`).
+- Triggered traps force SONAR to respond regardless of distance via `forceTrapResponse`.
+- Trap response interrupts pass-by/pause/lookaround and sends SONAR to the trap at max speed (`TRAP_RUSH`, speed 6.4).
+- SONAR roar no longer shows toast/log text.
+- SONAR roar now applies screen shake; stronger/longer shake when the player is knocked down.
+- Build was not completed in this environment due npm/network timeout. GitHub Actions should build after package-lock/deploy registry fixes.

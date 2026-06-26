@@ -3,7 +3,7 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'SPAWN-PLATE-TRAP-FIX-20260626';
+const PERF_BUILD_ID = 'TRAP-ROAR-SHAKE-FIX-20260626';
 const INTERNAL_MAX_W = 1280;
 const INTERNAL_MAX_H = 720;
 const scene = new THREE.Scene();
@@ -55,6 +55,8 @@ const state = {
   seatedUntil: 0,
   nextRoarAt: 0,
   roarUntil: 0,
+  shakeUntil: 0,
+  shakePower: 0,
   nextSoundRippleAt: 0,
   nextTrapAt: 0,
   detection: 0,
@@ -742,6 +744,7 @@ const enemyData = {
   coverPeekYaw: 0,
   blockedChaseSince: 0,
   passByUntil: 0,
+  trapRushUntil: 0,
   lookBackUntil: 0,
   lookBackYaw: 0,
 };
@@ -1079,8 +1082,9 @@ function playLockerSound(opening) {
 
 function reactToSoundEvent(event, now) {
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
-  if (distance > event.hearingRadius) return;
-  if (enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
+  const forceTrapResponse = event.forceTrapResponse === true;
+  if (!forceTrapResponse && distance > event.hearingRadius) return;
+  if (!forceTrapResponse && enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
   enemyData.lastHeardAt = now;
   enemyData.lastHeardPosition = { x: event.x, z: event.z };
   const strength = event.strength;
@@ -1095,6 +1099,17 @@ function reactToSoundEvent(event, now) {
   const noiseGain = (strength > 70 ? 5.5 : 1.8) * (1 + enemyData.alertMemory * 1.2);
   state.detection = Math.max(state.detection, strength > 70 ? 20 : 10);
   state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
+  if (forceTrapResponse) {
+    setEnemyDestination(event.x, event.z, 'TRAP_RUSH');
+    enemyData.trapRushUntil = now + 18;
+    enemyData.investigateUntil = now + 18;
+    enemyData.searchUntil = now + 22;
+    enemyData.investigateSpeed = 6.4;
+    enemyData.pauseUntil = 0;
+    enemyData.lookAroundUntil = 0;
+    enemyData.passByUntil = 0;
+    return;
+  }
   if (state.alert === 'HUNTING' && state.detection > 70) {
     setEnemyDestination(event.x, event.z, 'HUNTING');
     return;
@@ -1107,10 +1122,10 @@ function reactToSoundEvent(event, now) {
   if (firstReaction) enemyData.pauseUntil = now + 0.7;
 }
 
-function emitWorldSound(x, z, strength, baseHearingRadius, forceRipple = false) {
+function emitWorldSound(x, z, strength, baseHearingRadius, forceRipple = false, options = {}) {
   const hearingRadius = baseHearingRadius * (1 + enemyData.alertMemory * 0.28);
   const now = clock.elapsedTime;
-  const event = { x, z, strength, hearingRadius, age: 0, life: 2.4 };
+  const event = { x, z, strength, hearingRadius, age: 0, life: 2.4, ...options };
   if (forceRipple || now >= state.nextSoundRippleAt) {
     soundEvents.push(event);
     state.nextSoundRippleAt = now + 2.6;
@@ -1364,6 +1379,7 @@ function respawnPlayer() {
     coverPeekYaw: 0,
     blockedChaseSince: 0,
     passByUntil: 0,
+    trapRushUntil: 0,
     lookBackUntil: 0,
     lookBackYaw: 0,
   });
@@ -1642,6 +1658,7 @@ function updateNoiseTraps(dt, time) {
   for (let i = noiseTraps.length - 1; i >= 0; i -= 1) {
     const trap = noiseTraps[i];
     trap.mesh.rotation.z += dt * 0.8;
+    trap.mesh.visible = state.breakerOn;
     trap.mesh.material.opacity = trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
     if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
       trap.triggered = true;
@@ -1653,8 +1670,7 @@ function updateNoiseTraps(dt, time) {
       const cameraRight = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
       const directionToTrap = new THREE.Vector3(trap.x - camera.position.x, 0, trap.z - camera.position.z).normalize();
       playTrapSound(0.64, cameraRight.dot(directionToTrap));
-      emitWorldSound(trap.x, trap.z, 92, 24, true);
-      showToast('足元の罠が鳴った');
+      emitWorldSound(trap.x, trap.z, 100, 9999, true, { forceTrapResponse: true });
     }
     if (time >= trap.removeAt) {
       scene.remove(trap.mesh);
@@ -1670,6 +1686,8 @@ function scheduleNextRoar(time) {
 
 function triggerSonarRoar(time) {
   state.roarUntil = time + 1.4;
+  state.shakeUntil = Math.max(state.shakeUntil, time + 1.1);
+  state.shakePower = Math.max(state.shakePower, 1);
   scheduleNextRoar(time);
   playSonarRoar(0.72);
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
@@ -1679,11 +1697,10 @@ function triggerSonarRoar(time) {
   if (!state.hidden && distance <= runningDetectionRange) {
     state.seatedUntil = time + 2;
     state.noise = 0;
+    state.shakeUntil = Math.max(state.shakeUntil, time + 1.9);
+    state.shakePower = Math.max(state.shakePower, 1.55);
     mobileInput.moveX = mobileInput.moveY = 0;
     keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
-    showToast('ソナーの咆哮でしりもちをついた');
-  } else {
-    showToast('遠くでソナーが咆哮した');
   }
 }
 
@@ -1870,6 +1887,9 @@ function updateEnemy(dt, time) {
     state.alert = 'UNNOTICED';
     enemyData.speed = 2.6;
     state.detection = Math.max(0, state.detection - 42 * dt);
+  } else if (enemyData.mode === 'TRAP_RUSH' && time < enemyData.trapRushUntil) {
+    state.alert = 'SUSPICIOUS';
+    enemyData.speed = 6.4;
   } else if (state.detection > 70 && !state.hidden) {
     state.alert = 'HUNTING';
     enemyData.mode = 'HUNTING';
@@ -1897,8 +1917,13 @@ function updateEnemy(dt, time) {
   if (enemyData.path.length === 0) {
     if (enemyData.mode === 'PASSING_BY' && time < enemyData.passByUntil) {
       enemyData.lookBackUntil = time + 0.7 + Math.random() * 0.75;
+    } else if (enemyData.mode === 'TRAP_RUSH') {
+      enemyData.mode = 'SEARCHING';
+      enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 7);
+      enemyData.lookBaseYaw = enemy.rotation.y;
+      enemyData.lookAroundUntil = time + 1.0;
     } else if (enemyData.mode === 'SEARCHING' && time >= enemyData.lookAroundUntil) chooseCoverSearchRoute();
-    else if (!['INVESTIGATING', 'SEARCHING', 'PASSING_BY'].includes(enemyData.mode)) chooseRandomEnemyRoute();
+    else if (!['INVESTIGATING', 'SEARCHING', 'PASSING_BY', 'TRAP_RUSH'].includes(enemyData.mode)) chooseRandomEnemyRoute();
   }
   const target = enemyData.path[0];
   if (target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
@@ -2165,6 +2190,20 @@ let nextVisionUpdate = 0;
 let radarAccumulator = 1;
 let hudAccumulator = 1;
 let interactionAccumulator = 1;
+function updateScreenShake(time) {
+  const app = $('#app');
+  if (!app) return;
+  if (time < state.shakeUntil) {
+    const remain = Math.max(0, state.shakeUntil - time);
+    const power = state.shakePower * Math.min(1, remain / 0.55);
+    const x = (Math.sin(time * 72.3) + Math.sin(time * 39.7)) * 2.4 * power;
+    const y = (Math.cos(time * 66.1) + Math.sin(time * 51.9)) * 1.8 * power;
+    app.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
+  } else {
+    app.style.transform = '';
+    state.shakePower = 0;
+  }
+}
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -2200,6 +2239,7 @@ function animate() {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
+  updateScreenShake(time);
   renderer.render(scene, camera);
   perfFrames += 1;
   const now = performance.now();

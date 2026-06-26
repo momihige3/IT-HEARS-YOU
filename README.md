@@ -1,3 +1,15 @@
+# IT HEARS YOU - Trap/Roar Update
+
+Implemented changes:
+- Traps are not visible while breaker is OFF.
+- Traps become visible while breaker is ON.
+- When a trap is triggered, SONAR ignores distance and rushes to the trap location at max speed.
+- SONAR roar no longer displays toast/log messages.
+- SONAR roar shakes the screen instead.
+
+Build note:
+- Source files are updated.
+- If local build is unavailable, push to GitHub and let GitHub Actions build/deploy.
 # IT HEARS YOU
 
 First-person stealth horror prototype.
