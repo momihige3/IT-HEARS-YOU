@@ -88,16 +88,34 @@ const REQUIRED_KEYS = 5;
 const walkable = new Set();
 const navNodes = new Map();
 
-const material = (color, roughness = 0.82, metalness = 0.05) =>
-  new THREE.MeshStandardMaterial({ color, roughness, metalness });
-const wallMat = material(0x3d5048, 0.9);
-const trimMat = material(0x1f302b, 0.7);
-const floorMat = material(0x2c332f, 0.62);
-const ceilingMat = material(0xced5c8, 0.82);
-const metalMat = material(0x313c34, 0.42, 0.65);
+const textureLoader = new THREE.TextureLoader();
+const textureCache = new Map();
+function loadTexture(name, repeatX = 1, repeatY = 1) {
+  const key = `${name}:${repeatX}:${repeatY}`;
+  if (textureCache.has(key)) return textureCache.get(key);
+  const tex = textureLoader.load(`./textures/${name}`);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  textureCache.set(key, tex);
+  return tex;
+}
+const material = (color, roughness = 0.82, metalness = 0.05, map = null) =>
+  new THREE.MeshStandardMaterial({ color, roughness, metalness, map });
+const wallMat = material(0x7d877f, 0.94, 0.02, loadTexture('school_wall_concrete.png', 2, 2));
+const trimMat = material(0x31443e, 0.72, 0.04, loadTexture('school_wall_concrete.png', 1, 1));
+const floorMat = material(0x8fa39a, 0.68, 0.02, loadTexture('school_floor_wet_tile.png', 2, 2));
+const classroomFloorMat = material(0xa0744b, 0.72, 0.02, loadTexture('classroom_wood_floor.png', 2, 2));
+const ceilingMat = material(0xd6d9d0, 0.88, 0.02, loadTexture('ceiling_tile_stained.png', 2, 2));
+const metalMat = material(0x7c8780, 0.5, 0.55, loadTexture('locker_scratched_metal.png', 1, 1));
 const darkMat = material(0x080b09, 0.82);
-const doorMat = material(0x5b4b36, 0.7);
-const signMat = material(0x1d6243, 0.35);
+const doorMat = material(0x9a7853, 0.76, 0.04, loadTexture('old_door_wood.png', 1, 1));
+const signMat = material(0x267556, 0.35, 0.03, loadTexture('blackboard_green.png', 1, 1));
+const sonarSkinMat = material(0x4b5a4f, 0.82, 0.04, loadTexture('sonar_skin_wet.png', 1, 1));
+const sonarEarMat = material(0x6f2a23, 0.86, 0.02, loadTexture('sonar_ear_red.png', 1, 1));
+const sonarMouthMat = material(0x4a0806, 0.7, 0.02, loadTexture('sonar_mouth_dark.png', 1, 1));
 
 function worldFromGrid(gx, gz) {
   return new THREE.Vector3((gx - GRID_HALF_W) * CELL, 0, (gz - GRID_HALF_H) * CELL);
@@ -162,7 +180,7 @@ for (const key of walkable) {
   const [gx, gz] = key.split(',').map(Number);
   const pos = worldFromGrid(gx, gz);
   navNodes.set(key, { key, gx, gz, x: pos.x, z: pos.z });
-  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, floorMat, false, false, false);
+  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, (gx === 1 || gx === 11 || gz === 2 || gz === 17) ? classroomFloorMat : floorMat, false, false, false);
   addBox(pos.x, 4.25, pos.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat, false, false, false);
 
   for (const [dx, dz] of directions) {
@@ -416,19 +434,39 @@ updateExitCounter();
 
 // Enemy silhouette.
 const enemy = new THREE.Group();
-const enemyBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 1.15, 7, 10), material(0x101411, 0.8));
-enemyBody.position.y = 1.05;
-enemyBody.castShadow = true;
-enemy.add(enemyBody);
-const enemyHead = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 9), material(0x151916, 0.85));
-enemyHead.position.y = 2;
-enemy.add(enemyHead);
-const eyeMat = new THREE.MeshBasicMaterial({ color: 0xb7261c });
-for (const x of [-0.1, 0.1]) {
-  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.026, 6, 6), eyeMat);
-  eye.position.set(x, 2.04, 0.285);
-  enemy.add(eye);
+enemy.name = 'SONAR';
+const sonarParts = {};
+function sonarPart(name, geometry, mat, position, scale = [1, 1, 1], rotation = [0, 0, 0]) {
+  const mesh = new THREE.Mesh(geometry, mat);
+  mesh.name = name;
+  mesh.position.set(...position);
+  mesh.scale.set(...scale);
+  mesh.rotation.set(...rotation);
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  enemy.add(mesh);
+  sonarParts[name] = mesh;
+  return mesh;
 }
+sonarPart('body', new THREE.CapsuleGeometry(0.26, 1.28, 5, 8), sonarSkinMat, [0, 1.14, 0], [0.72, 1.18, 0.5]);
+sonarPart('ribCage', new THREE.BoxGeometry(0.46, 0.7, 0.18), sonarSkinMat, [0, 1.55, 0.02], [1, 1, 1]);
+sonarPart('head', new THREE.SphereGeometry(0.24, 10, 8), sonarSkinMat, [0, 2.28, 0.03], [0.78, 1.1, 0.72]);
+sonarPart('mouth', new THREE.BoxGeometry(0.08, 1.18, 0.035), sonarMouthMat, [0, 1.67, 0.235], [1.0, 1.0, 1.0]);
+sonarPart('leftEar', new THREE.SphereGeometry(0.28, 10, 8), sonarEarMat, [-0.36, 2.32, 0.02], [1.08, 1.48, 0.18], [0, 0.28, 0.18]);
+sonarPart('rightEar', new THREE.SphereGeometry(0.28, 10, 8), sonarEarMat, [0.36, 2.32, 0.02], [1.08, 1.48, 0.18], [0, -0.28, -0.18]);
+for (const side of [-1, 1]) {
+  const prefix = side < 0 ? 'left' : 'right';
+  sonarPart(`${prefix}UpperArm`, new THREE.CylinderGeometry(0.055, 0.075, 0.92, 6), sonarSkinMat, [side * 0.42, 1.22, 0.02], [1, 1, 1], [0.14, 0, side * 0.12]);
+  sonarPart(`${prefix}ForeArm`, new THREE.CylinderGeometry(0.04, 0.06, 1.12, 6), sonarSkinMat, [side * 0.55, 0.55, 0.07], [1, 1, 1], [0.08, 0, side * 0.1]);
+  sonarPart(`${prefix}Hand`, new THREE.SphereGeometry(0.08, 8, 6), sonarSkinMat, [side * 0.6, -0.05, 0.09], [0.7, 1.0, 0.45]);
+  for (let i = 0; i < 3; i += 1) {
+    sonarPart(`${prefix}Claw${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.32, 5), sonarMouthMat, [side * (0.55 + i * 0.055), -0.22, 0.13], [1, 1, 1], [0.55, 0, side * (0.15 + i * 0.05)]);
+  }
+  sonarPart(`${prefix}Thigh`, new THREE.CylinderGeometry(0.07, 0.095, 0.92, 6), sonarSkinMat, [side * 0.16, 0.55, 0], [1, 1, 1], [0.04, 0, side * 0.04]);
+  sonarPart(`${prefix}Shin`, new THREE.CylinderGeometry(0.045, 0.07, 0.92, 6), sonarSkinMat, [side * 0.18, -0.14, 0.06], [1, 1, 1], [-0.12, 0, side * -0.03]);
+  sonarPart(`${prefix}Foot`, new THREE.BoxGeometry(0.16, 0.08, 0.38), sonarSkinMat, [side * 0.18, -0.62, 0.19]);
+}
+enemy.scale.set(1.18, 1.18, 1.18);
 const enemyStart = worldFromGrid(1, 7);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
 scene.add(enemy);
@@ -1346,6 +1384,31 @@ function updateLockerView() {
   camera.rotation.z = 0;
 }
 
+function updateSonarModel(dt, time) {
+  const chase = enemyData.mode === 'HUNTING';
+  const investigate = enemyData.mode === 'INVESTIGATING' || enemyData.mode === 'SEARCHING';
+  const breathe = Math.sin(time * (chase ? 8.5 : 3.2));
+  enemy.scale.y = 1.18 + breathe * (chase ? 0.035 : 0.018);
+  if (sonarParts.leftEar && sonarParts.rightEar) {
+    const earOpen = chase ? 0.42 : investigate ? 0.28 : 0.12;
+    const twitch = Math.sin(time * 19) * (chase ? 0.07 : 0.025);
+    sonarParts.leftEar.rotation.z = 0.18 + earOpen + twitch;
+    sonarParts.rightEar.rotation.z = -0.18 - earOpen - twitch;
+    sonarParts.leftEar.scale.y = 1.48 + Math.abs(breathe) * 0.1;
+    sonarParts.rightEar.scale.y = 1.48 + Math.abs(breathe) * 0.1;
+  }
+  if (sonarParts.head) sonarParts.head.rotation.x = chase ? -0.22 + breathe * 0.03 : breathe * 0.02;
+  if (sonarParts.mouth) sonarParts.mouth.scale.x = chase ? 1.55 + Math.abs(breathe) * 0.25 : 1.0;
+  const armSwing = Math.sin(time * (chase ? 7.2 : 3.4));
+  for (const side of [-1, 1]) {
+    const prefix = side < 0 ? 'left' : 'right';
+    const upper = sonarParts[`${prefix}UpperArm`];
+    const fore = sonarParts[`${prefix}ForeArm`];
+    if (upper) upper.rotation.x = (chase ? -0.42 : 0.12) + armSwing * 0.12 * side;
+    if (fore) fore.rotation.x = (chase ? -0.35 : 0.08) - armSwing * 0.08 * side;
+  }
+}
+
 function updateEnemy(dt, time) {
   if (state.ended) return;
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
@@ -1737,6 +1800,7 @@ function animate() {
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
+    updateSonarModel(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
       nextVisionUpdate = time + 1 / 12;

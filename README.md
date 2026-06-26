@@ -24,3 +24,22 @@ npm run build
 ```
 
 `dist/index.html`からも起動確認できます。
+
+## Night school texture / SONAR update
+
+This build includes production-ready procedural textures under `public/textures/` and uses them through `THREE.TextureLoader`.
+
+Added:
+- realistic dark school wall concrete texture
+- wet hallway tile texture
+- classroom wood floor texture
+- stained ceiling tile texture
+- old door wood texture
+- scratched locker metal texture
+- blackboard/sign texture
+- SONAR wet skin, inner ear, and mouth textures
+
+Enemy update:
+- The enemy is now `SONAR`, a lightweight Three.js primitive monster model.
+- No external 3D model files are required.
+- Shadows remain disabled for performance.

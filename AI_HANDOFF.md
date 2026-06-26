@@ -58,3 +58,13 @@
 - `node_modules` がローカルにない環境では `npm run build` が失敗する可能性がある。
 - ローカル確認は `node --check src/main.js` と、必要に応じて一時 `preview.html` を使ったブラウザ確認で行う。
 - GitHub Pages では GitHub Actions 側でビルドされる構成。
+
+## 2026-06-26 Night School Texture / SONAR model implementation
+- Added procedural runtime-ready PNG textures in `public/textures/`.
+- Replaced flat school materials with texture-mapped wall, wet floor, classroom floor, ceiling tile, door, locker metal, sign/blackboard materials.
+- Replaced simple enemy capsule with lightweight primitive-based `SONAR` model.
+- SONAR uses shared materials, no shadows, no external glTF/Blender assets.
+- Added `updateSonarModel(dt, time)` for ear twitch, breathing, chase posture, mouth widening, and arm motion.
+- Kept render cap at 1280x720 for performance/quality balance.
+- Removed `package-lock.json` from handoff package to avoid internal npm registry URL failures in GitHub Actions.
+- Fixed `.github/workflows/deploy.yml` to install from public npm with `npm install --no-package-lock --registry=https://registry.npmjs.org/`.
