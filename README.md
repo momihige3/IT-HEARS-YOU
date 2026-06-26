@@ -27,3 +27,13 @@ First-person stealth horror prototype.
 GitHub Pages is deployed through GitHub Actions.
 
 Important: package-lock is intentionally omitted because older generated locks may include private registry URLs.
+
+
+## 2026-06-26 HP / Roar / Trap / Healing Update
+- Roar now shakes the screen for 3 seconds.
+- If the player is inside roar range, movement is locked for 5 seconds.
+- Added player HP system: max HP 100.
+- Noise traps deal 40 damage and trigger a red screen flash.
+- Random healing items spawn every 60-120 seconds.
+- Healing items restore 30 HP and trigger a green screen flash.
+- Healing items avoid walls, colliders, keys, breaker, exit, and active traps.

@@ -50,6 +50,10 @@ const state = {
   keyCount: 0,
   flashlight: true,
   battery: 100,
+  hp: 100,
+  screenFlashUntil: 0,
+  screenFlashColor: 'red',
+  nextHealAt: 0,
   breakerOn: false,
   breakerOutAt: Infinity,
   seatedUntil: 0,
@@ -86,6 +90,7 @@ const lockers = [];
 const soundEvents = [];
 const sonarReveals = [];
 const noiseTraps = [];
+const healItems = [];
 const CELL = 4;
 const GRID_W = 13;
 const GRID_H = 19;
@@ -1323,6 +1328,9 @@ function respawnPlayer() {
   state.keyCount = 0;
   state.flashlight = true;
   state.battery = 100;
+  state.hp = 100;
+  state.screenFlashUntil = 0;
+  state.nextHealAt = 0;
   state.detection = 0;
   state.alert = 'UNNOTICED';
   state.moveMode = 'WALKING';
@@ -1387,6 +1395,8 @@ function respawnPlayer() {
   sonarReveals.length = 0;
   for (const trap of noiseTraps) { scene.remove(trap.mesh); trap.mesh.geometry.dispose(); }
   noiseTraps.length = 0;
+  for (const item of healItems) { scene.remove(item.group); scene.remove(item.light); }
+  healItems.length = 0;
   chooseRandomEnemyRoute();
   showToast('意識を取り戻した');
   if (!mobileInput.active) lockPointer();
@@ -1614,6 +1624,49 @@ camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
 
 
+
+function flashScreen(color = 'red', duration = 0.32) {
+  const time = clock.elapsedTime;
+  state.screenFlashColor = color;
+  state.screenFlashUntil = Math.max(state.screenFlashUntil, time + duration);
+}
+
+function damagePlayer(amount, reason = 'damage') {
+  if (state.ended || state.caught) return;
+  state.hp = THREE.MathUtils.clamp(state.hp - amount, 0, 100);
+  flashScreen('red', 0.38);
+  state.shakeUntil = Math.max(state.shakeUntil, clock.elapsedTime + 0.42);
+  state.shakePower = Math.max(state.shakePower, 1.25);
+  if (state.hp <= 0) {
+    state.ended = true;
+    controls.unlock();
+    $('#message-kicker').textContent = reason === 'trap' ? '罠に倒れた' : '力尽きた';
+    $('#message-title').textContent = 'GAME OVER';
+    $('#message-body').textContent = '意識が闇に沈んでいく……';
+    $('#message-screen').classList.add('visible');
+  }
+}
+
+function healPlayer(amount) {
+  if (state.ended || state.caught) return;
+  const before = state.hp;
+  state.hp = THREE.MathUtils.clamp(state.hp + amount, 0, 100);
+  if (state.hp > before) flashScreen('green', 0.34);
+}
+
+function updateScreenFlash(time) {
+  const flash = $('#screen-flash');
+  if (!flash) return;
+  if (time < state.screenFlashUntil) {
+    const remain = state.screenFlashUntil - time;
+    const opacity = Math.min(0.72, remain * 2.4);
+    flash.style.opacity = opacity.toFixed(2);
+    flash.className = state.screenFlashColor === 'green' ? 'green' : 'red';
+  } else {
+    flash.style.opacity = '0';
+  }
+}
+
 const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true, opacity: 0.42, depthWrite: false });
 const trapTriggeredMat = new THREE.MeshBasicMaterial({ color: 0xff5a42, transparent: true, opacity: 0.62, depthWrite: false });
 function scheduleNextTrap(time) {
@@ -1664,6 +1717,7 @@ function updateNoiseTraps(dt, time) {
       trap.triggered = true;
       trap.removeAt = time + 4.5;
       trap.mesh.material = trapTriggeredMat.clone();
+      damagePlayer(40, 'trap');
       camera.getWorldDirection(forward);
       forward.y = 0;
       forward.normalize();
@@ -1680,14 +1734,87 @@ function updateNoiseTraps(dt, time) {
   }
 }
 
+
+const healMat = new THREE.MeshStandardMaterial({ color: 0x2f8f5a, roughness: 0.45, metalness: 0.05, emissive: 0x0b2c18, emissiveIntensity: 0.35 });
+const healCrossMat = new THREE.MeshBasicMaterial({ color: 0xdaf7df });
+
+function scheduleNextHeal(time) {
+  state.nextHealAt = time + 60 + Math.random() * 60;
+}
+
+function canPlaceHealAt(x, z) {
+  if (!isSafeSpawnPoint(x, z, 0.78)) return false;
+  if (horizontalDistance({ x, z }, camera.position) < 5.5) return false;
+  if (horizontalDistance({ x, z }, exitDoor.position) < 3.2) return false;
+  if (horizontalDistance({ x, z }, breakerPanel.position) < 2.2) return false;
+  if (keyItems.some((item) => !item.collected && horizontalDistance({ x, z }, item.group.position) < 2.0)) return false;
+  if (noiseTraps.some((trap) => !trap.triggered && Math.hypot(trap.x - x, trap.z - z) < 2.0)) return false;
+  if (healItems.some((item) => Math.hypot(item.x - x, item.z - z) < 5.0)) return false;
+  return true;
+}
+
+function spawnHealItem(time) {
+  const candidates = walkableNodes
+    .filter((node) => canPlaceHealAt(node.x, node.z))
+    .sort(() => Math.random() - 0.5);
+  const node = candidates[0];
+  if (!node) return;
+  const group = new THREE.Group();
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.26, 0.34), healMat);
+  group.add(box);
+  const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.015, 0.21), healCrossMat);
+  crossV.position.y = 0.14;
+  const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.015, 0.07), healCrossMat);
+  crossH.position.y = 0.145;
+  group.add(crossV, crossH);
+  group.position.set(node.x, 0.72, node.z);
+  scene.add(group);
+  const light = new THREE.PointLight(0x61ff8f, 1.4, 3.2);
+  light.position.copy(group.position).add(new THREE.Vector3(0, 0.35, 0));
+  scene.add(light);
+  healItems.push({ group, light, x: node.x, z: node.z, baseY: 0.72, phase: Math.random() * Math.PI * 2, removeAt: time + 180 });
+  if (healItems.length > 3) {
+    const old = healItems.shift();
+    scene.remove(old.group);
+    scene.remove(old.light);
+  }
+}
+
+function updateHealItems(dt, time) {
+  if (!state.nextHealAt) scheduleNextHeal(time);
+  if (state.started && time >= state.nextHealAt) {
+    spawnHealItem(time);
+    scheduleNextHeal(time);
+  }
+  for (let i = healItems.length - 1; i >= 0; i -= 1) {
+    const item = healItems[i];
+    item.group.rotation.y += dt * 1.25;
+    item.group.position.y = item.baseY + Math.sin(time * 2.2 + item.phase) * 0.055;
+    item.light.position.copy(item.group.position).add(new THREE.Vector3(0, 0.35, 0));
+    if (!state.hidden && horizontalDistance(camera.position, item) < 1.45) {
+      healPlayer(30);
+      showToast('回復アイテムを使った　HP +30');
+      scene.remove(item.group);
+      scene.remove(item.light);
+      healItems.splice(i, 1);
+      continue;
+    }
+    if (time >= item.removeAt) {
+      scene.remove(item.group);
+      scene.remove(item.light);
+      healItems.splice(i, 1);
+    }
+  }
+}
+
 function scheduleNextRoar(time) {
   state.nextRoarAt = time + 60 + Math.random() * 120;
 }
 
 function triggerSonarRoar(time) {
-  state.roarUntil = time + 1.4;
-  state.shakeUntil = Math.max(state.shakeUntil, time + 1.1);
-  state.shakePower = Math.max(state.shakePower, 1);
+  state.roarUntil = time + 3;
+  state.shakeUntil = Math.max(state.shakeUntil, time + 3);
+  state.shakePower = Math.max(state.shakePower, 1.35);
   scheduleNextRoar(time);
   playSonarRoar(0.72);
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
@@ -1695,10 +1822,10 @@ function triggerSonarRoar(time) {
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.55);
   enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.85);
   if (!state.hidden && distance <= runningDetectionRange) {
-    state.seatedUntil = time + 2;
+    state.seatedUntil = time + 5;
     state.noise = 0;
-    state.shakeUntil = Math.max(state.shakeUntil, time + 1.9);
-    state.shakePower = Math.max(state.shakePower, 1.55);
+    state.shakeUntil = Math.max(state.shakeUntil, time + 3);
+    state.shakePower = Math.max(state.shakePower, 1.75);
     mobileInput.moveX = mobileInput.moveY = 0;
     keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
   }
@@ -2026,6 +2153,10 @@ function updateHUD() {
   $('#move-mode').textContent = movementLabels[state.hidden ? 'HIDING' : clock.elapsedTime < state.seatedUntil ? 'SEATED' : state.moveMode];
   $('#battery-value').textContent = `${Math.ceil(state.battery)}%`;
   $('#battery-bar').style.width = `${state.battery}%`;
+  const hpBar = $('#hp-bar');
+  const hpValue = $('#hp-value');
+  if (hpBar) hpBar.style.width = `${state.hp}%`;
+  if (hpValue) hpValue.textContent = `${Math.ceil(state.hp)} / 100`;
 }
 
 function updateLight(time) {
@@ -2216,6 +2347,7 @@ function animate() {
     updateLockerView();
     updateEnemy(dt, time);
     updateNoiseTraps(dt, time);
+    updateHealItems(dt, time);
     updateSonarModel(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
@@ -2240,6 +2372,7 @@ function animate() {
     radarAccumulator = 0;
   }
   updateScreenShake(time);
+  updateScreenFlash(time);
   renderer.render(scene, camera);
   perfFrames += 1;
   const now = performance.now();

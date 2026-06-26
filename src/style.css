@@ -157,3 +157,12 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
 }
 /* 4K時のCSS重ね描きを軽くする */
 #vignette, #danger-flash, #locker-slats { will-change: opacity; }
+
+
+#hp-panel { margin-top: 10px; width: 260px; display: grid; grid-template-columns: 38px 1fr 72px; gap: 8px; align-items: center; font: 13px 'Share Tech Mono'; letter-spacing: .08em; color: #d8ddd8; text-shadow: 0 2px 8px #000; }
+.hp-meter { height: 8px; background: rgba(90,20,20,.35); border: 1px solid rgba(220,80,70,.45); overflow: hidden; }
+.hp-meter i { display:block; width:100%; height:100%; background: linear-gradient(90deg,#9d2520,#df594f); box-shadow:0 0 10px rgba(230,70,60,.6); transition: width .15s; }
+#hp-value { text-align: right; font-weight: 400; color:#ffd0ca; }
+#screen-flash { position: fixed; inset: 0; z-index: 19; pointer-events: none; opacity: 0; transition: opacity .08s; mix-blend-mode: screen; }
+#screen-flash.red { background: radial-gradient(circle, rgba(255,65,40,.34), rgba(140,0,0,.62)); }
+#screen-flash.green { background: radial-gradient(circle, rgba(80,255,130,.36), rgba(0,100,45,.48)); }

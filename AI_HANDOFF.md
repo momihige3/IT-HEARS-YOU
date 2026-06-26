@@ -36,3 +36,13 @@
 - SONAR roar no longer shows toast/log text.
 - SONAR roar now applies screen shake; stronger/longer shake when the player is knocked down.
 - Build was not completed in this environment due npm/network timeout. GitHub Actions should build after package-lock/deploy registry fixes.
+
+
+## 2026-06-26 HP / Roar / Trap / Healing Update
+- Roar now shakes the screen for 3 seconds.
+- If the player is inside roar range, movement is locked for 5 seconds.
+- Added player HP system: max HP 100.
+- Noise traps deal 40 damage and trigger a red screen flash.
+- Random healing items spawn every 60-120 seconds.
+- Healing items restore 30 HP and trigger a green screen flash.
+- Healing items avoid walls, colliders, keys, breaker, exit, and active traps.
