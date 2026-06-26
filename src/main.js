@@ -52,6 +52,9 @@ const state = {
   battery: 100,
   breakerOn: false,
   breakerOutAt: Infinity,
+  seatedUntil: 0,
+  nextRoarAt: 0,
+  roarUntil: 0,
   nextSoundRippleAt: 0,
   detection: 0,
   alert: 'UNNOTICED',
@@ -194,6 +197,32 @@ function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow
   return mesh;
 }
 
+function roomCenter(room) {
+  return worldFromGrid((room.gx0 + room.gx1) / 2, (room.gz0 + room.gz1) / 2);
+}
+
+function addRoomBoundaryWalls(room) {
+  const doorZ = Math.round(room.sign.gz);
+  const doorOnEast = room.sign.side === 'east';
+  const doorOnWest = room.sign.side === 'west';
+  for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
+    const west = worldFromGrid(room.gx0, gz);
+    const east = worldFromGrid(room.gx1, gz);
+    if (!(doorOnWest && gz === doorZ)) {
+      addBox(west.x - CELL / 2, 2.05, west.z, 0.18, 4.2, CELL + 0.18, wallMat, true, true, false);
+    }
+    if (!(doorOnEast && gz === doorZ)) {
+      addBox(east.x + CELL / 2, 2.05, east.z, 0.18, 4.2, CELL + 0.18, wallMat, true, true, false);
+    }
+  }
+  for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
+    const north = worldFromGrid(gx, room.gz0);
+    const south = worldFromGrid(gx, room.gz1);
+    addBox(north.x, 2.05, north.z - CELL / 2, CELL + 0.18, 4.2, 0.18, wallMat, true, true, false);
+    addBox(south.x, 2.05, south.z + CELL / 2, CELL + 0.18, 4.2, 0.18, wallMat, true, true, false);
+  }
+}
+
 const schoolLights = [];
 let corridorLightCount = 0;
 for (const key of walkable) {
@@ -225,6 +254,8 @@ for (const key of walkable) {
 
   // Wall-side decorative doors were removed because they looked usable but had no interaction.
 }
+
+for (const room of schoolRooms) addRoomBoundaryWalls(room);
 
 const hemisphereLight = new THREE.HemisphereLight(0x78877a, 0x111511, 0.54);
 const ambientLight = new THREE.AmbientLight(0x354139, 0.38);
@@ -294,6 +325,9 @@ const coverPoints = [];
 const crateMat = material(0x443b2e, 0.92);
 const cabinetMat = material(0x303a34, 0.5, 0.55);
 function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
+  // 通路中央の障害物は敵の経路を詰まらせるため、部屋内だけに置く。
+  const room = getRoomAt(gx, gz);
+  if (!room) return;
   const cell = worldFromGrid(gx, gz);
   const x = cell.x + offsetX;
   const z = cell.z + offsetZ;
@@ -347,14 +381,19 @@ const walkableNodes = [...walkable].map((key) => {
   const pos = worldFromGrid(gx, gz);
   return { gx, gz, x: pos.x, z: pos.z, key };
 });
-const classroomNodes = walkableNodes.filter((node) =>
-  node.gz < GRID_H - 3 && Math.abs(node.gx - 6) > 1 && (node.gx + node.gz) % 2 === 0);
-const exitNode = classroomNodes[Math.floor(Math.random() * classroomNodes.length)] || walkableNodes[0];
-const exitPosition = new THREE.Vector3(exitNode.x, 0, exitNode.z);
-const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z, 0.14, 2.9, 2.15, material(0x303a33, 0.48, 0.6));
-addBox(exitPosition.x, 3.45, exitPosition.z, 0.08, 0.36, 1.2, material(0x1d6243, 0.35));
-const exitLight = new THREE.PointLight(0x3acb88, 4.5, 5);
-exitLight.position.set(exitPosition.x, 3.4, exitPosition.z);
+const exitRooms = schoolRooms.filter((room) => room.id !== 'breaker');
+const exitRoom = exitRooms[Math.floor(Math.random() * exitRooms.length)] || schoolRooms[1];
+const exitRoomCenter = roomCenter(exitRoom);
+const exitWallSide = exitRoom.sign.side === 'east' ? 'west' : 'east';
+const exitWallX = exitWallSide === 'west'
+  ? worldFromGrid(exitRoom.gx0, exitRoom.gz0).x - CELL / 2 + 0.11
+  : worldFromGrid(exitRoom.gx1, exitRoom.gz1).x + CELL / 2 - 0.11;
+const exitPosition = new THREE.Vector3(exitWallX, 0, exitRoomCenter.z);
+const exitNode = nearestNode(exitRoomCenter.x, exitRoomCenter.z) || walkableNodes[0];
+const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z, 0.16, 2.35, 1.35, material(0x303a33, 0.48, 0.6), false, false, false);
+addBox(exitPosition.x, 3.05, exitPosition.z, 0.09, 0.32, 1.05, material(0x1d6243, 0.35), false, false, false);
+const exitLight = new THREE.PointLight(0x3acb88, 4.5, 6);
+exitLight.position.set(exitPosition.x, 2.75, exitPosition.z);
 scene.add(exitLight);
 schoolLights.push(exitLight);
 
@@ -394,10 +433,15 @@ scene.add(breakerLight);
 
 
 function addRoomFixtures(room) {
-  const center = worldFromGrid((room.gx0 + room.gx1) / 2, (room.gz0 + room.gz1) / 2);
+  const center = roomCenter(room);
+  const backZ = worldFromGrid(room.gx0, room.gz0).z - CELL / 2 + 0.24;
+  const frontZ = worldFromGrid(room.gx0, room.gz1).z + CELL / 2 - 0.28;
   if (room.id !== 'breaker') {
-    addBox(center.x, 1.02, center.z - 1.25, 2.15, 0.08, 0.72, classroomFloorMat, true, false, false);
-    addBox(center.x, 1.58, center.z + 1.58, 2.6, 1.05, 0.08, signMat, false, false, false);
+    // 机や棚は部屋の端へ寄せ、入口から奥へ抜ける経路を空ける。
+    addBox(center.x - 1.05, 0.72, center.z - 1.1, 1.25, 0.08, 0.72, classroomFloorMat, true, false, false);
+    addBox(center.x + 1.05, 0.72, center.z - 1.1, 1.25, 0.08, 0.72, classroomFloorMat, true, false, false);
+    addBox(center.x, 1.55, backZ, 2.6, 1.05, 0.08, signMat, false, false, false);
+    addBox(center.x, 0.82, frontZ, 1.7, 1.1, 0.34, cabinetMat, true, false, false);
   } else {
     addBox(center.x, 0.58, center.z + 1.1, 1.7, 1.16, 0.7, metalMat, true, false, false);
   }
@@ -812,6 +856,38 @@ function thump(volume = 0.2, frequency = 78) {
   oscillator.stop(ctx.currentTime + 0.26);
 }
 
+function playSonarRoar(volume = 0.62) {
+  if (!audio) return;
+  const { ctx, master, noiseBuffer } = audio;
+  const bus = ctx.createGain();
+  const source = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const low = ctx.createOscillator();
+  const lowGain = ctx.createGain();
+  source.buffer = noiseBuffer;
+  source.loop = true;
+  source.playbackRate.value = 0.34;
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(180, ctx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(760, ctx.currentTime + 0.7);
+  filter.Q.value = 2.2;
+  low.type = 'sawtooth';
+  low.frequency.setValueAtTime(42, ctx.currentTime);
+  low.frequency.exponentialRampToValueAtTime(24, ctx.currentTime + 1.1);
+  lowGain.gain.setValueAtTime(volume * 0.45, ctx.currentTime);
+  lowGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.25);
+  bus.gain.setValueAtTime(0.001, ctx.currentTime);
+  bus.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + 0.12);
+  bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.35);
+  source.connect(filter).connect(bus);
+  low.connect(lowGain).connect(bus);
+  bus.connect(master);
+  source.start();
+  low.start();
+  source.stop(ctx.currentTime + 1.38);
+  low.stop(ctx.currentTime + 1.3);
+}
+
 function playFootstep(volume, pitch = 1, pan = 0) {
   if (!audio || volume <= 0.006) return;
   const { ctx, master, noiseBuffer } = audio;
@@ -1123,6 +1199,9 @@ function respawnPlayer() {
   state.currentLocker = null;
   state.breakerOn = false;
   state.breakerOutAt = Infinity;
+  state.seatedUntil = 0;
+  state.roarUntil = 0;
+  scheduleNextRoar(clock.elapsedTime);
   state.nextSoundRippleAt = 0;
   state.lockerExitGraceUntil = clock.elapsedTime + 1;
   state.settingsOpen = false;
@@ -1258,6 +1337,7 @@ controls.addEventListener('unlock', () => {
 $('#start-button').addEventListener('click', () => {
   state.started = true;
   initAudio();
+  scheduleNextRoar(clock.elapsedTime);
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   lockPointer();
@@ -1396,8 +1476,47 @@ const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
 
+function scheduleNextRoar(time) {
+  state.nextRoarAt = time + 60 + Math.random() * 120;
+}
+
+function triggerSonarRoar(time) {
+  state.roarUntil = time + 1.4;
+  scheduleNextRoar(time);
+  playSonarRoar(0.72);
+  const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
+  const runningDetectionRange = 22;
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.55);
+  enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.85);
+  if (!state.hidden && distance <= runningDetectionRange) {
+    state.seatedUntil = time + 2;
+    state.noise = 0;
+    mobileInput.moveX = mobileInput.moveY = 0;
+    keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
+    showToast('ソナーの咆哮でしりもちをついた');
+  } else {
+    showToast('遠くでソナーが咆哮した');
+  }
+}
+
+function updateSonarRoar(time) {
+  if (!state.nextRoarAt) scheduleNextRoar(time);
+  if (time >= state.nextRoarAt) triggerSonarRoar(time);
+}
+
 function updatePlayer(dt) {
-  if ((!controls.isLocked && !mobileInput.active) || state.hidden) return;
+  const time = clock.elapsedTime;
+  if (state.hidden) {
+    state.battery = Math.min(100, state.battery + dt * 1.35);
+    return;
+  }
+  if (time < state.seatedUntil) {
+    state.noise = 0;
+    state.moveMode = 'WALKING';
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, 0.92, dt * 10);
+    return;
+  }
+  if ((!controls.isLocked && !mobileInput.active)) return;
   camera.getWorldDirection(forward);
   forward.y = 0;
   forward.normalize();
@@ -1426,9 +1545,7 @@ function updatePlayer(dt) {
     state.bob += dt * speed * (running ? 2.1 : 1.65);
     camera.position.y += Math.sin(state.bob * 3.6) * (running ? 0.038 : 0.022);
   }
-  if (state.hidden) {
-    state.battery = Math.min(100, state.battery + dt * 1.35);
-  } else if (state.flashlight) {
+  if (state.flashlight) {
     state.battery = Math.max(0, state.battery - dt * 0.18);
     if (state.battery <= 0) state.flashlight = false;
   } else {
@@ -1448,11 +1565,12 @@ function updateLockerView() {
 
 function updateSonarModel(dt, time) {
   const chase = enemyData.mode === 'HUNTING';
+  const roaring = time < state.roarUntil;
   const investigate = enemyData.mode === 'INVESTIGATING' || enemyData.mode === 'SEARCHING';
   const breathe = Math.sin(time * (chase ? 8.5 : 3.2));
   enemy.scale.y = 1.18 + breathe * (chase ? 0.035 : 0.018);
   if (sonarParts.leftEar && sonarParts.rightEar) {
-    const earOpen = chase ? 0.42 : investigate ? 0.28 : 0.12;
+    const earOpen = roaring ? 0.62 : chase ? 0.42 : investigate ? 0.28 : 0.12;
     const twitch = Math.sin(time * 19) * (chase ? 0.07 : 0.025);
     sonarParts.leftEar.rotation.z = 0.18 + earOpen + twitch;
     sonarParts.rightEar.rotation.z = -0.18 - earOpen - twitch;
@@ -1460,7 +1578,7 @@ function updateSonarModel(dt, time) {
     sonarParts.rightEar.scale.y = 1.48 + Math.abs(breathe) * 0.1;
   }
   if (sonarParts.head) sonarParts.head.rotation.x = chase ? -0.22 + breathe * 0.03 : breathe * 0.02;
-  if (sonarParts.mouth) sonarParts.mouth.scale.x = chase ? 1.55 + Math.abs(breathe) * 0.25 : 1.0;
+  if (sonarParts.mouth) sonarParts.mouth.scale.x = roaring ? 2.05 + Math.abs(breathe) * 0.35 : chase ? 1.55 + Math.abs(breathe) * 0.25 : 1.0;
   const armSwing = Math.sin(time * (chase ? 7.2 : 3.4));
   for (const side of [-1, 1]) {
     const prefix = side < 0 ? 'left' : 'right';
@@ -1677,7 +1795,7 @@ function updateInteraction() {
 }
 
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
-const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている' };
+const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている', SEATED: 'しりもち' };
 function updateHUD() {
   $('#noise-bar').style.width = `${state.noise}%`;
   $('#noise-value').textContent = String(Math.round(state.noise)).padStart(2, '0');
@@ -1685,7 +1803,7 @@ function updateHUD() {
   $('#detect-value').textContent = String(Math.round(state.detection)).padStart(2, '0');
   $('#alert-text').textContent = alertLabels[state.alert];
   $('#alert-text').parentElement.classList.toggle('danger', state.alert === 'HUNTING');
-  $('#move-mode').textContent = movementLabels[state.hidden ? 'HIDING' : state.moveMode];
+  $('#move-mode').textContent = movementLabels[state.hidden ? 'HIDING' : clock.elapsedTime < state.seatedUntil ? 'SEATED' : state.moveMode];
   $('#battery-value').textContent = `${Math.ceil(state.battery)}%`;
   $('#battery-bar').style.width = `${state.battery}%`;
 }
@@ -1859,6 +1977,7 @@ function animate() {
   if (state.caught) {
     updateCaughtCutscene(time);
   } else if (state.started && !state.ended && !state.settingsOpen) {
+    updateSonarRoar(time);
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
