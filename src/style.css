@@ -244,13 +244,14 @@ html, body { touch-action: none; }
   }
   .controls { display: none; }
   #hud {
-    inset: var(--safe-top) var(--safe-right) auto var(--safe-left);
+    inset: var(--safe-top) auto auto var(--safe-left);
     align-items: flex-start;
     gap: 22px;
+    max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 320px);
   }
   .objective strong { font-size: 27px; }
   .objective span { font-size: 16px; }
-  .status-cluster { width: 520px; }
+  .status-cluster { width: min(460px, 46vw); }
   .status-row {
     height: 44px;
     grid-template-columns: 120px 1fr 52px;
@@ -268,7 +269,7 @@ html, body { touch-action: none; }
     height: 16px;
   }
   #hp-panel {
-    width: 520px;
+    width: min(460px, 46vw);
     grid-template-columns: 58px 1fr;
     gap: 16px;
     font-size: 22px;
@@ -282,16 +283,16 @@ html, body { touch-action: none; }
   #coin-panel span { font-size: 17px; }
   #coin-panel strong { font-size: 36px; }
   #radar-panel {
-    right: calc(var(--safe-right) + 205px);
-    top: var(--safe-top);
-    width: 300px;
+    right: var(--safe-right);
+    top: calc(var(--safe-top) + 124px);
+    width: min(280px, 29vw);
     transform: none;
   }
   .radar-title span { font-size: 22px; }
   .radar-title small { font-size: 15px; }
   #minimap {
-    width: 300px;
-    height: 300px;
+    width: min(280px, 29vw);
+    height: min(280px, 29vw);
   }
   .radar-legend {
     font-size: 15px;
@@ -302,9 +303,7 @@ html, body { touch-action: none; }
     height: 10px;
   }
   #prompt {
-    max-width: 72vw;
-    font-size: 25px;
-    padding: 14px 22px;
+    display: none;
   }
   #mobile-controls {
     inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);

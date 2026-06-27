@@ -100,3 +100,21 @@ Build:
 - Coin pickup uses `coin.collected = true` before changing the coin count, then removes the coin via `removeCoinAt()`.
 - Coin items are not physical colliders; the active pickup target list is `coinItems`, and collected coins are removed from that array immediately.
 - Mobile PC-key removal is handled in `updateInteraction()` with `mobileInput.active` and in CSS by hiding `.controls` on touch landscape.
+
+## 2026-06-28 Realism / Mobile UI / Performance Pass
+
+- Added dynamic internal resolution tiers (`1.0`, `0.85`, `0.7`, `0.55`) that step down when FPS is low and recover gradually when FPS is stable.
+- Kept the hard render cap at 1920x1080 and kept `renderer.setPixelRatio(1)` / antialias disabled.
+- SONAR model was made more detailed with jaw, spine, rib, and asymmetrical body details while staying low-poly.
+- SONAR roar now uses deeper procedural growl layers and forces the enemy to stop for the full roar duration.
+- Key pickup now plays a lightweight procedural item pickup sound.
+- Running now slowly increases detection even outside the normal direct detection range.
+- Map random carving was increased for less predictable school layouts.
+- Lockers are now rejected near room entrances/connectors.
+- Room fixtures were expanded into recognizable 3D desks, chairs, shelves, room-specific props, and textured materials.
+- Mobile interaction prompt no longer duplicates the PC prompt; mobile uses only the centered action button.
+- Mobile HUD/minimap layout was separated to avoid alert gauge overlap with the minimap in landscape.
+
+### Notes
+- The provided ChatGPT image share links were not directly readable in this environment, so the enemy/map pass follows the existing SONAR + abandoned school art direction instead of exact image matching.
+- Dynamic resolution is adjusted in the FPS reporting block; performance panel shows the active scale.

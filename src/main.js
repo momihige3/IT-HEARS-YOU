@@ -13,10 +13,15 @@ scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
+const RESOLUTION_TIERS = [1, 0.85, 0.7, 0.55];
+let resolutionTierIndex = 0;
+let dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
+let lastResolutionAdjustAt = performance.now();
+let highFpsSince = performance.now();
 function applyRenderCap() {
   const viewW = Math.max(1, window.innerWidth);
   const viewH = Math.max(1, window.innerHeight);
-  const scale = Math.min(1, INTERNAL_MAX_W / viewW, INTERNAL_MAX_H / viewH);
+  const scale = Math.min(1, INTERNAL_MAX_W / viewW, INTERNAL_MAX_H / viewH) * dynamicResolutionScale;
   const renderW = Math.max(320, Math.round(viewW * scale));
   const renderH = Math.max(180, Math.round(viewH * scale));
   camera.aspect = viewW / viewH;
@@ -208,6 +213,22 @@ for (let i = 0; i < 16; i += 1) {
     carve(gx + dx, gz + dz);
   }
 }
+for (let i = 0; i < 26; i += 1) {
+  const seeds = [...walkable];
+  const [startGx, startGz] = seeds[Math.floor(Math.random() * seeds.length)].split(',').map(Number);
+  const [dx, dz] = directions[Math.floor(Math.random() * directions.length)];
+  const length = 2 + Math.floor(Math.random() * 5);
+  for (let step = 1; step <= length; step += 1) {
+    const gx = startGx + dx * step;
+    const gz = startGz + dz * step;
+    if (gx <= 0 || gx >= GRID_W - 1 || gz <= 0 || gz >= GRID_H - 1) break;
+    carve(gx, gz);
+    if (Math.random() < 0.22) {
+      const [branchDx, branchDz] = directions[Math.floor(Math.random() * directions.length)];
+      carve(gx + branchDx, gz + branchDz);
+    }
+  }
+}
 carve(1, 17);
 carve(2, 17);
 carve(10, 1);
@@ -344,14 +365,25 @@ function makeLocker(gx, gz, wallSide) {
   return locker;
 }
 
-makeLocker(1, 4, 'west');
-makeLocker(11, 4, 'east');
-makeLocker(1, 10, 'west');
-makeLocker(11, 12, 'east');
-makeLocker(3, 7, 'east');
-makeLocker(9, 16, 'west');
-makeLocker(6, 6, 'east');
-makeLocker(6, 13, 'west');
+function isLockerEntranceBlocked(gx, gz) {
+  const pos = worldFromGrid(gx, gz);
+  return schoolRooms.some((room) => {
+    const sign = worldFromGrid(room.sign.gx, room.sign.gz);
+    if (Math.hypot(pos.x - sign.x, pos.z - sign.z) < 3.15) return true;
+    return room.connector.some(([cx, cz]) => Math.hypot(gx - cx, gz - cz) < 1.25);
+  });
+}
+
+function makeSafeLocker(gx, gz, wallSide) {
+  if (!walkable.has(gridKey(gx, gz)) || isLockerEntranceBlocked(gx, gz)) return null;
+  return makeLocker(gx, gz, wallSide);
+}
+
+[
+  [1, 4, 'west'], [11, 4, 'east'], [1, 10, 'west'], [11, 12, 'east'],
+  [3, 7, 'east'], [9, 16, 'west'], [6, 6, 'east'], [6, 13, 'west'],
+  [2, 6, 'west'], [10, 6, 'east'], [2, 12, 'west'], [10, 14, 'east'],
+].forEach(([gx, gz, wallSide]) => makeSafeLocker(gx, gz, wallSide));
 
 // Cover objects leave the navigation centerline open while breaking sight lines.
 const coverPoints = [];
@@ -482,19 +514,64 @@ breakerLight.position.set(breakerPosition.x + breakerWallSide * 1.35, 2.2, break
 scene.add(breakerLight);
 const breakerPlateSide = breakerWallSide < 0 ? 'west' : 'east';
 
+const deskTopMat = material(0x8d6846, 0.76, 0.04, loadTexture('old_door_wood.png', 1, 1));
+const chairMat = material(0x515a55, 0.58, 0.18, loadTexture('locker_scratched_metal.png', 1, 1));
+const paperMat = material(0xd8d4bd, 0.92, 0.01);
+const bookMat = material(0x344d70, 0.72, 0.02);
+
+function addDeskSet(x, z, rot = 0) {
+  const group = new THREE.Group();
+  group.rotation.y = rot;
+  localBox(group, 0, 0.72, 0, 1.18, 0.1, 0.7, deskTopMat);
+  for (const sx of [-0.46, 0.46]) {
+    for (const sz of [-0.25, 0.25]) localBox(group, sx, 0.36, sz, 0.07, 0.68, 0.07, chairMat);
+  }
+  localBox(group, -0.22, 0.8, -0.12, 0.32, 0.025, 0.22, paperMat);
+  localBox(group, 0.26, 0.83, 0.16, 0.26, 0.06, 0.18, bookMat);
+  localBox(group, 0, 0.43, 0.72, 0.56, 0.1, 0.42, chairMat);
+  localBox(group, 0, 0.76, 0.87, 0.56, 0.62, 0.08, chairMat);
+  group.position.set(x, 0, z);
+  scene.add(group);
+  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? 0.68 : 0.48, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.48 : 0.68 });
+  return group;
+}
+
+function addShelf(x, z, w = 1.8, rot = 0) {
+  const group = new THREE.Group();
+  group.rotation.y = rot;
+  localBox(group, 0, 0.92, 0, w, 1.84, 0.34, cabinetMat);
+  for (let y = 0.36; y <= 1.48; y += 0.36) localBox(group, 0, y, 0.19, w * 0.88, 0.045, 0.045, darkMat);
+  for (let i = 0; i < 5; i += 1) localBox(group, -w * 0.34 + i * w * 0.17, 1.05 + (i % 2) * 0.32, 0.21, 0.1, 0.32, 0.08, bookMat);
+  group.position.set(x, 0, z);
+  scene.add(group);
+  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.22, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : w / 2 });
+  return group;
+}
 
 function addRoomFixtures(room) {
   const center = roomCenter(room);
   const backZ = worldFromGrid(room.gx0, room.gz0).z - CELL / 2 + 0.24;
   const frontZ = worldFromGrid(room.gx0, room.gz1).z + CELL / 2 - 0.28;
   if (room.id !== 'breaker') {
-    // 机や棚は部屋の端へ寄せ、入口から奥へ抜ける経路を空ける。
-    addBox(center.x - 1.05, 0.72, center.z - 1.1, 1.25, 0.08, 0.72, classroomFloorMat, true, false, false);
-    addBox(center.x + 1.05, 0.72, center.z - 1.1, 1.25, 0.08, 0.72, classroomFloorMat, true, false, false);
+    addDeskSet(center.x - 1.05, center.z - 1.08, Math.random() < 0.5 ? 0 : Math.PI);
+    addDeskSet(center.x + 1.05, center.z - 1.08, Math.random() < 0.5 ? 0 : Math.PI);
+    if (room.gx1 - room.gx0 >= 3) addDeskSet(center.x, center.z + 0.5, Math.PI / 2);
+    // Furniture is kept near room edges so entrances and walking routes stay playable.
     addBox(center.x, 1.55, backZ, 2.6, 1.05, 0.08, signMat, false, false, false);
-    addBox(center.x, 0.82, frontZ, 1.7, 1.1, 0.34, cabinetMat, true, false, false);
+    addShelf(center.x, frontZ, 1.7, 0);
+    if (room.id === 'science') {
+      addBox(center.x, 0.95, center.z + 1.05, 1.75, 0.14, 0.72, metalMat, true, false, false);
+      addBox(center.x - 0.45, 1.14, center.z + 1.05, 0.22, 0.22, 0.22, material(0x355f72, 0.28, 0.02), false, false, false);
+    } else if (room.id === 'nurse') {
+      addBox(center.x + 0.78, 0.62, center.z + 1.18, 1.65, 0.32, 0.74, material(0xd8d8cf, 0.68, 0.02), true, false, false);
+      addBox(center.x + 0.18, 0.95, center.z + 1.18, 0.42, 0.35, 0.68, paperMat, false, false, false);
+    } else if (room.id === 'music') {
+      addBox(center.x - 0.95, 0.78, center.z + 1.1, 1.15, 1.15, 0.28, material(0x3d2a1d, 0.7, 0.04), true, false, false);
+      for (let i = 0; i < 4; i += 1) addBox(center.x - 1.25 + i * 0.2, 1.47, center.z + 1.26, 0.055, 0.38, 0.035, paperMat, false, false, false);
+    }
   } else {
     addBox(center.x, 0.58, center.z + 1.1, 1.7, 1.16, 0.7, metalMat, true, false, false);
+    addShelf(center.x - 0.92, center.z - 0.92, 1.2, Math.PI / 2);
   }
 }
 
@@ -659,6 +736,12 @@ sonarPart('body', new THREE.CapsuleGeometry(0.26, 1.28, 5, 8), sonarSkinMat, [0,
 sonarPart('ribCage', new THREE.BoxGeometry(0.46, 0.7, 0.18), sonarSkinMat, [0, 1.55, 0.02], [1, 1, 1]);
 sonarPart('head', new THREE.SphereGeometry(0.24, 10, 8), sonarSkinMat, [0, 2.28, 0.03], [0.78, 1.1, 0.72]);
 sonarPart('mouth', new THREE.BoxGeometry(0.08, 1.18, 0.035), sonarMouthMat, [0, 1.67, 0.235], [1.0, 1.0, 1.0]);
+sonarPart('jaw', new THREE.BoxGeometry(0.24, 0.08, 0.12), sonarMouthMat, [0, 2.08, 0.26], [1.0, 1.0, 1.0]);
+sonarPart('spine', new THREE.CylinderGeometry(0.025, 0.045, 1.32, 6), sonarMouthMat, [0, 1.34, -0.18], [1, 1, 1], [0.08, 0, 0]);
+for (let i = 0; i < 5; i += 1) {
+  sonarPart(`ribLeft${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.54, 5), sonarMouthMat, [-0.18, 1.1 + i * 0.16, 0.04], [1, 1, 1], [0, 0, 1.12]);
+  sonarPart(`ribRight${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.54, 5), sonarMouthMat, [0.18, 1.1 + i * 0.16, 0.04], [1, 1, 1], [0, 0, -1.12]);
+}
 sonarPart('leftEar', new THREE.SphereGeometry(0.28, 10, 8), sonarEarMat, [-0.36, 2.32, 0.02], [1.08, 1.48, 0.18], [0, 0.28, 0.18]);
 sonarPart('rightEar', new THREE.SphereGeometry(0.28, 10, 8), sonarEarMat, [0.36, 2.32, 0.02], [1.08, 1.48, 0.18], [0, -0.28, -0.18]);
 for (const side of [-1, 1]) {
@@ -976,30 +1059,44 @@ function playSonarRoar(volume = 0.62) {
   const bus = ctx.createGain();
   const source = ctx.createBufferSource();
   const filter = ctx.createBiquadFilter();
+  const growl = ctx.createBiquadFilter();
   const low = ctx.createOscillator();
+  const sub = ctx.createOscillator();
   const lowGain = ctx.createGain();
+  const subGain = ctx.createGain();
   source.buffer = noiseBuffer;
   source.loop = true;
-  source.playbackRate.value = 0.34;
+  source.playbackRate.value = 0.22;
   filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(180, ctx.currentTime);
-  filter.frequency.exponentialRampToValueAtTime(760, ctx.currentTime + 0.7);
-  filter.Q.value = 2.2;
+  filter.frequency.setValueAtTime(95, ctx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(430, ctx.currentTime + 1.05);
+  filter.Q.value = 5.2;
+  growl.type = 'lowpass';
+  growl.frequency.value = 620;
   low.type = 'sawtooth';
-  low.frequency.setValueAtTime(42, ctx.currentTime);
-  low.frequency.exponentialRampToValueAtTime(24, ctx.currentTime + 1.1);
-  lowGain.gain.setValueAtTime(volume * 0.45, ctx.currentTime);
-  lowGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.25);
+  low.frequency.setValueAtTime(34, ctx.currentTime);
+  low.frequency.exponentialRampToValueAtTime(18, ctx.currentTime + 1.45);
+  lowGain.gain.setValueAtTime(volume * 0.68, ctx.currentTime);
+  lowGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.65);
+  sub.type = 'triangle';
+  sub.frequency.setValueAtTime(18, ctx.currentTime);
+  sub.frequency.linearRampToValueAtTime(26, ctx.currentTime + 0.22);
+  sub.frequency.exponentialRampToValueAtTime(14, ctx.currentTime + 1.55);
+  subGain.gain.setValueAtTime(volume * 0.34, ctx.currentTime);
+  subGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.72);
   bus.gain.setValueAtTime(0.001, ctx.currentTime);
-  bus.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + 0.12);
-  bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.35);
-  source.connect(filter).connect(bus);
+  bus.gain.exponentialRampToValueAtTime(volume * 1.08, ctx.currentTime + 0.18);
+  bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.82);
+  source.connect(filter).connect(growl).connect(bus);
   low.connect(lowGain).connect(bus);
+  sub.connect(subGain).connect(bus);
   bus.connect(master);
   source.start();
   low.start();
-  source.stop(ctx.currentTime + 1.38);
-  low.stop(ctx.currentTime + 1.3);
+  sub.start();
+  source.stop(ctx.currentTime + 1.86);
+  low.stop(ctx.currentTime + 1.76);
+  sub.stop(ctx.currentTime + 1.82);
 }
 
 function playFootstep(volume, pitch = 1, pan = 0) {
@@ -1076,6 +1173,29 @@ function playCoinSound() {
   second.start(ctx.currentTime + 0.04);
   first.stop(ctx.currentTime + 0.16);
   second.stop(ctx.currentTime + 0.22);
+}
+
+function playItemPickupSound() {
+  if (!audio) return;
+  const { ctx, master } = audio;
+  const gain = ctx.createGain();
+  const first = ctx.createOscillator();
+  const second = ctx.createOscillator();
+  first.type = 'sine';
+  second.type = 'triangle';
+  first.frequency.setValueAtTime(660, ctx.currentTime);
+  first.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + 0.12);
+  second.frequency.setValueAtTime(1320, ctx.currentTime + 0.06);
+  second.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.2);
+  gain.gain.setValueAtTime(0.18, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.26);
+  first.connect(gain);
+  second.connect(gain);
+  gain.connect(master);
+  first.start();
+  second.start(ctx.currentTime + 0.05);
+  first.stop(ctx.currentTime + 0.2);
+  second.stop(ctx.currentTime + 0.27);
 }
 
 
@@ -1355,6 +1475,7 @@ function interact() {
     nearbyKey.group.visible = false;
     nearbyKey.light.visible = false;
     state.keyCount += 1;
+    playItemPickupSound();
     updateExitCounter();
     $('#objective-text').textContent = state.keyCount >= REQUIRED_KEYS
       ? '出口へ向かう'
@@ -2085,8 +2206,10 @@ function triggerSonarRoar(time) {
   playSonarRoar(0.72);
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const runningDetectionRange = 22;
-  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.55);
-  enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.85);
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, state.roarUntil);
+  enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, state.roarUntil);
+  enemyData.path = [];
+  enemyData.isMoving = false;
   if (!state.hidden && distance <= runningDetectionRange) {
     state.seatedUntil = time + 5;
     state.noise = 0;
@@ -2136,6 +2259,11 @@ function updatePlayer(dt) {
   const speed = running ? 4.7 : 2.35;
   state.moveMode = running ? 'RUNNING' : 'WALKING';
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
+  if (active && running && !state.hidden) {
+    const memoryBoost = 1 + enemyData.alertMemory * 0.6;
+    state.detection = THREE.MathUtils.clamp(state.detection + dt * 1.25 * memoryBoost, 0, 100);
+    enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * 0.004, 0, 1);
+  }
   const nextX = camera.position.x + move.x * speed * dt;
   const nextZ = camera.position.z + move.z * speed * dt;
   if (canMoveTo(nextX, camera.position.z)) camera.position.x = nextX;
@@ -2191,6 +2319,7 @@ function updateSonarModel(dt, time) {
 
 function updateEnemy(dt, time) {
   if (state.ended) return;
+  const roaring = time < state.roarUntil;
   if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.36)) {
     const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
     enemy.position.set(safe.x, 0, safe.z);
@@ -2309,7 +2438,7 @@ function updateEnemy(dt, time) {
   }
 
   enemyData.isMoving = false;
-  if (enemyData.path.length === 0) {
+  if (!roaring && enemyData.path.length === 0) {
     if (enemyData.mode === 'PASSING_BY' && time < enemyData.passByUntil) {
       enemyData.lookBackUntil = time + 0.7 + Math.random() * 0.75;
     } else if (enemyData.mode === 'TRAP_RUSH') {
@@ -2321,7 +2450,7 @@ function updateEnemy(dt, time) {
     else if (!['INVESTIGATING', 'SEARCHING', 'PASSING_BY', 'TRAP_RUSH'].includes(enemyData.mode)) chooseRandomEnemyRoute();
   }
   const target = enemyData.path[0];
-  if (target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
+  if (!roaring && target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
     const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
     if (direction.length() < 0.18) {
       enemyData.path.shift();
@@ -2347,6 +2476,11 @@ function updateEnemy(dt, time) {
         else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
       }
     }
+  }
+  if (roaring) {
+    enemyData.isMoving = false;
+    const roarTurn = Math.sin(time * 4.2) * 0.18;
+    enemy.rotation.y += roarTurn * dt;
   }
   if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
     enemy.rotation.y = enemyData.lookBaseYaw + Math.sin(time * 3.1) * 1.18;
@@ -2405,7 +2539,7 @@ function updateInteraction() {
       ? `${actionPrefix}鍵を使って脱出`
       : `${actionPrefix}出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
   }
-  $('#prompt').textContent = prompt;
+  $('#prompt').textContent = mobileInput.active ? '' : prompt;
   const mobileAction = $('#mobile-action');
   const actionLabel = prompt.replace(/^\[ E \]\s*/, '');
   mobileAction.textContent = actionLabel || '調べる';
@@ -2609,6 +2743,28 @@ function updateScreenShake(time) {
     state.shakePower = 0;
   }
 }
+
+function adjustDynamicResolution(now) {
+  if (!perfFps) return;
+  if (perfFps < 42 && now - lastResolutionAdjustAt > 2800 && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
+    resolutionTierIndex += 1;
+    dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
+    lastResolutionAdjustAt = now;
+    highFpsSince = now;
+    applyRenderCap();
+  } else if (perfFps > 57) {
+    if (now - highFpsSince > 8500 && now - lastResolutionAdjustAt > 6000 && resolutionTierIndex > 0) {
+      resolutionTierIndex -= 1;
+      dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
+      lastResolutionAdjustAt = now;
+      highFpsSince = now;
+      applyRenderCap();
+    }
+  } else {
+    highFpsSince = now;
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -2655,9 +2811,10 @@ function animate() {
     perfFps = Math.round((perfFrames * 1000) / (now - perfLast));
     perfFrames = 0;
     perfLast = now;
+    adjustDynamicResolution(now);
     const info = renderer.info.render;
     if (perfPanel) {
-      perfPanel.textContent = `${PERF_BUILD_ID}\nFPS ${perfFps} / draw ${info.calls} / tris ${info.triangles}\nrender ${renderer.domElement.width}x${renderer.domElement.height} / window ${innerWidth}x${innerHeight}`;
+      perfPanel.textContent = `${PERF_BUILD_ID}\nFPS ${perfFps} / draw ${info.calls} / tris ${info.triangles}\nrender ${renderer.domElement.width}x${renderer.domElement.height} / scale ${dynamicResolutionScale.toFixed(2)}\nwindow ${innerWidth}x${innerHeight}`;
     }
   }
 }
