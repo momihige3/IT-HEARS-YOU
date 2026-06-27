@@ -20,10 +20,14 @@ let dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
 let lastResolutionAdjustAt = performance.now();
 let highFpsSince = performance.now();
 function getGameViewport() {
-  const portraitPhone = touchDevice && window.innerHeight > window.innerWidth;
+  const portraitPhone = touchDevice && matchMedia('(orientation: portrait)').matches;
+  const rawW = Math.max(1, window.visualViewport?.width || window.innerWidth);
+  const rawH = Math.max(1, window.visualViewport?.height || window.innerHeight);
+  const longSide = Math.max(rawW, rawH);
+  const shortSide = Math.min(rawW, rawH);
   return {
-    width: Math.max(1, portraitPhone ? window.innerHeight : window.innerWidth),
-    height: Math.max(1, portraitPhone ? window.innerWidth : window.innerHeight),
+    width: portraitPhone ? longSide : rawW,
+    height: portraitPhone ? shortSide : rawH,
     portraitPhone,
   };
 }
@@ -1800,6 +1804,19 @@ function startCaughtCutscene() {
   document.body.classList.add('caught-cutscene');
 }
 
+function stopMobileGameplayInput() {
+  mobileInput.moveX = 0;
+  mobileInput.moveY = 0;
+  mobileInput.running = false;
+  cameraSwipePointer = null;
+  const runButton = $('#mobile-run-toggle');
+  runButton?.classList.remove('running');
+  if (runButton) runButton.textContent = '歩行中';
+  $('#mobile-action')?.classList.remove('visible');
+  const knob = $('#move-stick i');
+  if (knob) knob.style.transform = '';
+}
+
 function respawnPlayer() {
   state.caught = false;
   state.ended = false;
@@ -1910,6 +1927,7 @@ function updateCaughtCutscene(time) {
 
 function endGame(win) {
   state.ended = true;
+  stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
   controls.unlock();
   $('#message-kicker').textContent = win ? '脱出成功' : '見つかった';
@@ -2164,6 +2182,7 @@ function damagePlayer(amount, reason = 'damage') {
   state.shakePower = Math.max(state.shakePower, 1.25);
   if (state.hp <= 0) {
     state.ended = true;
+    stopMobileGameplayInput();
     controls.unlock();
     $('#message-kicker').textContent = reason === 'trap' ? '罠に倒れた' : '力尽きた';
     $('#message-title').textContent = 'GAME OVER';
@@ -3133,4 +3152,11 @@ function animate() {
 chooseRandomEnemyRoute();
 animate();
 
-addEventListener('resize', applyRenderCap);
+let resizeApplyTimer = 0;
+function scheduleRenderCapUpdate() {
+  clearTimeout(resizeApplyTimer);
+  resizeApplyTimer = setTimeout(applyRenderCap, touchDevice ? 180 : 0);
+}
+addEventListener('resize', scheduleRenderCapUpdate);
+addEventListener('orientationchange', () => setTimeout(applyRenderCap, 320));
+window.visualViewport?.addEventListener('resize', scheduleRenderCapUpdate);

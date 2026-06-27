@@ -7,6 +7,7 @@ fs.mkdirSync(outDir, { recursive: true });
 let vertices = [];
 let faces = [];
 let lines = ['# IT HEARS YOU - external SONAR creature model', '# generated from reference proportions', 's 1'];
+let vertexOffset = 0;
 
 function v(x, y, z) {
   vertices.push([x, y, z]);
@@ -20,7 +21,8 @@ function begin(name) {
 
 function flush() {
   for (const [x, y, z] of vertices) lines.push(`v ${x.toFixed(5)} ${y.toFixed(5)} ${z.toFixed(5)}`);
-  for (const f of faces) lines.push(`f ${f.join(' ')}`);
+  for (const f of faces) lines.push(`f ${f.map((index) => index + vertexOffset).join(' ')}`);
+  vertexOffset += vertices.length;
   vertices = [];
   faces = [];
 }
@@ -98,17 +100,17 @@ function cylinderBetween(name, a, b, ra, rb, seg = 18, wobble = 0.02) {
 
 function ear(name, side) {
   begin(name);
-  const rows = 9, cols = 18;
+  const rows = 12, cols = 24;
   const ids = [];
   for (let r = 0; r <= rows; r += 1) {
-    const y = -0.46 + (0.92 * r) / rows;
-    const half = Math.sin((r / rows) * Math.PI) * 0.55;
+    const y = -0.54 + (1.08 * r) / rows;
+    const half = Math.sin((r / rows) * Math.PI) * 0.74;
     const row = [];
     for (let c = 0; c <= cols; c += 1) {
       const t = -1 + (2 * c) / cols;
-      const x = side * (0.34 + half * Math.abs(t));
-      const z = 0.05 + Math.cos(t * Math.PI / 2) * 0.08 - Math.abs(t) * 0.05;
-      const curl = side * t * 0.1;
+      const x = side * (0.28 + half * Math.abs(t));
+      const z = 0.08 + Math.cos(t * Math.PI / 2) * 0.1 - Math.abs(t) * 0.05;
+      const curl = side * t * 0.15;
       row.push(v(x + curl, 2.34 + y, z - 0.04 * Math.abs(t)));
     }
     ids.push(row);
@@ -136,11 +138,11 @@ function cone(name, base, tip, radius, seg = 12) {
 }
 
 // Main body proportions: tall, thin, wet black humanoid, roughly 2.4m scale in local units.
-ellipsoid('skin_torso_long_wet', [0, 1.18, 0], [0.22, 0.78, 0.16], 36, 22);
-ellipsoid('skin_chest_sunken', [0, 1.62, 0.06], [0.26, 0.34, 0.12], 36, 18);
-ellipsoid('skin_pelvis_bony', [0, 0.43, -0.02], [0.2, 0.18, 0.15], 28, 14);
-ellipsoid('skin_head_eyeless', [0, 2.32, 0.04], [0.18, 0.27, 0.15], 36, 20);
-ellipsoid('face_black_smooth_plate', [0, 2.34, 0.18], [0.13, 0.18, 0.035], 28, 16);
+ellipsoid('skin_torso_long_wet', [0, 1.18, 0], [0.3, 0.8, 0.2], 44, 26);
+ellipsoid('skin_chest_sunken', [0, 1.62, 0.06], [0.34, 0.38, 0.15], 44, 22);
+ellipsoid('skin_pelvis_bony', [0, 0.43, -0.02], [0.25, 0.2, 0.18], 36, 18);
+ellipsoid('skin_head_eyeless', [0, 2.32, 0.04], [0.22, 0.3, 0.18], 44, 24);
+ellipsoid('face_black_smooth_plate', [0, 2.34, 0.2], [0.16, 0.2, 0.04], 32, 18);
 ear('ear_left_huge_membrane', -1);
 ear('ear_right_huge_membrane', 1);
 
@@ -160,13 +162,13 @@ for (let i = 0; i < 8; i += 1) {
 }
 
 for (const side of [-1, 1]) {
-  cylinderBetween(`skin_upper_arm_${side}`, [side * 0.24, 1.68, 0.02], [side * 0.48, 0.82, 0.06], 0.06, 0.042, 18);
-  cylinderBetween(`skin_forearm_long_${side}`, [side * 0.48, 0.82, 0.06], [side * 0.62, -0.28, 0.13], 0.047, 0.03, 18);
-  ellipsoid(`skin_hand_withered_${side}`, [side * 0.64, -0.38, 0.14], [0.055, 0.1, 0.04], 18, 10);
+  cylinderBetween(`skin_upper_arm_${side}`, [side * 0.3, 1.68, 0.02], [side * 0.54, 0.82, 0.06], 0.078, 0.052, 22);
+  cylinderBetween(`skin_forearm_long_${side}`, [side * 0.54, 0.82, 0.06], [side * 0.68, -0.28, 0.13], 0.06, 0.038, 22);
+  ellipsoid(`skin_hand_withered_${side}`, [side * 0.7, -0.38, 0.14], [0.075, 0.12, 0.052], 22, 12);
   for (let i = 0; i < 4; i += 1) cone(`claw_hand_${side}_${i}`, [side * (0.58 + i * 0.045), -0.48, 0.17], [side * (0.58 + i * 0.055), -0.83, 0.24], 0.015, 8);
-  cylinderBetween(`skin_thigh_${side}`, [side * 0.14, 0.38, 0], [side * 0.18, -0.18, 0.07], 0.075, 0.052, 18);
-  cylinderBetween(`skin_shin_digitigrade_${side}`, [side * 0.18, -0.18, 0.07], [side * 0.2, -0.78, 0.25], 0.052, 0.035, 18);
-  ellipsoid(`skin_foot_long_${side}`, [side * 0.2, -0.86, 0.42], [0.08, 0.04, 0.22], 18, 8);
+  cylinderBetween(`skin_thigh_${side}`, [side * 0.17, 0.38, 0], [side * 0.21, -0.18, 0.07], 0.09, 0.062, 22);
+  cylinderBetween(`skin_shin_digitigrade_${side}`, [side * 0.21, -0.18, 0.07], [side * 0.23, -0.78, 0.25], 0.062, 0.042, 22);
+  ellipsoid(`skin_foot_long_${side}`, [side * 0.23, -0.86, 0.42], [0.1, 0.045, 0.25], 22, 10);
   for (let i = 0; i < 3; i += 1) cone(`claw_toe_${side}_${i}`, [side * (0.14 + i * 0.05), -0.88, 0.58], [side * (0.13 + i * 0.065), -0.9, 0.82], 0.012, 8);
   cylinderBetween(`tendon_back_arm_${side}`, [side * 0.12, 1.92, -0.28], [side * 0.42, 0.72, -0.2], 0.012, 0.008, 8);
 }

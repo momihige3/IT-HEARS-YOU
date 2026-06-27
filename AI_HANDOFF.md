@@ -191,3 +191,25 @@ Build:
 
 ### Notes
 - Regenerate the OBJ with `node scripts/generate-sonar-obj.mjs` if the model generator changes.
+
+## 2026-06-28 Mobile Orientation Flicker / Goal Tap Lock Fix
+
+- Portrait-landscape viewport detection now uses `matchMedia('(orientation: portrait)')` plus `visualViewport` long/short sides instead of raw `innerWidth > innerHeight`.
+- Render-cap/layout updates are debounced on mobile resize/URL-bar changes, and orientationchange waits briefly before applying.
+- Added `stopMobileGameplayInput()` to clear move stick state, running toggle, camera swipe pointer, and mobile action visibility.
+- `endGame()` and HP-zero game over now call `stopMobileGameplayInput()` so tapping the goal on mobile does not leave stale touch input/UI state.
+
+## 2026-06-28 External SONAR OBJ Fix / Texture Assignment
+
+- Fixed generated OBJ face indices:
+  - Each object now offsets face indices by the total vertex count already written.
+  - Previous OBJ could collapse later parts into the first vertices, making the enemy look like a stretched rod.
+- Regenerated `public/models/sonar.obj` with wider torso/chest/head, larger ears, and thicker limbs so the silhouette is closer to the three-view reference.
+- External OBJ continues to receive procedural CanvasTexture/normalMap materials in `loadExternalSonarModel()`:
+  - `sonarSkinMat` for skin parts
+  - `sonarEarMat` for ear parts
+  - `sonarMouthMat` for mouth/rib/spine/tendon parts
+  - `paperMat` for claws/teeth/toes
+
+### Notes
+- No separate PNG texture files were added; textures are generated in `src/main.js` and assigned to the external OBJ by mesh name.
