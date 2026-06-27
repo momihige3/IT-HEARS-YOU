@@ -118,7 +118,7 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
   .title-block { width:74vw; transform:scale(.78); transform-origin:center; }
   h1 { font-size:72px; }
 }
-@media (hover:none) and (pointer:coarse) and (orientation:portrait) { #rotate-device { display:grid; } }
+@media (hover:none) and (pointer:coarse) and (orientation:portrait) { #rotate-device { display:none; } }
 
 
 /* PERF CONFIRMED 960: visible marker and diagnostics */
@@ -345,5 +345,63 @@ html, body { touch-action: none; }
   #perf-panel {
     left: var(--safe-left);
     bottom: var(--safe-bottom);
+  }
+}
+
+@media (hover:none) and (pointer:coarse) {
+  :root {
+    --safe-left: max(5vmin, env(safe-area-inset-left));
+    --safe-right: max(5vmin, env(safe-area-inset-right));
+    --safe-top: max(5vmin, env(safe-area-inset-top));
+    --safe-bottom: max(5vmin, env(safe-area-inset-bottom));
+  }
+  #rotate-device { display: none !important; }
+  body.game-running #mobile-controls { display:block; }
+  body.mobile-portrait-landscape #app {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vh;
+    height: 100vw;
+    transform: rotate(90deg) translateY(-100%);
+    transform-origin: top left;
+    overflow: hidden;
+  }
+  body.mobile-portrait-landscape #game,
+  body.mobile-portrait-landscape canvas {
+    width: 100vh !important;
+    height: 100vw !important;
+  }
+  body.mobile-portrait-landscape #game canvas {
+    width: 100vh !important;
+    height: 100vw !important;
+  }
+  #hud {
+    inset: var(--safe-top) auto auto var(--safe-left);
+    max-width: min(42vmax, calc(100vmax - 520px));
+  }
+  .status-cluster,
+  #hp-panel {
+    width: min(420px, 39vmax);
+  }
+  #radar-panel {
+    right: calc(var(--safe-right) + 230px);
+    top: var(--safe-top);
+    width: min(230px, 24vmax);
+    transform: none;
+  }
+  #minimap {
+    width: min(230px, 24vmax);
+    height: min(230px, 24vmax);
+  }
+  .mobile-right-buttons {
+    right: 0;
+    bottom: 0;
+    gap: 16px;
+  }
+  .mobile-right-buttons button {
+    width: min(190px, 20vmax);
+    min-height: min(104px, 12vmax);
+    font-size: min(24px, 2.8vmax);
   }
 }

@@ -18,18 +18,26 @@ let resolutionTierIndex = 0;
 let dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
 let lastResolutionAdjustAt = performance.now();
 let highFpsSince = performance.now();
+function getGameViewport() {
+  const portraitPhone = touchDevice && window.innerHeight > window.innerWidth;
+  return {
+    width: Math.max(1, portraitPhone ? window.innerHeight : window.innerWidth),
+    height: Math.max(1, portraitPhone ? window.innerWidth : window.innerHeight),
+    portraitPhone,
+  };
+}
 function applyRenderCap() {
-  const viewW = Math.max(1, window.innerWidth);
-  const viewH = Math.max(1, window.innerHeight);
+  const { width: viewW, height: viewH, portraitPhone } = getGameViewport();
   const scale = Math.min(1, INTERNAL_MAX_W / viewW, INTERNAL_MAX_H / viewH) * dynamicResolutionScale;
   const renderW = Math.max(320, Math.round(viewW * scale));
   const renderH = Math.max(180, Math.round(viewH * scale));
   camera.aspect = viewW / viewH;
   camera.updateProjectionMatrix();
   renderer.setSize(renderW, renderH, false);
-  renderer.domElement.style.width = '100vw';
-  renderer.domElement.style.height = '100vh';
+  renderer.domElement.style.width = portraitPhone ? '100vh' : '100vw';
+  renderer.domElement.style.height = portraitPhone ? '100vw' : '100vh';
   renderer.domElement.dataset.renderCap = `${renderW}x${renderH}`;
+  document.body.classList.toggle('mobile-portrait-landscape', portraitPhone);
 }
 applyRenderCap();
 renderer.shadowMap.enabled = false;
@@ -548,6 +556,49 @@ function addShelf(x, z, w = 1.8, rot = 0) {
   return group;
 }
 
+function addFireExtinguisher(x, z, rot = 0) {
+  const group = new THREE.Group();
+  group.rotation.y = rot;
+  localBox(group, 0, 0.68, 0, 0.34, 1.0, 0.18, material(0x5b1712, 0.42, 0.08), false);
+  localBox(group, 0, 1.22, 0.01, 0.42, 0.14, 0.2, material(0x8a2b20, 0.35, 0.08), false);
+  localBox(group, 0, 0.66, 0.12, 0.24, 0.34, 0.02, paperMat, false);
+  group.position.set(x, 0, z);
+  scene.add(group);
+  return group;
+}
+
+function addSinkRow(x, z, rot = 0) {
+  const group = new THREE.Group();
+  group.rotation.y = rot;
+  localBox(group, 0, 0.78, 0, 2.2, 0.18, 0.48, material(0x707a73, 0.45, 0.28), false);
+  localBox(group, 0, 0.46, -0.18, 2.2, 0.72, 0.12, material(0x4d5650, 0.5, 0.18), false);
+  for (let i = 0; i < 3; i += 1) {
+    const px = -0.72 + i * 0.72;
+    localBox(group, px, 0.91, 0.02, 0.44, 0.035, 0.28, material(0x202824, 0.38, 0.38), false);
+    localBox(group, px, 1.1, -0.12, 0.045, 0.26, 0.045, metalMat, false);
+  }
+  group.position.set(x, 0, z);
+  scene.add(group);
+  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? 1.16 : 0.28, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.28 : 1.16 });
+  return group;
+}
+
+function addNightWindow(x, z, rot = 0, w = 1.7) {
+  const group = new THREE.Group();
+  group.rotation.y = rot;
+  const glass = material(0x172025, 0.25, 0.12);
+  glass.emissive = new THREE.Color(0x26333b);
+  glass.emissiveIntensity = 0.42;
+  localBox(group, 0, 2.15, 0, w, 0.82, 0.035, glass, false);
+  localBox(group, 0, 2.15, 0.025, w + 0.14, 0.055, 0.045, metalMat, false);
+  localBox(group, 0, 2.56, 0.025, w + 0.14, 0.055, 0.045, metalMat, false);
+  localBox(group, 0, 1.74, 0.025, w + 0.14, 0.055, 0.045, metalMat, false);
+  localBox(group, 0, 2.15, 0.03, 0.055, 0.86, 0.045, metalMat, false);
+  group.position.set(x, 0, z);
+  scene.add(group);
+  return group;
+}
+
 function addRoomFixtures(room) {
   const center = roomCenter(room);
   const backZ = worldFromGrid(room.gx0, room.gz0).z - CELL / 2 + 0.24;
@@ -562,6 +613,7 @@ function addRoomFixtures(room) {
     if (room.id === 'science') {
       addBox(center.x, 0.95, center.z + 1.05, 1.75, 0.14, 0.72, metalMat, true, false, false);
       addBox(center.x - 0.45, 1.14, center.z + 1.05, 0.22, 0.22, 0.22, material(0x355f72, 0.28, 0.02), false, false, false);
+      addSinkRow(center.x + 0.95, center.z + 1.18, Math.PI / 2);
     } else if (room.id === 'nurse') {
       addBox(center.x + 0.78, 0.62, center.z + 1.18, 1.65, 0.32, 0.74, material(0xd8d8cf, 0.68, 0.02), true, false, false);
       addBox(center.x + 0.18, 0.95, center.z + 1.18, 0.42, 0.35, 0.68, paperMat, false, false, false);
@@ -569,9 +621,25 @@ function addRoomFixtures(room) {
       addBox(center.x - 0.95, 0.78, center.z + 1.1, 1.15, 1.15, 0.28, material(0x3d2a1d, 0.7, 0.04), true, false, false);
       for (let i = 0; i < 4; i += 1) addBox(center.x - 1.25 + i * 0.2, 1.47, center.z + 1.26, 0.055, 0.38, 0.035, paperMat, false, false, false);
     }
+    const sideX = room.sign.side === 'east'
+      ? worldFromGrid(room.gx0, room.gz0).x - CELL / 2 + 0.08
+      : worldFromGrid(room.gx1, room.gz1).x + CELL / 2 - 0.08;
+    addNightWindow(sideX, center.z - 0.9, room.sign.side === 'east' ? Math.PI / 2 : -Math.PI / 2, 1.35);
   } else {
     addBox(center.x, 0.58, center.z + 1.1, 1.7, 1.16, 0.7, metalMat, true, false, false);
     addShelf(center.x - 0.92, center.z - 0.92, 1.2, Math.PI / 2);
+  }
+}
+
+function addCorridorDetails() {
+  addSinkRow(worldFromGrid(6, 8).x - 1.36, worldFromGrid(6, 8).z + 1.45, 0);
+  addSinkRow(worldFromGrid(6, 13).x + 1.36, worldFromGrid(6, 13).z - 1.45, Math.PI);
+  addFireExtinguisher(worldFromGrid(6, 5).x + 1.72, worldFromGrid(6, 5).z, -Math.PI / 2);
+  addFireExtinguisher(worldFromGrid(6, 15).x - 1.72, worldFromGrid(6, 15).z, Math.PI / 2);
+  for (const gz of [3, 7, 11, 15]) {
+    const pos = worldFromGrid(6, gz);
+    addNightWindow(pos.x - 1.94, pos.z, Math.PI / 2, 1.65);
+    addNightWindow(pos.x + 1.94, pos.z, -Math.PI / 2, 1.65);
   }
 }
 
@@ -604,6 +672,7 @@ for (const room of schoolRooms) {
   addRoomFixtures(room);
   addWallPlate(room.name, room.sign);
 }
+addCorridorDetails();
 
 const exitCounterCanvas = document.createElement('canvas');
 exitCounterCanvas.width = 512;
@@ -732,31 +801,47 @@ function sonarPart(name, geometry, mat, position, scale = [1, 1, 1], rotation = 
   sonarParts[name] = mesh;
   return mesh;
 }
-sonarPart('body', new THREE.CapsuleGeometry(0.26, 1.28, 5, 8), sonarSkinMat, [0, 1.14, 0], [0.72, 1.18, 0.5]);
-sonarPart('ribCage', new THREE.BoxGeometry(0.46, 0.7, 0.18), sonarSkinMat, [0, 1.55, 0.02], [1, 1, 1]);
-sonarPart('head', new THREE.SphereGeometry(0.24, 10, 8), sonarSkinMat, [0, 2.28, 0.03], [0.78, 1.1, 0.72]);
-sonarPart('mouth', new THREE.BoxGeometry(0.08, 1.18, 0.035), sonarMouthMat, [0, 1.67, 0.235], [1.0, 1.0, 1.0]);
-sonarPart('jaw', new THREE.BoxGeometry(0.24, 0.08, 0.12), sonarMouthMat, [0, 2.08, 0.26], [1.0, 1.0, 1.0]);
-sonarPart('spine', new THREE.CylinderGeometry(0.025, 0.045, 1.32, 6), sonarMouthMat, [0, 1.34, -0.18], [1, 1, 1], [0.08, 0, 0]);
+sonarPart('body', new THREE.CapsuleGeometry(0.24, 1.34, 6, 10), sonarSkinMat, [0, 1.16, 0], [0.62, 1.24, 0.44]);
+sonarPart('abdomen', new THREE.CapsuleGeometry(0.18, 0.92, 5, 8), sonarSkinMat, [0, 0.8, -0.02], [0.78, 1.05, 0.48]);
+sonarPart('ribCage', new THREE.BoxGeometry(0.42, 0.78, 0.14), sonarSkinMat, [0, 1.57, 0.02], [1, 1, 1]);
+sonarPart('head', new THREE.SphereGeometry(0.24, 12, 8), sonarSkinMat, [0, 2.32, 0.02], [0.72, 1.08, 0.64]);
+sonarPart('facePlate', new THREE.SphereGeometry(0.16, 10, 6), darkMat, [0, 2.33, 0.15], [0.82, 1.12, 0.18]);
+sonarPart('mouth', new THREE.BoxGeometry(0.07, 1.42, 0.04), sonarMouthMat, [0, 1.6, 0.245], [1.0, 1.0, 1.0]);
+sonarPart('jaw', new THREE.BoxGeometry(0.24, 0.08, 0.12), sonarMouthMat, [0, 2.08, 0.27], [1.0, 1.0, 1.0]);
+sonarPart('spine', new THREE.CylinderGeometry(0.025, 0.045, 1.54, 6), sonarMouthMat, [0, 1.32, -0.2], [1, 1, 1], [0.08, 0, 0]);
 for (let i = 0; i < 5; i += 1) {
   sonarPart(`ribLeft${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.54, 5), sonarMouthMat, [-0.18, 1.1 + i * 0.16, 0.04], [1, 1, 1], [0, 0, 1.12]);
   sonarPart(`ribRight${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.54, 5), sonarMouthMat, [0.18, 1.1 + i * 0.16, 0.04], [1, 1, 1], [0, 0, -1.12]);
 }
-sonarPart('leftEar', new THREE.SphereGeometry(0.28, 10, 8), sonarEarMat, [-0.36, 2.32, 0.02], [1.08, 1.48, 0.18], [0, 0.28, 0.18]);
-sonarPart('rightEar', new THREE.SphereGeometry(0.28, 10, 8), sonarEarMat, [0.36, 2.32, 0.02], [1.08, 1.48, 0.18], [0, -0.28, -0.18]);
+for (let i = 0; i < 8; i += 1) {
+  const y = 0.95 + i * 0.17;
+  const w = 0.16 + i * 0.015;
+  sonarPart(`mouthToothL${i}`, new THREE.BoxGeometry(0.025, 0.06, 0.025), paperMat, [-w * 0.22, y, 0.285], [1, 1, 1], [0, 0, -0.34]);
+  sonarPart(`mouthToothR${i}`, new THREE.BoxGeometry(0.025, 0.06, 0.025), paperMat, [w * 0.22, y + 0.04, 0.285], [1, 1, 1], [0, 0, 0.34]);
+}
+sonarPart('leftEar', new THREE.SphereGeometry(0.34, 12, 8), sonarEarMat, [-0.42, 2.34, 0.01], [1.18, 1.64, 0.15], [0, 0.3, 0.26]);
+sonarPart('rightEar', new THREE.SphereGeometry(0.34, 12, 8), sonarEarMat, [0.42, 2.34, 0.01], [1.18, 1.64, 0.15], [0, -0.3, -0.26]);
+for (let i = 0; i < 4; i += 1) {
+  const spread = -0.18 + i * 0.12;
+  sonarPart(`leftEarVein${i}`, new THREE.CylinderGeometry(0.008, 0.012, 0.44, 5), sonarMouthMat, [-0.44 + i * 0.035, 2.34 + spread * 0.22, 0.055], [1, 1, 1], [1.22, 0, 0.42 + i * 0.2]);
+  sonarPart(`rightEarVein${i}`, new THREE.CylinderGeometry(0.008, 0.012, 0.44, 5), sonarMouthMat, [0.44 - i * 0.035, 2.34 + spread * 0.22, 0.055], [1, 1, 1], [1.22, 0, -0.42 - i * 0.2]);
+}
 for (const side of [-1, 1]) {
   const prefix = side < 0 ? 'left' : 'right';
-  sonarPart(`${prefix}UpperArm`, new THREE.CylinderGeometry(0.055, 0.075, 0.92, 6), sonarSkinMat, [side * 0.42, 1.22, 0.02], [1, 1, 1], [0.14, 0, side * 0.12]);
-  sonarPart(`${prefix}ForeArm`, new THREE.CylinderGeometry(0.04, 0.06, 1.12, 6), sonarSkinMat, [side * 0.55, 0.55, 0.07], [1, 1, 1], [0.08, 0, side * 0.1]);
-  sonarPart(`${prefix}Hand`, new THREE.SphereGeometry(0.08, 8, 6), sonarSkinMat, [side * 0.6, -0.05, 0.09], [0.7, 1.0, 0.45]);
-  for (let i = 0; i < 3; i += 1) {
-    sonarPart(`${prefix}Claw${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.32, 5), sonarMouthMat, [side * (0.55 + i * 0.055), -0.22, 0.13], [1, 1, 1], [0.55, 0, side * (0.15 + i * 0.05)]);
+  sonarPart(`${prefix}UpperArm`, new THREE.CylinderGeometry(0.045, 0.068, 1.06, 6), sonarSkinMat, [side * 0.42, 1.16, 0.02], [1, 1, 1], [0.18, 0, side * 0.14]);
+  sonarPart(`${prefix}ForeArm`, new THREE.CylinderGeometry(0.035, 0.055, 1.36, 6), sonarSkinMat, [side * 0.58, 0.38, 0.08], [1, 1, 1], [0.08, 0, side * 0.1]);
+  sonarPart(`${prefix}Hand`, new THREE.SphereGeometry(0.08, 8, 6), sonarSkinMat, [side * 0.63, -0.34, 0.1], [0.64, 1.0, 0.42]);
+  for (let i = 0; i < 4; i += 1) {
+    sonarPart(`${prefix}Claw${i}`, new THREE.CylinderGeometry(0.01, 0.018, 0.42, 5), sonarMouthMat, [side * (0.55 + i * 0.052), -0.58, 0.15], [1, 1, 1], [0.68, 0, side * (0.15 + i * 0.05)]);
   }
-  sonarPart(`${prefix}Thigh`, new THREE.CylinderGeometry(0.07, 0.095, 0.92, 6), sonarSkinMat, [side * 0.16, 0.55, 0], [1, 1, 1], [0.04, 0, side * 0.04]);
-  sonarPart(`${prefix}Shin`, new THREE.CylinderGeometry(0.045, 0.07, 0.92, 6), sonarSkinMat, [side * 0.18, -0.14, 0.06], [1, 1, 1], [-0.12, 0, side * -0.03]);
-  sonarPart(`${prefix}Foot`, new THREE.BoxGeometry(0.16, 0.08, 0.38), sonarSkinMat, [side * 0.18, -0.62, 0.19]);
+  sonarPart(`${prefix}Thigh`, new THREE.CylinderGeometry(0.065, 0.09, 0.96, 6), sonarSkinMat, [side * 0.14, 0.52, -0.02], [1, 1, 1], [0.08, 0, side * 0.04]);
+  sonarPart(`${prefix}Shin`, new THREE.CylinderGeometry(0.04, 0.065, 1.02, 6), sonarSkinMat, [side * 0.18, -0.22, 0.08], [1, 1, 1], [-0.22, 0, side * -0.03]);
+  sonarPart(`${prefix}Foot`, new THREE.BoxGeometry(0.16, 0.075, 0.5), sonarSkinMat, [side * 0.18, -0.78, 0.26]);
+  for (let i = 0; i < 3; i += 1) {
+    sonarPart(`${prefix}Toe${i}`, new THREE.CylinderGeometry(0.012, 0.017, 0.28, 5), sonarMouthMat, [side * (0.1 + i * 0.06), -0.82, 0.55], [1, 1, 1], [Math.PI / 2, 0, side * (0.18 + i * 0.08)]);
+  }
 }
-enemy.scale.set(1.18, 1.18, 1.18);
+enemy.scale.set(1.24, 1.24, 1.24);
 const enemyStartNode = findSafeNode((node) => Math.hypot(node.gx - 6, node.gz - 18) > 7 && node.key !== exitNode.key && node.key !== breakerNode.key, walkableNodes[0]);
 const enemyStart = new THREE.Vector3(enemyStartNode.x, 0, enemyStartNode.z);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
@@ -765,6 +850,7 @@ scene.add(enemy);
 const VISION_DISTANCE = 10.5;
 const VISION_HALF_ANGLE = Math.acos(0.84);
 const VISION_RAYS = 13;
+const CAPTURE_DISTANCE = 0.55;
 const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
 const enemyVisionGeometry = new THREE.BufferGeometry();
 enemyVisionGeometry.setAttribute('position', new THREE.BufferAttribute(visionPositions, 3));
@@ -2508,9 +2594,8 @@ function updateEnemy(dt, time) {
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? '0.12'
     : state.hidden && distance < 6 ? '0.035' : '0';
-  const clearAtCloseRange = !passByActive && distance < 1.45 && lineOfSightToPlayer;
-  const fullyDetected = state.detection >= 99.5 && visible;
-  if (!state.hidden && !exitGraceActive && (clearAtCloseRange || fullyDetected)) startCaughtCutscene();
+  const clearAtContactRange = !passByActive && distance < CAPTURE_DISTANCE && lineOfSightToPlayer;
+  if (!state.hidden && !exitGraceActive && clearAtContactRange) startCaughtCutscene();
 }
 
 function updateInteraction() {

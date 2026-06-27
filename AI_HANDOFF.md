@@ -118,3 +118,24 @@ Build:
 ### Notes
 - The provided ChatGPT image share links were not directly readable in this environment, so the enemy/map pass follows the existing SONAR + abandoned school art direction instead of exact image matching.
 - Dynamic resolution is adjusted in the FPS reporting block; performance panel shows the active scale.
+
+## 2026-06-28 Attachment Reference / Mobile Portrait Landscape Pass
+
+- Added mobile portrait-landscape mode:
+  - On touch devices held vertically, the app is rotated internally to a landscape layout.
+  - The rotate-device blocking overlay is disabled.
+  - `applyRenderCap()` swaps logical render width/height on portrait phones so camera aspect and internal resolution match the rotated game view.
+- Adjusted mobile HUD/radar layout so the run/light buttons do not overlap the minimap.
+- Updated SONAR model based on the attached reference sheets:
+  - Larger thin ears with red inner vein details.
+  - Dark eyeless face plate.
+  - Longer vertical red mouth/slit with tooth-like details.
+  - Longer arms, longer claws, digitigrade feet/toes, more exposed spine/rib detail.
+- Updated school map detail based on the attached reference:
+  - Added night windows, sink rows, fire extinguishers, and more recognizable school props while keeping the additions low-poly.
+- Tightened capture logic:
+  - Full detection no longer triggers capture by itself.
+  - Capture now requires near-contact distance (`CAPTURE_DISTANCE = 0.55`) and line of sight.
+
+### Notes
+- The portrait mode uses CSS transform rotation plus the existing touch controls; any future UI using raw viewport coordinates should be checked against `body.mobile-portrait-landscape`.
