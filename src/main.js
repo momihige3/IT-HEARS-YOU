@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -891,6 +892,8 @@ updateExitCounter();
 const enemy = new THREE.Group();
 enemy.name = 'SONAR';
 const sonarParts = {};
+const proceduralSonarParts = [];
+let externalSonarModel = null;
 function deformOrganicGeometry(geometry, name, amount = 0.035) {
   const position = geometry.attributes.position;
   if (!position) return geometry;
@@ -921,6 +924,7 @@ function sonarPart(name, geometry, mat, position, scale = [1, 1, 1], rotation = 
   mesh.receiveShadow = false;
   enemy.add(mesh);
   sonarParts[name] = mesh;
+  proceduralSonarParts.push(mesh);
   return mesh;
 }
 function sonarEarMembrane(name, side) {
@@ -1022,11 +1026,36 @@ const enemyStartNode = findSafeNode((node) => Math.hypot(node.gx - 6, node.gz - 
 const enemyStart = new THREE.Vector3(enemyStartNode.x, 0, enemyStartNode.z);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
 scene.add(enemy);
+function loadExternalSonarModel() {
+  const loader = new OBJLoader();
+  loader.load('./models/sonar.obj', (model) => {
+    model.name = 'SONAR_EXTERNAL_OBJ';
+    model.traverse((child) => {
+      if (!child.isMesh) return;
+      const n = child.name.toLowerCase();
+      if (n.includes('ear')) child.material = sonarEarMat;
+      else if (n.includes('maw') || n.includes('mouth') || n.includes('rib') || n.includes('spine') || n.includes('tendon')) child.material = sonarMouthMat;
+      else if (n.includes('claw') || n.includes('tooth') || n.includes('toe')) child.material = paperMat;
+      else if (n.includes('face')) child.material = darkMat;
+      else child.material = sonarSkinMat;
+      child.castShadow = false;
+      child.receiveShadow = false;
+      child.geometry.computeVertexNormals();
+    });
+    enemy.add(model);
+    externalSonarModel = model;
+    proceduralSonarParts.forEach((part) => { part.visible = false; });
+  }, undefined, () => {
+    proceduralSonarParts.forEach((part) => { part.visible = true; });
+  });
+}
+loadExternalSonarModel();
 
 const VISION_DISTANCE = 10.5;
 const VISION_HALF_ANGLE = Math.acos(0.84);
 const VISION_RAYS = 13;
 const CAPTURE_DISTANCE = 0.55;
+const MOVING_CAPTURE_DISTANCE = 1.18;
 const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
 const enemyVisionGeometry = new THREE.BufferGeometry();
 enemyVisionGeometry.setAttribute('position', new THREE.BufferAttribute(visionPositions, 3));
@@ -2789,7 +2818,9 @@ function updateEnemy(dt, time) {
   $('#danger-flash').style.opacity = state.alert === 'HUNTING'
     ? '0.12'
     : state.hidden && distance < 6 ? '0.035' : '0';
-  const clearAtContactRange = !passByActive && distance < CAPTURE_DISTANCE && lineOfSightToPlayer;
+  const playerMoving = !state.hidden && state.noise > 6;
+  const captureDistance = playerMoving ? MOVING_CAPTURE_DISTANCE : CAPTURE_DISTANCE;
+  const clearAtContactRange = !passByActive && distance < captureDistance && lineOfSightToPlayer;
   if (!state.hidden && !exitGraceActive && clearAtContactRange) startCaughtCutscene();
 }
 

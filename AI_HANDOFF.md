@@ -178,3 +178,16 @@ Build:
 
 ### Notes
 - This is still not a true authored PS3-era GLB sculpt. A real “three-view exact” model requires an external modeled/rigged asset pipeline, but this pass pushes the in-code model further toward that visual without adding external dependencies.
+
+## 2026-06-28 External SONAR OBJ / Moving Capture Fix
+
+- Added external model asset generation:
+  - `scripts/generate-sonar-obj.mjs` generates `public/models/sonar.obj`.
+  - `src/main.js` imports `OBJLoader` and loads `./models/sonar.obj` at runtime.
+  - On successful OBJ load, procedural in-code SONAR meshes are hidden and used only as fallback.
+- External OBJ follows the SONAR three-view concept with large membrane ears, eyeless head, vertical maw, long claws, digitigrade legs, exposed spine/ribs/tendons.
+- Existing procedural high-fidelity materials are assigned to OBJ parts by object name, so external geometry uses wet skin/ear/mouth materials.
+- Capture logic now uses `MOVING_CAPTURE_DISTANCE = 1.18` when the player is moving/noisy, while stationary capture remains `CAPTURE_DISTANCE = 0.55`.
+
+### Notes
+- Regenerate the OBJ with `node scripts/generate-sonar-obj.mjs` if the model generator changes.
