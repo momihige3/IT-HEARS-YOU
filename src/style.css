@@ -359,13 +359,14 @@ html, body { touch-action: none; }
   body.game-running #mobile-controls { display:block; }
   body.mobile-portrait-landscape #app {
     position: fixed;
-    left: max(3vmin, env(safe-area-inset-left));
-    top: max(3vmin, env(safe-area-inset-top));
-    width: calc(100svh - max(6vmin, env(safe-area-inset-left)) - max(6vmin, env(safe-area-inset-right)));
-    height: calc(100vw - max(6vmin, env(safe-area-inset-top)) - max(6vmin, env(safe-area-inset-bottom)));
+    left: max(2vmin, env(safe-area-inset-left));
+    top: max(2vmin, env(safe-area-inset-top));
+    width: min(var(--game-landscape-w, 100svh), calc(100svh - max(4vmin, env(safe-area-inset-left)) - max(4vmin, env(safe-area-inset-right))));
+    height: min(var(--game-landscape-h, 100vw), calc(100vw - max(4vmin, env(safe-area-inset-top)) - max(4vmin, env(safe-area-inset-bottom))));
     transform: rotate(90deg) translateY(-100%);
     transform-origin: top left;
     overflow: hidden;
+    contain: layout size paint;
   }
   body.mobile-portrait-landscape #game,
   body.mobile-portrait-landscape canvas {

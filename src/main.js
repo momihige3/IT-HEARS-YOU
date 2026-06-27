@@ -21,8 +21,14 @@ let lastResolutionAdjustAt = performance.now();
 let highFpsSince = performance.now();
 function getGameViewport() {
   const portraitPhone = touchDevice && matchMedia('(orientation: portrait)').matches;
-  const rawW = Math.max(1, window.visualViewport?.width || window.innerWidth);
-  const rawH = Math.max(1, window.visualViewport?.height || window.innerHeight);
+  const stableScreenW = Math.max(1, window.screen?.width || 0);
+  const stableScreenH = Math.max(1, window.screen?.height || 0);
+  const rawW = portraitPhone
+    ? stableScreenW
+    : Math.max(1, window.visualViewport?.width || window.innerWidth);
+  const rawH = portraitPhone
+    ? stableScreenH
+    : Math.max(1, window.visualViewport?.height || window.innerHeight);
   const longSide = Math.max(rawW, rawH);
   const shortSide = Math.min(rawW, rawH);
   return {
@@ -39,6 +45,8 @@ function applyRenderCap() {
   camera.aspect = viewW / viewH;
   camera.updateProjectionMatrix();
   renderer.setSize(renderW, renderH, false);
+  document.documentElement.style.setProperty('--game-landscape-w', `${viewW}px`);
+  document.documentElement.style.setProperty('--game-landscape-h', `${viewH}px`);
   renderer.domElement.style.width = portraitPhone ? '100vh' : '100vw';
   renderer.domElement.style.height = portraitPhone ? '100vw' : '100vh';
   renderer.domElement.dataset.renderCap = `${renderW}x${renderH}`;
@@ -167,6 +175,9 @@ const metalMat = material(0x7c8780, 0.5, 0.55, loadTexture('locker_scratched_met
 const darkMat = material(0x080b09, 0.82);
 const doorMat = material(0x9a7853, 0.76, 0.04, loadTexture('old_door_wood.png', 1, 1));
 const signMat = material(0x267556, 0.35, 0.03, loadTexture('blackboard_green.png', 1, 1));
+const sonarSkinFileMap = loadTexture('sonar_skin_wet.png', 1.7, 2.8);
+const sonarEarFileMap = loadTexture('sonar_ear_red.png', 1.15, 1.15);
+const sonarMouthFileMap = loadTexture('sonar_mouth_dark.png', 1.2, 2.2);
 function makeSonarTexture(base = '#121713', vein = '#2e0b08', shine = '#5f6b61') {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -240,33 +251,33 @@ function makeSonarNormalTexture(strength = 1) {
 const sonarSkinNormal = makeSonarNormalTexture(1.1);
 const sonarEarNormal = makeSonarNormalTexture(0.72);
 const sonarSkinMat = new THREE.MeshStandardMaterial({
-  color: 0x1d241f,
-  roughness: 0.36,
+  color: 0x8a938b,
+  roughness: 0.31,
   metalness: 0.02,
-  map: makeSonarTexture('#101612', '#30100d', '#6f7b70'),
+  map: sonarSkinFileMap,
   normalMap: sonarSkinNormal,
-  normalScale: new THREE.Vector2(0.42, 0.72),
-  emissive: 0x020302,
-  emissiveIntensity: 0.04,
+  normalScale: new THREE.Vector2(0.68, 0.96),
+  emissive: 0x070a07,
+  emissiveIntensity: 0.055,
 });
 const sonarEarMat = new THREE.MeshStandardMaterial({
-  color: 0x7a2b22,
-  roughness: 0.64,
+  color: 0xc48a78,
+  roughness: 0.48,
   metalness: 0.01,
-  map: makeSonarTexture('#32100e', '#8b342a', '#a45348'),
+  map: sonarEarFileMap,
   normalMap: sonarEarNormal,
-  normalScale: new THREE.Vector2(0.35, 0.55),
+  normalScale: new THREE.Vector2(0.52, 0.78),
   side: THREE.DoubleSide,
 });
 const sonarMouthMat = new THREE.MeshStandardMaterial({
-  color: 0x3d0605,
-  roughness: 0.3,
+  color: 0xb5382c,
+  roughness: 0.24,
   metalness: 0.01,
-  map: makeSonarTexture('#210303', '#9a2119', '#70140f'),
+  map: sonarMouthFileMap,
   normalMap: sonarSkinNormal,
-  normalScale: new THREE.Vector2(0.5, 0.65),
+  normalScale: new THREE.Vector2(0.62, 0.82),
   emissive: 0x260302,
-  emissiveIntensity: 0.18,
+  emissiveIntensity: 0.24,
 });
 
 function worldFromGrid(gx, gz) {
@@ -1030,6 +1041,30 @@ const enemyStartNode = findSafeNode((node) => Math.hypot(node.gx - 6, node.gz - 
 const enemyStart = new THREE.Vector3(enemyStartNode.x, 0, enemyStartNode.z);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
 scene.add(enemy);
+function ensureModelUv(geometry) {
+  if (geometry.attributes.uv && geometry.attributes.uv.count === geometry.attributes.position.count) return;
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox;
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const pos = geometry.attributes.position;
+  const uvs = new Float32Array(pos.count * 2);
+  const invX = 1 / Math.max(0.001, size.x);
+  const invY = 1 / Math.max(0.001, size.y);
+  const invZ = 1 / Math.max(0.001, size.z);
+  for (let i = 0; i < pos.count; i += 1) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const nx = (x - box.min.x) * invX;
+    const ny = (y - box.min.y) * invY;
+    const nz = (z - box.min.z) * invZ;
+    const sideBias = Math.abs(x) > Math.abs(z);
+    uvs[i * 2] = sideBias ? nz : nx;
+    uvs[i * 2 + 1] = ny;
+  }
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+}
 function loadExternalSonarModel() {
   const loader = new OBJLoader();
   loader.load('./models/sonar.obj', (model) => {
@@ -1044,6 +1079,7 @@ function loadExternalSonarModel() {
       else child.material = sonarSkinMat;
       child.castShadow = false;
       child.receiveShadow = false;
+      ensureModelUv(child.geometry);
       child.geometry.computeVertexNormals();
     });
     enemy.add(model);
@@ -1059,7 +1095,8 @@ const VISION_DISTANCE = 10.5;
 const VISION_HALF_ANGLE = Math.acos(0.84);
 const VISION_RAYS = 13;
 const CAPTURE_DISTANCE = 0.55;
-const MOVING_CAPTURE_DISTANCE = 1.18;
+const MOVING_CAPTURE_DISTANCE = 1.55;
+const MOVING_CLOSE_CAPTURE_DISTANCE = 0.88;
 const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
 const enemyVisionGeometry = new THREE.BufferGeometry();
 enemyVisionGeometry.setAttribute('position', new THREE.BufferAttribute(visionPositions, 3));
@@ -1212,11 +1249,11 @@ function chooseRandomEnemyRoute() {
   setEnemyDestination(target.x, target.z, 'ROAMING');
 }
 
-function chooseCoverSearchRoute() {
+function chooseCoverSearchRoute(preferredCover = null) {
   const origin = enemyData.lastHeardPosition || { x: enemy.position.x, z: enemy.position.z };
   let nearbyCovers = coverPoints.filter((cover) => Math.hypot(cover.x - origin.x, cover.z - origin.z) < 11);
   if (!nearbyCovers.length) nearbyCovers = coverPoints;
-  const cover = nearbyCovers[Math.floor(Math.random() * nearbyCovers.length)];
+  const cover = preferredCover || nearbyCovers[Math.floor(Math.random() * nearbyCovers.length)];
   const inspectNodes = coverSearchNodes(cover);
   const target = inspectNodes[Math.floor(Math.random() * inspectNodes.length)] || nearestNode(cover.x, cover.z);
   if (target) {
@@ -1227,6 +1264,16 @@ function chooseCoverSearchRoute() {
       enemyData.lookAroundUntil = clock.elapsedTime + 1.0 + Math.random() * 0.8;
     }
   }
+}
+
+function chooseCoverSearchRouteNearPlayer() {
+  const nearestCover = coverPoints
+    .filter((cover) => Math.hypot(cover.x - camera.position.x, cover.z - camera.position.z) < 4.2)
+    .sort((a, b) =>
+      Math.hypot(a.x - camera.position.x, a.z - camera.position.z)
+      - Math.hypot(b.x - camera.position.x, b.z - camera.position.z))[0];
+  if (nearestCover) chooseCoverSearchRoute(nearestCover);
+  else chooseCoverSearchRoute();
 }
 
 function choosePassByRoute(time) {
@@ -2663,8 +2710,18 @@ function updateEnemy(dt, time) {
   const facing = enemyForward.dot(toPlayer.clone().normalize());
   const exitGraceActive = time < state.lockerExitGraceUntil;
   const lineOfSightToPlayer = hasLineOfSight(enemyEye, playerEye);
+  const highAlertSearch = !state.hidden
+    && !exitGraceActive
+    && (state.detection > 58 || enemyData.alertMemory > 0.55 || enemyData.mode === 'HUNTING')
+    && distance < 5.2
+    && ['HUNTING', 'SEARCHING', 'INVESTIGATING'].includes(enemyData.mode);
   let passByActive = enemyData.mode === 'PASSING_BY' && time < enemyData.passByUntil;
-  const visible = !passByActive && !state.hidden && !exitGraceActive && distance < 10.5 && facing > 0.84 && lineOfSightToPlayer;
+  const visible = !passByActive
+    && !state.hidden
+    && !exitGraceActive
+    && distance < 10.5
+    && lineOfSightToPlayer
+    && (facing > 0.84 || highAlertSearch);
   const blockedChase = !state.hidden
     && !exitGraceActive
     && enemyData.mode === 'HUNTING'
@@ -2673,12 +2730,25 @@ function updateEnemy(dt, time) {
   if (blockedChase) {
     if (!enemyData.blockedChaseSince) enemyData.blockedChaseSince = time;
     if (time - enemyData.blockedChaseSince > 0.65) {
-      state.detection = Math.min(state.detection, 18);
-      state.alert = 'UNNOTICED';
-      enemyData.alertMemory = Math.max(0, enemyData.alertMemory - 0.28);
-      enemyData.blockedChaseSince = 0;
-      choosePassByRoute(time);
-      passByActive = true;
+      if (state.detection > 58 || enemyData.alertMemory > 0.48) {
+        state.detection = Math.max(state.detection, 72);
+        state.alert = 'HUNTING';
+        enemyData.mode = 'SEARCHING';
+        enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 10);
+        enemyData.lookBaseYaw = enemy.rotation.y;
+        enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 2.8);
+        enemyData.coverPeekYaw = Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z);
+        enemyData.coverPeekUntil = Math.max(enemyData.coverPeekUntil, time + 2.8);
+        enemyData.lastHeardPosition = { x: camera.position.x, z: camera.position.z };
+        chooseCoverSearchRouteNearPlayer();
+      } else {
+        state.detection = Math.min(state.detection, 18);
+        state.alert = 'UNNOTICED';
+        enemyData.alertMemory = Math.max(0, enemyData.alertMemory - 0.28);
+        enemyData.blockedChaseSince = 0;
+        choosePassByRoute(time);
+        passByActive = true;
+      }
     }
   } else {
     enemyData.blockedChaseSince = 0;
@@ -2704,7 +2774,10 @@ function updateEnemy(dt, time) {
   }
   const coverPeekActive = nearbySharedCover >= 0 && time < enemyData.coverPeekUntil;
   const coverPeekFacing = coverPeekActive
-    && Math.cos(enemyData.coverPeekYaw - Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z)) > 0.72;
+    && (
+      highAlertSearch
+      || Math.cos(enemyData.coverPeekYaw - Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z)) > 0.72
+    );
   const checkingSameCover = nearbySharedCover >= 0 && enemyData.coverCheckSuccess && coverPeekFacing;
 
   if (visible) {
@@ -2812,7 +2885,8 @@ function updateEnemy(dt, time) {
     enemy.rotation.y += roarTurn * dt;
   }
   if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
-    enemy.rotation.y = enemyData.lookBaseYaw + Math.sin(time * 3.1) * 1.18;
+    const sweepProgress = (time * (state.detection > 58 || enemyData.alertMemory > 0.55 ? 2.35 : 1.25)) % (Math.PI * 2);
+    enemy.rotation.y = enemyData.lookBaseYaw + sweepProgress;
   }
   if (coverPeekActive && enemyData.mode === 'SEARCHING') {
     const turnDelta = Math.atan2(
@@ -2838,8 +2912,13 @@ function updateEnemy(dt, time) {
     ? '0.12'
     : state.hidden && distance < 6 ? '0.035' : '0';
   const playerMoving = !state.hidden && state.noise > 6;
+  const playerRunning = playerMoving && state.moveMode === 'RUNNING';
   const captureDistance = playerMoving ? MOVING_CAPTURE_DISTANCE : CAPTURE_DISTANCE;
-  const clearAtContactRange = !passByActive && distance < captureDistance && lineOfSightToPlayer;
+  const visibleCapture = distance < captureDistance && lineOfSightToPlayer;
+  const closeMovingCapture = playerRunning
+    && state.alert === 'HUNTING'
+    && distance < MOVING_CLOSE_CAPTURE_DISTANCE;
+  const clearAtContactRange = !passByActive && (visibleCapture || closeMovingCapture);
   if (!state.hidden && !exitGraceActive && clearAtContactRange) startCaughtCutscene();
 }
 

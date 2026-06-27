@@ -213,3 +213,17 @@ Build:
 
 ### Notes
 - No separate PNG texture files were added; textures are generated in `src/main.js` and assigned to the external OBJ by mesh name.
+
+## 2026-06-28 SONAR Texture / Mobile Portrait / Capture / Search Fix
+
+- External SONAR now uses the existing PNG texture files:
+  - `sonar_skin_wet.png`
+  - `sonar_ear_red.png`
+  - `sonar_mouth_dark.png`
+- Added runtime UV generation for loaded OBJ meshes so PNG textures are visible even when the OBJ has no `vt` UV data.
+- Lightened SONAR material color multipliers and increased normal intensity so the texture does not collapse into flat black.
+- Mobile portrait landscape mode now uses stable `screen.width/height` for the virtual landscape viewport and writes `--game-landscape-w/h` CSS vars to reduce URL-bar/knockdown resize flicker.
+- Portrait CSS now sizes the rotated game shell from those stable vars instead of recalculating only from `svh/svw`.
+- Moving capture distance increased to `1.55`; running during HUNTING can trigger near-contact capture at `0.88` without requiring perfect overlap.
+- High-alert blocked chase no longer immediately clears alert/pass-by. It switches to SEARCHING, preserves detection, and routes to cover near the player.
+- SEARCHING look-around is now continuous 360-degree sweep instead of a narrow side-to-side oscillation.
