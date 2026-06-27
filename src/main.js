@@ -203,11 +203,44 @@ function makeSonarTexture(base = '#121713', vein = '#2e0b08', shine = '#5f6b61')
   tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   return tex;
 }
+function makeSonarNormalTexture(strength = 1) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  const image = ctx.createImageData(256, 256);
+  for (let y = 0; y < 256; y += 1) {
+    for (let x = 0; x < 256; x += 1) {
+      const n = (
+        Math.sin(x * 0.19) * 0.35 +
+        Math.sin(y * 0.23) * 0.28 +
+        Math.sin((x + y) * 0.08) * 0.22 +
+        (Math.random() - 0.5) * 0.38
+      ) * strength;
+      const i = (y * 256 + x) * 4;
+      image.data[i] = THREE.MathUtils.clamp(128 + n * 44, 0, 255);
+      image.data[i + 1] = THREE.MathUtils.clamp(128 + Math.sin(y * 0.11) * 36 * strength, 0, 255);
+      image.data[i + 2] = 224;
+      image.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2.2, 3.4);
+  tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  return tex;
+}
+const sonarSkinNormal = makeSonarNormalTexture(1.1);
+const sonarEarNormal = makeSonarNormalTexture(0.72);
 const sonarSkinMat = new THREE.MeshStandardMaterial({
   color: 0x1d241f,
-  roughness: 0.48,
+  roughness: 0.36,
   metalness: 0.02,
   map: makeSonarTexture('#101612', '#30100d', '#6f7b70'),
+  normalMap: sonarSkinNormal,
+  normalScale: new THREE.Vector2(0.42, 0.72),
   emissive: 0x020302,
   emissiveIntensity: 0.04,
 });
@@ -216,13 +249,17 @@ const sonarEarMat = new THREE.MeshStandardMaterial({
   roughness: 0.64,
   metalness: 0.01,
   map: makeSonarTexture('#32100e', '#8b342a', '#a45348'),
+  normalMap: sonarEarNormal,
+  normalScale: new THREE.Vector2(0.35, 0.55),
   side: THREE.DoubleSide,
 });
 const sonarMouthMat = new THREE.MeshStandardMaterial({
   color: 0x3d0605,
-  roughness: 0.42,
+  roughness: 0.3,
   metalness: 0.01,
   map: makeSonarTexture('#210303', '#9a2119', '#70140f'),
+  normalMap: sonarSkinNormal,
+  normalScale: new THREE.Vector2(0.5, 0.65),
   emissive: 0x260302,
   emissiveIntensity: 0.18,
 });
@@ -854,8 +891,28 @@ updateExitCounter();
 const enemy = new THREE.Group();
 enemy.name = 'SONAR';
 const sonarParts = {};
+function deformOrganicGeometry(geometry, name, amount = 0.035) {
+  const position = geometry.attributes.position;
+  if (!position) return geometry;
+  let seed = 0;
+  for (let i = 0; i < name.length; i += 1) seed += name.charCodeAt(i) * (i + 1);
+  for (let i = 0; i < position.count; i += 1) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    const wrinkle = Math.sin((x * 13.7 + y * 8.3 + seed) * 1.7)
+      + Math.sin((z * 17.1 - y * 5.9 + seed) * 1.1)
+      + Math.sin((x + z + seed) * 6.4);
+    const scale = 1 + wrinkle * amount;
+    position.setXYZ(i, x * scale, y * (1 + wrinkle * amount * 0.45), z * scale);
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}
 function sonarPart(name, geometry, mat, position, scale = [1, 1, 1], rotation = [0, 0, 0]) {
-  const mesh = new THREE.Mesh(geometry, mat);
+  const useGeometry = deformOrganicGeometry(geometry.clone(), name, mat === sonarSkinMat ? 0.028 : mat === sonarEarMat ? 0.018 : 0.012);
+  const mesh = new THREE.Mesh(useGeometry, mat);
   mesh.name = name;
   mesh.position.set(...position);
   mesh.scale.set(...scale);
@@ -878,6 +935,28 @@ function sonarEarMembrane(name, side) {
 }
 sonarEarMembrane('leftEarMembraneWide', -1);
 sonarEarMembrane('rightEarMembraneWide', 1);
+function sonarTube(name, points, radius, mat, tubularSegments = 24) {
+  const curve = new THREE.CatmullRomCurve3(points.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+  return sonarPart(name, new THREE.TubeGeometry(curve, tubularSegments, radius, 8, false), mat, [0, 0, 0]);
+}
+function sonarVerticalMaw() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.045, 2.1);
+  shape.bezierCurveTo(-0.13, 1.75, -0.12, 1.24, -0.045, 0.78);
+  shape.bezierCurveTo(-0.01, 0.58, 0.01, 0.58, 0.045, 0.78);
+  shape.bezierCurveTo(0.12, 1.24, 0.13, 1.75, 0.045, 2.1);
+  shape.bezierCurveTo(0.015, 2.2, -0.015, 2.2, -0.045, 2.1);
+  const maw = sonarPart('verticalChestMaw', new THREE.ShapeGeometry(shape, 16), sonarMouthMat, [0, 0, 0.305], [1, 1, 1], [0, 0, 0]);
+  maw.material.side = THREE.DoubleSide;
+  sonarTube('leftMawRim', [[-0.055, 2.08, 0.34], [-0.13, 1.68, 0.35], [-0.11, 1.1, 0.34], [-0.045, 0.76, 0.33]], 0.018, sonarMouthMat, 28);
+  sonarTube('rightMawRim', [[0.055, 2.08, 0.34], [0.13, 1.68, 0.35], [0.11, 1.1, 0.34], [0.045, 0.76, 0.33]], 0.018, sonarMouthMat, 28);
+  for (let i = 0; i < 12; i += 1) {
+    const y = 0.86 + i * 0.095;
+    const side = i % 2 ? -1 : 1;
+    sonarPart(`mawNeedle${i}`, new THREE.ConeGeometry(0.014, 0.11, 7), paperMat, [side * 0.052, y, 0.365], [0.75, 1, 0.75], [Math.PI / 2, 0, side * 0.32]);
+  }
+}
+sonarVerticalMaw();
 sonarPart('body', new THREE.CapsuleGeometry(0.24, 1.34, 10, 18), sonarSkinMat, [0, 1.16, 0], [0.62, 1.24, 0.44]);
 sonarPart('chestWetPlate', new THREE.SphereGeometry(0.26, 18, 12), sonarSkinMat, [0, 1.62, 0.08], [0.82, 1.42, 0.25]);
 sonarPart('abdomen', new THREE.CapsuleGeometry(0.18, 0.92, 8, 14), sonarSkinMat, [0, 0.8, -0.02], [0.78, 1.05, 0.48]);
@@ -934,7 +1013,11 @@ for (const side of [-1, 1]) {
     sonarPart(`${prefix}Toe${i}`, new THREE.CylinderGeometry(0.012, 0.017, 0.28, 5), sonarMouthMat, [side * (0.1 + i * 0.06), -0.82, 0.55], [1, 1, 1], [Math.PI / 2, 0, side * (0.18 + i * 0.08)]);
   }
 }
-enemy.scale.set(1.24, 1.24, 1.24);
+const SONAR_BASE_SCALE = 1.34;
+const sonarMawGlow = new THREE.PointLight(0x8b140e, 1.2, 3.2, 1.8);
+sonarMawGlow.position.set(0, 1.55, 0.46);
+enemy.add(sonarMawGlow);
+enemy.scale.set(SONAR_BASE_SCALE, SONAR_BASE_SCALE, SONAR_BASE_SCALE);
 const enemyStartNode = findSafeNode((node) => Math.hypot(node.gx - 6, node.gz - 18) > 7 && node.key !== exitNode.key && node.key !== breakerNode.key, walkableNodes[0]);
 const enemyStart = new THREE.Vector3(enemyStartNode.x, 0, enemyStartNode.z);
 enemy.position.set(enemyStart.x, 0, enemyStart.z);
@@ -2494,7 +2577,7 @@ function updateSonarModel(dt, time) {
   const roaring = time < state.roarUntil;
   const investigate = enemyData.mode === 'INVESTIGATING' || enemyData.mode === 'SEARCHING';
   const breathe = Math.sin(time * (chase ? 8.5 : 3.2));
-  enemy.scale.y = 1.18 + breathe * (chase ? 0.035 : 0.018);
+  enemy.scale.y = SONAR_BASE_SCALE + breathe * (chase ? 0.04 : 0.022);
   if (sonarParts.leftEar && sonarParts.rightEar) {
     const earOpen = roaring ? 0.62 : chase ? 0.42 : investigate ? 0.28 : 0.12;
     const twitch = Math.sin(time * 19) * (chase ? 0.07 : 0.025);

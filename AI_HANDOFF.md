@@ -165,3 +165,16 @@ Build:
   - Added large custom membrane-shaped ears, beyond the previous flattened sphere ears.
   - Added raised back vertebrae, scapula plates, and rear tendons.
   - Kept the procedural geometry/material approach; still no external model file dependency.
+
+## 2026-06-28 SONAR PS3-Style Quality Attempt
+
+- Raised SONAR material fidelity:
+  - Added procedural normal maps for wet skin, ears, and mouth.
+  - Lowered roughness on skin/mouth for wet specular highlights.
+  - Added more vein/noise texture detail.
+- Reduced primitive look by applying deterministic organic vertex deformation to generated geometries.
+- Added a custom vertical chest/mouth maw with curved ShapeGeometry, raised tube rims, needle teeth, and red internal glow.
+- Increased SONAR base scale and fixed animation so it no longer shrinks the Y scale back to the older low-poly size.
+
+### Notes
+- This is still not a true authored PS3-era GLB sculpt. A real “three-view exact” model requires an external modeled/rigged asset pipeline, but this pass pushes the in-code model further toward that visual without adding external dependencies.
