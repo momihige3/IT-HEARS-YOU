@@ -162,9 +162,70 @@ const metalMat = material(0x7c8780, 0.5, 0.55, loadTexture('locker_scratched_met
 const darkMat = material(0x080b09, 0.82);
 const doorMat = material(0x9a7853, 0.76, 0.04, loadTexture('old_door_wood.png', 1, 1));
 const signMat = material(0x267556, 0.35, 0.03, loadTexture('blackboard_green.png', 1, 1));
-const sonarSkinMat = material(0x4b5a4f, 0.82, 0.04, loadTexture('sonar_skin_wet.png', 1, 1));
-const sonarEarMat = material(0x6f2a23, 0.86, 0.02, loadTexture('sonar_ear_red.png', 1, 1));
-const sonarMouthMat = material(0x4a0806, 0.7, 0.02, loadTexture('sonar_mouth_dark.png', 1, 1));
+function makeSonarTexture(base = '#121713', vein = '#2e0b08', shine = '#5f6b61') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1150; i += 1) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
+    const l = 7 + Math.random() * 32;
+    ctx.strokeStyle = Math.random() < 0.72 ? 'rgba(105,118,106,.12)' : 'rgba(10,12,10,.35)';
+    ctx.lineWidth = 0.55 + Math.random() * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.sin(y * 0.08) * l, y + l);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 42; i += 1) {
+    const x = 24 + Math.random() * 208;
+    ctx.strokeStyle = `${vein}${Math.random() < 0.5 ? 'cc' : '88'}`;
+    ctx.lineWidth = 0.7 + Math.random() * 1.7;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    for (let y = 0; y <= 256; y += 16) ctx.lineTo(x + Math.sin(y * 0.055 + i) * (5 + Math.random() * 6), y);
+    ctx.stroke();
+  }
+  const gloss = ctx.createRadialGradient(112, 70, 8, 112, 70, 150);
+  gloss.addColorStop(0, `${shine}55`);
+  gloss.addColorStop(0.45, 'rgba(80,92,84,.08)');
+  gloss.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gloss;
+  ctx.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1.6, 2.8);
+  tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  return tex;
+}
+const sonarSkinMat = new THREE.MeshStandardMaterial({
+  color: 0x1d241f,
+  roughness: 0.48,
+  metalness: 0.02,
+  map: makeSonarTexture('#101612', '#30100d', '#6f7b70'),
+  emissive: 0x020302,
+  emissiveIntensity: 0.04,
+});
+const sonarEarMat = new THREE.MeshStandardMaterial({
+  color: 0x7a2b22,
+  roughness: 0.64,
+  metalness: 0.01,
+  map: makeSonarTexture('#32100e', '#8b342a', '#a45348'),
+  side: THREE.DoubleSide,
+});
+const sonarMouthMat = new THREE.MeshStandardMaterial({
+  color: 0x3d0605,
+  roughness: 0.42,
+  metalness: 0.01,
+  map: makeSonarTexture('#210303', '#9a2119', '#70140f'),
+  emissive: 0x260302,
+  emissiveIntensity: 0.18,
+});
 
 function worldFromGrid(gx, gz) {
   return new THREE.Vector3((gx - GRID_HALF_W) * CELL, 0, (gz - GRID_HALF_H) * CELL);
@@ -636,11 +697,6 @@ function addCorridorDetails() {
   addSinkRow(worldFromGrid(6, 13).x + 1.36, worldFromGrid(6, 13).z - 1.45, Math.PI);
   addFireExtinguisher(worldFromGrid(6, 5).x + 1.72, worldFromGrid(6, 5).z, -Math.PI / 2);
   addFireExtinguisher(worldFromGrid(6, 15).x - 1.72, worldFromGrid(6, 15).z, Math.PI / 2);
-  for (const gz of [3, 7, 11, 15]) {
-    const pos = worldFromGrid(6, gz);
-    addNightWindow(pos.x - 1.94, pos.z, Math.PI / 2, 1.65);
-    addNightWindow(pos.x + 1.94, pos.z, -Math.PI / 2, 1.65);
-  }
 }
 
 function addWallPlate(text, plateInfo) {
@@ -801,17 +857,21 @@ function sonarPart(name, geometry, mat, position, scale = [1, 1, 1], rotation = 
   sonarParts[name] = mesh;
   return mesh;
 }
-sonarPart('body', new THREE.CapsuleGeometry(0.24, 1.34, 6, 10), sonarSkinMat, [0, 1.16, 0], [0.62, 1.24, 0.44]);
-sonarPart('abdomen', new THREE.CapsuleGeometry(0.18, 0.92, 5, 8), sonarSkinMat, [0, 0.8, -0.02], [0.78, 1.05, 0.48]);
-sonarPart('ribCage', new THREE.BoxGeometry(0.42, 0.78, 0.14), sonarSkinMat, [0, 1.57, 0.02], [1, 1, 1]);
-sonarPart('head', new THREE.SphereGeometry(0.24, 12, 8), sonarSkinMat, [0, 2.32, 0.02], [0.72, 1.08, 0.64]);
-sonarPart('facePlate', new THREE.SphereGeometry(0.16, 10, 6), darkMat, [0, 2.33, 0.15], [0.82, 1.12, 0.18]);
+sonarPart('body', new THREE.CapsuleGeometry(0.24, 1.34, 10, 18), sonarSkinMat, [0, 1.16, 0], [0.62, 1.24, 0.44]);
+sonarPart('chestWetPlate', new THREE.SphereGeometry(0.26, 18, 12), sonarSkinMat, [0, 1.62, 0.08], [0.82, 1.42, 0.25]);
+sonarPart('abdomen', new THREE.CapsuleGeometry(0.18, 0.92, 8, 14), sonarSkinMat, [0, 0.8, -0.02], [0.78, 1.05, 0.48]);
+sonarPart('pelvis', new THREE.SphereGeometry(0.2, 14, 10), sonarSkinMat, [0, 0.35, -0.02], [0.82, 0.62, 0.54]);
+sonarPart('ribCage', new THREE.BoxGeometry(0.42, 0.78, 0.14, 3, 8, 2), sonarSkinMat, [0, 1.57, 0.02], [1, 1, 1]);
+sonarPart('head', new THREE.SphereGeometry(0.24, 20, 14), sonarSkinMat, [0, 2.32, 0.02], [0.72, 1.08, 0.64]);
+sonarPart('facePlate', new THREE.SphereGeometry(0.16, 18, 10), darkMat, [0, 2.33, 0.15], [0.82, 1.12, 0.18]);
 sonarPart('mouth', new THREE.BoxGeometry(0.07, 1.42, 0.04), sonarMouthMat, [0, 1.6, 0.245], [1.0, 1.0, 1.0]);
 sonarPart('jaw', new THREE.BoxGeometry(0.24, 0.08, 0.12), sonarMouthMat, [0, 2.08, 0.27], [1.0, 1.0, 1.0]);
-sonarPart('spine', new THREE.CylinderGeometry(0.025, 0.045, 1.54, 6), sonarMouthMat, [0, 1.32, -0.2], [1, 1, 1], [0.08, 0, 0]);
-for (let i = 0; i < 5; i += 1) {
-  sonarPart(`ribLeft${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.54, 5), sonarMouthMat, [-0.18, 1.1 + i * 0.16, 0.04], [1, 1, 1], [0, 0, 1.12]);
-  sonarPart(`ribRight${i}`, new THREE.CylinderGeometry(0.012, 0.018, 0.54, 5), sonarMouthMat, [0.18, 1.1 + i * 0.16, 0.04], [1, 1, 1], [0, 0, -1.12]);
+sonarPart('spine', new THREE.CylinderGeometry(0.025, 0.045, 1.54, 9), sonarMouthMat, [0, 1.32, -0.2], [1, 1, 1], [0.08, 0, 0]);
+for (let i = 0; i < 7; i += 1) {
+  const y = 1.0 + i * 0.13;
+  const width = 0.46 - Math.abs(i - 3) * 0.025;
+  sonarPart(`ribLeft${i}`, new THREE.CylinderGeometry(0.01, 0.017, width, 8), sonarMouthMat, [-0.17, y, 0.045], [1, 1, 1], [0, 0, 1.06 + i * 0.025]);
+  sonarPart(`ribRight${i}`, new THREE.CylinderGeometry(0.01, 0.017, width, 8), sonarMouthMat, [0.17, y, 0.045], [1, 1, 1], [0, 0, -1.06 - i * 0.025]);
 }
 for (let i = 0; i < 8; i += 1) {
   const y = 0.95 + i * 0.17;
@@ -819,23 +879,28 @@ for (let i = 0; i < 8; i += 1) {
   sonarPart(`mouthToothL${i}`, new THREE.BoxGeometry(0.025, 0.06, 0.025), paperMat, [-w * 0.22, y, 0.285], [1, 1, 1], [0, 0, -0.34]);
   sonarPart(`mouthToothR${i}`, new THREE.BoxGeometry(0.025, 0.06, 0.025), paperMat, [w * 0.22, y + 0.04, 0.285], [1, 1, 1], [0, 0, 0.34]);
 }
-sonarPart('leftEar', new THREE.SphereGeometry(0.34, 12, 8), sonarEarMat, [-0.42, 2.34, 0.01], [1.18, 1.64, 0.15], [0, 0.3, 0.26]);
-sonarPart('rightEar', new THREE.SphereGeometry(0.34, 12, 8), sonarEarMat, [0.42, 2.34, 0.01], [1.18, 1.64, 0.15], [0, -0.3, -0.26]);
-for (let i = 0; i < 4; i += 1) {
+sonarPart('leftEar', new THREE.SphereGeometry(0.34, 24, 14), sonarEarMat, [-0.42, 2.34, 0.01], [1.18, 1.64, 0.15], [0, 0.3, 0.26]);
+sonarPart('rightEar', new THREE.SphereGeometry(0.34, 24, 14), sonarEarMat, [0.42, 2.34, 0.01], [1.18, 1.64, 0.15], [0, -0.3, -0.26]);
+sonarPart('leftOuterEarRim', new THREE.TorusGeometry(0.38, 0.018, 8, 28), sonarMouthMat, [-0.44, 2.34, 0.02], [1.0, 1.35, 0.2], [0.02, 0.36, 0.28]);
+sonarPart('rightOuterEarRim', new THREE.TorusGeometry(0.38, 0.018, 8, 28), sonarMouthMat, [0.44, 2.34, 0.02], [1.0, 1.35, 0.2], [0.02, -0.36, -0.28]);
+for (let i = 0; i < 7; i += 1) {
   const spread = -0.18 + i * 0.12;
-  sonarPart(`leftEarVein${i}`, new THREE.CylinderGeometry(0.008, 0.012, 0.44, 5), sonarMouthMat, [-0.44 + i * 0.035, 2.34 + spread * 0.22, 0.055], [1, 1, 1], [1.22, 0, 0.42 + i * 0.2]);
-  sonarPart(`rightEarVein${i}`, new THREE.CylinderGeometry(0.008, 0.012, 0.44, 5), sonarMouthMat, [0.44 - i * 0.035, 2.34 + spread * 0.22, 0.055], [1, 1, 1], [1.22, 0, -0.42 - i * 0.2]);
+  sonarPart(`leftEarVein${i}`, new THREE.CylinderGeometry(0.006, 0.012, 0.48, 6), sonarMouthMat, [-0.46 + i * 0.028, 2.34 + spread * 0.2, 0.058], [1, 1, 1], [1.22, 0, 0.28 + i * 0.13]);
+  sonarPart(`rightEarVein${i}`, new THREE.CylinderGeometry(0.006, 0.012, 0.48, 6), sonarMouthMat, [0.46 - i * 0.028, 2.34 + spread * 0.2, 0.058], [1, 1, 1], [1.22, 0, -0.28 - i * 0.13]);
 }
 for (const side of [-1, 1]) {
   const prefix = side < 0 ? 'left' : 'right';
-  sonarPart(`${prefix}UpperArm`, new THREE.CylinderGeometry(0.045, 0.068, 1.06, 6), sonarSkinMat, [side * 0.42, 1.16, 0.02], [1, 1, 1], [0.18, 0, side * 0.14]);
-  sonarPart(`${prefix}ForeArm`, new THREE.CylinderGeometry(0.035, 0.055, 1.36, 6), sonarSkinMat, [side * 0.58, 0.38, 0.08], [1, 1, 1], [0.08, 0, side * 0.1]);
-  sonarPart(`${prefix}Hand`, new THREE.SphereGeometry(0.08, 8, 6), sonarSkinMat, [side * 0.63, -0.34, 0.1], [0.64, 1.0, 0.42]);
+  sonarPart(`${prefix}Shoulder`, new THREE.SphereGeometry(0.09, 12, 8), sonarSkinMat, [side * 0.3, 1.75, 0.02], [0.82, 0.74, 0.5]);
+  sonarPart(`${prefix}UpperArm`, new THREE.CylinderGeometry(0.045, 0.068, 1.06, 10), sonarSkinMat, [side * 0.42, 1.16, 0.02], [1, 1, 1], [0.18, 0, side * 0.14]);
+  sonarPart(`${prefix}Elbow`, new THREE.SphereGeometry(0.06, 10, 8), sonarMouthMat, [side * 0.52, 0.64, 0.05], [0.74, 0.68, 0.6]);
+  sonarPart(`${prefix}ForeArm`, new THREE.CylinderGeometry(0.035, 0.055, 1.36, 10), sonarSkinMat, [side * 0.58, 0.38, 0.08], [1, 1, 1], [0.08, 0, side * 0.1]);
+  sonarPart(`${prefix}Hand`, new THREE.SphereGeometry(0.08, 12, 8), sonarSkinMat, [side * 0.63, -0.34, 0.1], [0.64, 1.0, 0.42]);
   for (let i = 0; i < 4; i += 1) {
-    sonarPart(`${prefix}Claw${i}`, new THREE.CylinderGeometry(0.01, 0.018, 0.42, 5), sonarMouthMat, [side * (0.55 + i * 0.052), -0.58, 0.15], [1, 1, 1], [0.68, 0, side * (0.15 + i * 0.05)]);
+    sonarPart(`${prefix}Claw${i}`, new THREE.CylinderGeometry(0.008, 0.018, 0.5, 7), sonarMouthMat, [side * (0.55 + i * 0.052), -0.6, 0.16], [1, 1, 1], [0.72, 0, side * (0.15 + i * 0.05)]);
   }
-  sonarPart(`${prefix}Thigh`, new THREE.CylinderGeometry(0.065, 0.09, 0.96, 6), sonarSkinMat, [side * 0.14, 0.52, -0.02], [1, 1, 1], [0.08, 0, side * 0.04]);
-  sonarPart(`${prefix}Shin`, new THREE.CylinderGeometry(0.04, 0.065, 1.02, 6), sonarSkinMat, [side * 0.18, -0.22, 0.08], [1, 1, 1], [-0.22, 0, side * -0.03]);
+  sonarPart(`${prefix}Thigh`, new THREE.CylinderGeometry(0.065, 0.09, 0.96, 10), sonarSkinMat, [side * 0.14, 0.52, -0.02], [1, 1, 1], [0.08, 0, side * 0.04]);
+  sonarPart(`${prefix}Knee`, new THREE.SphereGeometry(0.065, 10, 8), sonarMouthMat, [side * 0.17, 0.06, 0.04], [0.62, 0.74, 0.56]);
+  sonarPart(`${prefix}Shin`, new THREE.CylinderGeometry(0.04, 0.065, 1.02, 10), sonarSkinMat, [side * 0.18, -0.22, 0.08], [1, 1, 1], [-0.22, 0, side * -0.03]);
   sonarPart(`${prefix}Foot`, new THREE.BoxGeometry(0.16, 0.075, 0.5), sonarSkinMat, [side * 0.18, -0.78, 0.26]);
   for (let i = 0; i < 3; i += 1) {
     sonarPart(`${prefix}Toe${i}`, new THREE.CylinderGeometry(0.012, 0.017, 0.28, 5), sonarMouthMat, [side * (0.1 + i * 0.06), -0.82, 0.55], [1, 1, 1], [Math.PI / 2, 0, side * (0.18 + i * 0.08)]);
@@ -1478,16 +1543,25 @@ function showToast(text) {
   showToast.timer = setTimeout(() => toast.classList.remove('show'), 2100);
 }
 
-function setBreaker(on) {
+function applyBreakerVisual(on) {
+  breakerLight.color.set(on ? 0x7dffad : 0xff2d1e);
+  breakerLight.intensity = on ? 2.6 : 1.25;
+  breakerPanel.material.color.set(on ? 0x26332c : 0x4d120d);
+  breakerPanel.material.emissive = new THREE.Color(on ? 0x07170d : 0x4b0705);
+  breakerPanel.material.emissiveIntensity = on ? 0.18 : 0.62;
+  breakerSwitch.material.color.set(on ? 0x7dffad : 0xff2d1e);
+  breakerSwitch.material.emissive = new THREE.Color(on ? 0x1b7a3f : 0x8f120b);
+  breakerSwitch.material.emissiveIntensity = on ? 0.75 : 1.05;
+}
+
+function setBreaker(on, notify = true) {
   state.breakerOn = on;
   state.breakerOutAt = on ? clock.elapsedTime + 180 * state.breakerDurationMultiplier : Infinity;
-  breakerLight.color.set(on ? 0x7dffad : 0xff6d4d);
-  breakerLight.intensity = on ? 2.6 : 0.35;
-  breakerSwitch.material.color.set(on ? 0x7dffad : 0xff6d4d);
-  breakerSwitch.material.emissive = new THREE.Color(on ? 0x1b7a3f : 0x5a120c);
-  breakerSwitch.material.emissiveIntensity = on ? 0.75 : 0.35;
+  applyBreakerVisual(on);
+  if (!notify) return;
   showToast(on ? 'ブレーカーを入れた：3分間、校内が明るくなる' : 'ブレーカーが落ちた');
 }
+applyBreakerVisual(false);
 
 function updateSchoolLighting(time) {
   if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
@@ -1580,6 +1654,7 @@ function startCaughtCutscene() {
   state.caught = true;
   state.caughtAt = clock.elapsedTime;
   state.noise = 0;
+  setBreaker(false, false);
   Object.keys(keys).forEach((key) => { keys[key] = false; });
   if (controls.isLocked) controls.unlock();
   document.body.classList.add('caught-cutscene');
@@ -1612,6 +1687,7 @@ function respawnPlayer() {
   state.currentLocker = null;
   state.breakerOn = false;
   state.breakerOutAt = Infinity;
+  setBreaker(false, false);
   state.seatedUntil = 0;
   state.roarUntil = 0;
   scheduleNextRoar(clock.elapsedTime);
@@ -1694,6 +1770,7 @@ function updateCaughtCutscene(time) {
 
 function endGame(win) {
   state.ended = true;
+  if (!win) setBreaker(false, false);
   controls.unlock();
   $('#message-kicker').textContent = win ? '脱出成功' : '見つかった';
   $('#message-title').textContent = win ? '生還' : '捕獲';

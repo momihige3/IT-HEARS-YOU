@@ -139,3 +139,16 @@ Build:
 
 ### Notes
 - The portrait mode uses CSS transform rotation plus the existing touch controls; any future UI using raw viewport coordinates should be checked against `body.mobile-portrait-landscape`.
+
+## 2026-06-28 Mobile Portrait / Breaker / SONAR Quality Follow-up
+
+- Reduced minimap size specifically for `body.mobile-portrait-landscape`.
+- Added larger portrait safe margins and shrank the rotated game viewport with `svh`/safe-area units so browser URL bars and notches are less likely to clip right-side controls.
+- Removed corridor window placement from `addCorridorDetails()`; night windows remain only as room-side props.
+- Breaker OFF visual is now forced red on the light, panel, and switch.
+- Capture cutscene, game over, and respawn now force breaker OFF visual state.
+- SONAR material quality was raised with procedural wet skin/vein textures, darker face material, glossier red mouth/ear materials, and higher segment counts on major body parts.
+- SONAR shape detail was increased with chest/pelvis plates, more ribs, ear rims/veins, elbows/knees, longer claws, and toes.
+
+### Notes
+- No external GLB/texture files were introduced. The higher-quality SONAR pass remains procedural Three.js geometry/materials for GitHub Pages compatibility.
