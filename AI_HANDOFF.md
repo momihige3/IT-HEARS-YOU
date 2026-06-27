@@ -152,3 +152,16 @@ Build:
 
 ### Notes
 - No external GLB/texture files were introduced. The higher-quality SONAR pass remains procedural Three.js geometry/materials for GitHub Pages compatibility.
+
+## 2026-06-28 Portrait Input / Placement / SONAR Shape Pass
+
+- Fixed mobile portrait-landscape input basis:
+  - Touch joystick deltas are converted from portrait device coordinates to landscape game coordinates.
+  - Camera swipe deltas use the same conversion, so swipe/move controls behave like horizontal landscape play while the phone is held vertically.
+- Locker placement is now rejected unless the target side actually borders a wall/non-walkable cell.
+- Removed central corridor locker candidates.
+- Cover object positions are nudged toward room edges instead of sitting near room/corridor centerlines.
+- SONAR silhouette was changed more aggressively toward the reference three-view:
+  - Added large custom membrane-shaped ears, beyond the previous flattened sphere ears.
+  - Added raised back vertebrae, scapula plates, and rear tendons.
+  - Kept the procedural geometry/material approach; still no external model file dependency.

@@ -445,12 +445,18 @@ function isLockerEntranceBlocked(gx, gz) {
 
 function makeSafeLocker(gx, gz, wallSide) {
   if (!walkable.has(gridKey(gx, gz)) || isLockerEntranceBlocked(gx, gz)) return null;
+  const sideDelta = {
+    west: [-1, 0],
+    east: [1, 0],
+    north: [0, -1],
+    south: [0, 1],
+  }[wallSide];
+  if (!sideDelta || walkable.has(gridKey(gx + sideDelta[0], gz + sideDelta[1]))) return null;
   return makeLocker(gx, gz, wallSide);
 }
 
 [
   [1, 4, 'west'], [11, 4, 'east'], [1, 10, 'west'], [11, 12, 'east'],
-  [3, 7, 'east'], [9, 16, 'west'], [6, 6, 'east'], [6, 13, 'west'],
   [2, 6, 'west'], [10, 6, 'east'], [2, 12, 'west'], [10, 14, 'east'],
 ].forEach(([gx, gz, wallSide]) => makeSafeLocker(gx, gz, wallSide));
 
@@ -463,8 +469,11 @@ function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
   const room = getRoomAt(gx, gz);
   if (!room) return;
   const cell = worldFromGrid(gx, gz);
-  const x = cell.x + offsetX;
-  const z = cell.z + offsetZ;
+  const center = roomCenter(room);
+  const awayX = Math.sign(cell.x - center.x) || Math.sign(offsetX);
+  const awayZ = Math.sign(cell.z - center.z) || Math.sign(offsetZ);
+  const x = cell.x + (awayX ? awayX * Math.max(1.18, Math.abs(offsetX)) : offsetX);
+  const z = cell.z + (awayZ ? awayZ * Math.max(1.18, Math.abs(offsetZ)) : offsetZ);
   if (type === 'cabinet') {
     addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true);
     addBox(x, 1.55, z + 0.425, 0.72, 0.06, 0.025, darkMat);
@@ -857,6 +866,18 @@ function sonarPart(name, geometry, mat, position, scale = [1, 1, 1], rotation = 
   sonarParts[name] = mesh;
   return mesh;
 }
+function sonarEarMembrane(name, side) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.bezierCurveTo(side * 0.28, 0.34, side * 0.72, 0.42, side * 0.78, 0.05);
+  shape.bezierCurveTo(side * 0.82, -0.3, side * 0.42, -0.44, side * 0.12, -0.28);
+  shape.bezierCurveTo(side * 0.02, -0.18, side * -0.02, -0.08, 0, 0);
+  const mesh = sonarPart(name, new THREE.ShapeGeometry(shape, 10), sonarEarMat, [side * 0.18, 2.35, 0.075], [1.12, 1.12, 1.0], [0.05, side * -0.54, side * 0.08]);
+  mesh.material = sonarEarMat;
+  return mesh;
+}
+sonarEarMembrane('leftEarMembraneWide', -1);
+sonarEarMembrane('rightEarMembraneWide', 1);
 sonarPart('body', new THREE.CapsuleGeometry(0.24, 1.34, 10, 18), sonarSkinMat, [0, 1.16, 0], [0.62, 1.24, 0.44]);
 sonarPart('chestWetPlate', new THREE.SphereGeometry(0.26, 18, 12), sonarSkinMat, [0, 1.62, 0.08], [0.82, 1.42, 0.25]);
 sonarPart('abdomen', new THREE.CapsuleGeometry(0.18, 0.92, 8, 14), sonarSkinMat, [0, 0.8, -0.02], [0.78, 1.05, 0.48]);
@@ -867,6 +888,13 @@ sonarPart('facePlate', new THREE.SphereGeometry(0.16, 18, 10), darkMat, [0, 2.33
 sonarPart('mouth', new THREE.BoxGeometry(0.07, 1.42, 0.04), sonarMouthMat, [0, 1.6, 0.245], [1.0, 1.0, 1.0]);
 sonarPart('jaw', new THREE.BoxGeometry(0.24, 0.08, 0.12), sonarMouthMat, [0, 2.08, 0.27], [1.0, 1.0, 1.0]);
 sonarPart('spine', new THREE.CylinderGeometry(0.025, 0.045, 1.54, 9), sonarMouthMat, [0, 1.32, -0.2], [1, 1, 1], [0.08, 0, 0]);
+for (let i = 0; i < 10; i += 1) {
+  sonarPart(`backVertebra${i}`, new THREE.SphereGeometry(0.04, 10, 6), sonarSkinMat, [0, 0.72 + i * 0.16, -0.31], [0.8, 0.48, 0.42]);
+}
+for (const side of [-1, 1]) {
+  sonarPart(`scapula${side}`, new THREE.BoxGeometry(0.36, 0.035, 0.055, 3, 1, 1), sonarSkinMat, [side * 0.16, 1.72, -0.27], [1, 1, 1], [0.16, 0.05, side * 0.64]);
+  sonarPart(`backTendon${side}`, new THREE.CylinderGeometry(0.012, 0.018, 1.05, 8), sonarMouthMat, [side * 0.13, 1.25, -0.33], [1, 1, 1], [0.04, 0, side * 0.12]);
+}
 for (let i = 0; i < 7; i += 1) {
   const y = 1.0 + i * 0.13;
   const width = 0.46 - Math.abs(i - 3) * 0.025;
@@ -1892,6 +1920,11 @@ addEventListener('beforeunload', (event) => {
   }
 });
 
+function toLandscapeInputDelta(dx, dy) {
+  if (!document.body.classList.contains('mobile-portrait-landscape')) return { x: dx, y: dy };
+  return { x: dy, y: -dx };
+}
+
 function setupTouchStick(element, onChange) {
   let pointerId = null;
   let bounds = null;
@@ -1900,8 +1933,9 @@ function setupTouchStick(element, onChange) {
     const centerX = bounds.left + bounds.width / 2;
     const centerY = bounds.top + bounds.height / 2;
     const radius = bounds.width * 0.36;
-    const rawX = event.clientX - centerX;
-    const rawY = event.clientY - centerY;
+    const pointerDelta = toLandscapeInputDelta(event.clientX - centerX, event.clientY - centerY);
+    const rawX = pointerDelta.x;
+    const rawY = pointerDelta.y;
     const distance = Math.hypot(rawX, rawY) || 1;
     const scale = Math.min(1, radius / distance);
     const x = rawX * scale;
@@ -1970,8 +2004,9 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
 renderer.domElement.addEventListener('pointermove', (event) => {
   if (event.pointerId !== cameraSwipePointer) return;
   event.preventDefault();
-  const deltaX = event.clientX - cameraSwipeX;
-  const deltaY = event.clientY - cameraSwipeY;
+  const rawDelta = toLandscapeInputDelta(event.clientX - cameraSwipeX, event.clientY - cameraSwipeY);
+  const deltaX = rawDelta.x;
+  const deltaY = rawDelta.y;
   cameraSwipeX = event.clientX;
   cameraSwipeY = event.clientY;
   const sensitivity = 0.0042 * (controls.pointerSpeed / 0.45);
