@@ -307,3 +307,16 @@ Build:
   - Removed the FPS/draw/render `perf-panel` from `index.html`.
   - Removed related CSS.
   - Internal FPS sampling remains because dynamic resolution still depends on it.
+
+## 2026-06-28 Super Alert / Wall Hug AI
+
+- Added `SUPER_ALERT` state displayed as `超警戒`.
+  - If detection exceeds 70% while the player is not currently visible, the enemy enters map-wide SEARCHING instead of immediate HUNTING.
+  - Super alert search lasts at least 30 seconds and repeatedly picks wider/farther search routes.
+  - If the player becomes visible while detection is above 70%, the enemy switches to normal HUNTING.
+- Enemy wall clearance was reduced:
+  - `canEnemyMoveTo()` collider padding changed from `0.34` to `0.16`.
+  - Enemy safety snap check now uses `0.18` padding.
+- Added wall-slide movement when enemy collides:
+  - On blocked forward movement, the AI tries left/right slide vectors along the obstacle before clearing the path.
+  - If sliding fails, existing repath/pass-by/super-alert route recovery remains as fallback.

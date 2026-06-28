@@ -1244,6 +1244,7 @@ const enemyData = {
   pounceFrom: null,
   pounceTarget: null,
   wallSoundRepathUntil: 0,
+  superSearchUntil: 0,
 };
 
 function nearestNode(x, z) {
@@ -1311,7 +1312,7 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
   return enemyData.mode === mode;
 }
 
-function chooseRandomEnemyRoute() {
+function chooseRandomEnemyRoute(mode = 'ROAMING') {
   const alertSpread = THREE.MathUtils.clamp((state.detection + enemyData.alertMemory * 55) / 100, 0, 1);
   let choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
   if (alertSpread > 0.45 && Math.random() < alertSpread) {
@@ -1323,7 +1324,20 @@ function chooseRandomEnemyRoute() {
   }
   if (!choices.length) choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
   const target = choices[Math.floor(Math.random() * choices.length)];
-  setEnemyDestination(target.x, target.z, 'ROAMING');
+  setEnemyDestination(target.x, target.z, mode);
+}
+
+function chooseSuperAlertRoute(time) {
+  const farNodes = [...navNodes.values()]
+    .filter((node) => node.key !== enemyData.targetKey)
+    .filter((node) =>
+      Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > 9
+      || Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 11)
+    .sort(() => Math.random() - 0.5);
+  const target = farNodes[0] || [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey)[0];
+  if (target) setEnemyDestination(target.x, target.z, 'SEARCHING');
+  enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 30);
+  enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
 }
 
 function chooseCoverSearchRoute(preferredCover = null) {
@@ -1809,7 +1823,7 @@ function canEnemyMoveTo(x, z) {
   const maxZ = GRID_HALF_H * CELL + CELL / 2 - 0.2;
   if (x < -maxX || x > maxX || z < -maxZ || z > maxZ) return false;
   return !colliders.some((collider) =>
-    Math.abs(x - collider.x) < collider.hw + 0.34 && Math.abs(z - collider.z) < collider.hz + 0.34);
+    Math.abs(x - collider.x) < collider.hw + 0.16 && Math.abs(z - collider.z) < collider.hz + 0.16);
 }
 
 function hasLineOfSight(from, to) {
@@ -2062,6 +2076,7 @@ function respawnPlayer() {
     pounceFrom: null,
     pounceTarget: null,
     wallSoundRepathUntil: 0,
+    superSearchUntil: 0,
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
@@ -2880,7 +2895,7 @@ function updateEnemyPounce(time) {
 function updateEnemy(dt, time) {
   if (state.ended) return;
   const roaring = time < state.roarUntil;
-  if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.36)) {
+  if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18)) {
     const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
     enemy.position.set(safe.x, 0, safe.z);
     enemyData.path = [];
@@ -3028,13 +3043,26 @@ function updateEnemy(dt, time) {
   } else if (enemyData.mode === 'TRAP_RUSH' && time < enemyData.trapRushUntil) {
     state.alert = 'SUSPICIOUS';
     enemyData.speed = 6.4;
-  } else if (state.detection > 70 && !state.hidden) {
+  } else if (state.detection > 70 && !state.hidden && visible) {
     state.alert = 'HUNTING';
     enemyData.mode = 'HUNTING';
     enemyData.speed = 5.2 + state.detection * 0.006;
     if (time > enemyData.repathAt) {
       setEnemyDestination(camera.position.x, camera.position.z, 'HUNTING');
       enemyData.repathAt = time + 0.48;
+    }
+  } else if (state.detection > 70 && !state.hidden) {
+    state.alert = 'SUPER_ALERT';
+    enemyData.mode = 'SEARCHING';
+    enemyData.speed = 3.55 + enemyData.alertMemory * 0.9;
+    if (time >= enemyData.superSearchUntil) {
+      enemyData.superSearchUntil = time + 30;
+      enemyData.searchUntil = Math.max(enemyData.searchUntil, enemyData.superSearchUntil);
+      chooseSuperAlertRoute(time);
+      enemyData.repathAt = time + 2.2;
+    } else if (enemyData.path.length === 0 || time > enemyData.repathAt) {
+      chooseSuperAlertRoute(time);
+      enemyData.repathAt = time + 3.0 + Math.random() * 1.6;
     }
   } else if (enemyData.mode === 'INVESTIGATING' && time < enemyData.investigateUntil) {
     state.alert = 'SUSPICIOUS';
@@ -3083,15 +3111,32 @@ function updateEnemy(dt, time) {
         enemy.rotation.y = Math.atan2(direction.x, direction.z);
         enemyData.isMoving = true;
       } else {
-        const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
-        if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.36)) enemy.position.set(safe.x, 0, safe.z);
-        enemyData.path = [];
-        if (time < enemyData.wallSoundRepathUntil && enemyData.lastHeardPosition) {
-          setEnemyDestinationNear(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', 3.4);
-          enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, 5.2);
-          enemyData.lookAroundUntil = 0;
-        } else if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
-        else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
+        const slideStep = enemyData.speed * dt * 0.82;
+        const slideOptions = [
+          { x: direction.z, z: -direction.x },
+          { x: -direction.z, z: direction.x },
+        ].sort((a, b) =>
+          Math.hypot(enemy.position.x + a.x * slideStep - target.x, enemy.position.z + a.z * slideStep - target.z)
+          - Math.hypot(enemy.position.x + b.x * slideStep - target.x, enemy.position.z + b.z * slideStep - target.z));
+        const slide = slideOptions.find((option) =>
+          canEnemyMoveTo(enemy.position.x + option.x * slideStep, enemy.position.z + option.z * slideStep));
+        if (slide) {
+          enemy.position.x += slide.x * slideStep;
+          enemy.position.z += slide.z * slideStep;
+          enemy.rotation.y = Math.atan2(slide.x, slide.z);
+          enemyData.isMoving = true;
+        } else {
+          const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
+          if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18)) enemy.position.set(safe.x, 0, safe.z);
+          enemyData.path = [];
+          if (time < enemyData.wallSoundRepathUntil && enemyData.lastHeardPosition) {
+            setEnemyDestinationNear(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', 3.4);
+            enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, 5.2);
+            enemyData.lookAroundUntil = 0;
+          } else if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
+          else if (state.alert === 'SUPER_ALERT') chooseSuperAlertRoute(time);
+          else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
+        }
       }
     }
   }
@@ -3183,7 +3228,7 @@ function updateInteraction() {
   mobileAction.classList.toggle('visible', mobileInput.active && Boolean(prompt) && !state.caught);
 }
 
-const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', HUNTING: '追跡中' };
+const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', SUPER_ALERT: '超警戒', HUNTING: '追跡中' };
 const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている', SEATED: 'しりもち' };
 function updateHUD() {
   $('#noise-bar').style.width = `${state.noise}%`;
@@ -3191,7 +3236,7 @@ function updateHUD() {
   $('#detect-bar').style.width = `${state.detection}%`;
   $('#detect-value').textContent = String(Math.round(state.detection)).padStart(2, '0');
   $('#alert-text').textContent = alertLabels[state.alert];
-  $('#alert-text').parentElement.classList.toggle('danger', state.alert === 'HUNTING');
+  $('#alert-text').parentElement.classList.toggle('danger', state.alert === 'HUNTING' || state.alert === 'SUPER_ALERT');
   $('#move-mode').textContent = movementLabels[state.hidden ? 'HIDING' : clock.elapsedTime < state.seatedUntil ? 'SEATED' : state.moveMode];
   $('#battery-value').textContent = `${Math.ceil(state.battery)}%`;
   $('#battery-bar').style.width = `${state.battery}%`;
@@ -3335,7 +3380,9 @@ function updateRadar(dt, time) {
     radar.lineTo(point.x, point.y);
   }
   radar.closePath();
-  radar.fillStyle = state.alert === 'HUNTING' ? 'rgba(239,65,52,.24)' : 'rgba(208,82,62,.12)';
+  radar.fillStyle = state.alert === 'HUNTING'
+    ? 'rgba(239,65,52,.24)'
+    : state.alert === 'SUPER_ALERT' ? 'rgba(239,132,52,.2)' : 'rgba(208,82,62,.12)';
   radar.fill();
   radar.strokeStyle = 'rgba(239,92,76,.38)';
   radar.lineWidth = 1;
