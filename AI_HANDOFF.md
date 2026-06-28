@@ -354,3 +354,15 @@ Build:
 - Continue after capture now regenerates the map:
   - Caught cutscene completion reloads the page instead of calling `respawnPlayer()`.
   - Coin persistence remains handled by localStorage.
+
+## 2026-06-28 Locker Calmdown / Forced Center Detour
+
+- Locker hiding now rapidly lowers detection over 5 seconds:
+  - On `enterLocker()`, stores the current detection and hide start time.
+  - While hidden, `updatePlayer()` eases detection down to the key-based detection floor over 5 seconds.
+  - Key-based minimum detection still applies.
+- Wall-blocked sound routing now forces a center-corridor detour:
+  - `setEnemyDestinationViaCorridor()` accepts `forceCenterRoute`.
+  - When sound line of sight is blocked, routing becomes `enemy -> center corridor node -> reachable sound-side node`.
+  - Recovery from wall-sound investigation also uses the forced center route.
+- Goal is to prevent the enemy from sticking to the wall facing a sound source on the other side.

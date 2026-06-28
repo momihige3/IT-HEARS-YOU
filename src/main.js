@@ -136,6 +136,8 @@ const state = {
   lockerFrontYaw: 0,
   lockerLookOffset: 0,
   lockerExitGraceUntil: 0,
+  lockerHideAt: -Infinity,
+  lockerHideStartDetection: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -1392,8 +1394,48 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
   return enemyData.mode === mode;
 }
 
-function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING') {
-  return setEnemyDestinationNear(x, z, mode, 6.8);
+function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING', forceCenterRoute = false) {
+  if (!forceCenterRoute) return setEnemyDestinationNear(x, z, mode, 6.8);
+  const start = nearestReachableNode(enemy.position.x, enemy.position.z);
+  if (!start) return false;
+  const targetProbe = new THREE.Vector3(x, 1.1, z);
+  const targetCandidates = [...navNodes.values()]
+    .filter((node) => Math.hypot(node.x - x, node.z - z) <= 9.2)
+    .filter((node) => canEnemyMoveTo(node.x, node.z))
+    .sort((a, b) => {
+      const aSight = hasLineOfSight(new THREE.Vector3(a.x, 1.1, a.z), targetProbe) ? -5 : 0;
+      const bSight = hasLineOfSight(new THREE.Vector3(b.x, 1.1, b.z), targetProbe) ? -5 : 0;
+      const aRoom = getRoomAt(a.gx, a.gz) ? 4 : 0;
+      const bRoom = getRoomAt(b.gx, b.gz) ? 4 : 0;
+      return Math.hypot(a.x - x, a.z - z) + aRoom + aSight
+        - (Math.hypot(b.x - x, b.z - z) + bRoom + bSight);
+    });
+  const centerCandidates = [...navNodes.values()]
+    .filter((node) => node.gx === 6 && node.key !== start.key)
+    .filter((node) => canEnemyMoveTo(node.x, node.z))
+    .sort((a, b) => Math.hypot(a.x - enemy.position.x, a.z - enemy.position.z)
+      - Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z));
+  let best = null;
+  for (const center of centerCandidates.slice(0, 10)) {
+    const toCenter = findPath(start.key, center.key);
+    if (!toCenter.length && start.key !== center.key) continue;
+    for (const target of targetCandidates.slice(0, 14)) {
+      const toTarget = findPath(center.key, target.key);
+      if (!toTarget.length && center.key !== target.key) continue;
+      const score = toCenter.length * 1.1
+        + toTarget.length
+        + Math.hypot(target.x - x, target.z - z) * 0.45
+        + Math.abs(center.gz - target.gz) * 0.08;
+      if (!best || score < best.score) best = { center, target, path: [...toCenter, ...toTarget], score };
+    }
+  }
+  if (best?.path?.length) {
+    enemyData.path = best.path;
+    enemyData.targetKey = best.target.key;
+    enemyData.mode = mode;
+    return true;
+  }
+  return setEnemyDestinationNear(x, z, mode, 8.6);
 }
 
 function chooseRandomEnemyRoute(mode = 'ROAMING') {
@@ -1496,7 +1538,7 @@ function recoverEnemyNavigation(time) {
     setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, state.alert === 'HUNTING' ? 'HUNTING' : 'SEARCHING');
     enemyData.repathAt = time + 1.1;
   } else if (enemyData.lastHeardPosition && time < enemyData.wallSoundRepathUntil) {
-    setEnemyDestinationViaCorridor(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING');
+    setEnemyDestinationViaCorridor(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', true);
   } else {
     chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
   }
@@ -1883,7 +1925,7 @@ function reactToSoundEvent(event, now) {
   const noiseGain = (strength > 70 ? 9.0 : 1.15) * (1 + enemyData.alertMemory * 1.2);
   setDetection(Math.max(state.detection, strength > 70 ? 28 : 8) + noiseGain);
   if (forceTrapResponse) {
-    setEnemyDestinationViaCorridor(event.x, event.z, 'TRAP_RUSH');
+    setEnemyDestinationViaCorridor(event.x, event.z, 'TRAP_RUSH', wallBlockedSound);
     enemyData.trapRushUntil = now + 18;
     enemyData.investigateUntil = now + 18;
     enemyData.searchUntil = now + 22;
@@ -1894,13 +1936,13 @@ function reactToSoundEvent(event, now) {
     return;
   }
   if (state.alert === 'HUNTING' && state.detection > 70) {
-    setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING');
+    setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING', wallBlockedSound);
     enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
     enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, wallBlockedSound ? 5.8 : 3.4);
     return;
   }
   const firstReaction = enemyData.mode !== 'INVESTIGATING';
-  setEnemyDestinationViaCorridor(event.x, event.z, 'INVESTIGATING');
+  setEnemyDestinationViaCorridor(event.x, event.z, 'INVESTIGATING', wallBlockedSound);
   enemyData.investigateUntil = now + 3.5 + strength * 0.025 + (wallBlockedSound ? 4 : 0);
   enemyData.searchUntil = now + 16 + (wallBlockedSound ? 8 : 0);
   enemyData.investigateSpeed = wallBlockedSound ? 5.4 : strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
@@ -2050,6 +2092,8 @@ function enterLocker(locker) {
   state.hidden = true;
   state.noise = 0;
   state.currentLocker = locker;
+  state.lockerHideAt = clock.elapsedTime;
+  state.lockerHideStartDetection = state.detection;
   document.body.classList.add('hidden-in-locker');
   const inside = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
   const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 4));
@@ -2072,6 +2116,7 @@ function leaveLocker() {
   camera.lookAt(lookTarget);
   state.hidden = false;
   state.currentLocker = null;
+  state.lockerHideAt = -Infinity;
   state.lockerExitGraceUntil = clock.elapsedTime + 1.4;
   setDetection(Math.min(state.detection, 55));
   document.body.classList.remove('hidden-in-locker');
@@ -2167,6 +2212,8 @@ function respawnPlayer() {
   state.nearBreaker = false;
   state.nearShop = false;
   state.currentLocker = null;
+  state.lockerHideAt = -Infinity;
+  state.lockerHideStartDetection = 0;
   state.breakerOn = false;
   state.breakerOutAt = Infinity;
   setBreaker(false, false);
@@ -2923,6 +2970,9 @@ function updatePlayer(dt) {
   const time = clock.elapsedTime;
   if (state.hidden) {
     state.battery = Math.min(100, state.battery + dt * 1.35);
+    const hideProgress = THREE.MathUtils.clamp((time - state.lockerHideAt) / 5, 0, 1);
+    const eased = 1 - (1 - hideProgress) ** 3;
+    setDetection(THREE.MathUtils.lerp(state.lockerHideStartDetection, detectionFloor(), eased));
     return;
   }
   if (time < state.seatedUntil) {
