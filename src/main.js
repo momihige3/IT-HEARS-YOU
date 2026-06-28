@@ -379,6 +379,47 @@ for (const room of schoolRooms) {
   for (const [gx, gz] of room.connector) carve(gx, gz);
 }
 
+function carvePath(gx0, gz0, gx1, gz1) {
+  let gx = gx0;
+  let gz = gz0;
+  const horizontalFirst = Math.random() < 0.5;
+  const carveHorizontal = () => {
+    while (gx !== gx1) {
+      carve(gx, gz);
+      gx += Math.sign(gx1 - gx);
+    }
+  };
+  const carveVertical = () => {
+    while (gz !== gz1) {
+      carve(gx, gz);
+      gz += Math.sign(gz1 - gz);
+    }
+  };
+  if (horizontalFirst) {
+    carveHorizontal();
+    carveVertical();
+  } else {
+    carveVertical();
+    carveHorizontal();
+  }
+  carve(gx1, gz1);
+}
+
+// Extra room-to-room connectors make the map less dependent on the center spine,
+// while every branch still remains reachable from the main school route.
+const roomAnchors = schoolRooms.map((room) => ({
+  gx: Math.round((room.gx0 + room.gx1) / 2),
+  gz: Math.round((room.gz0 + room.gz1) / 2),
+}));
+for (let i = 0; i < roomAnchors.length - 1; i += 1) {
+  if (Math.random() < 0.72) carvePath(roomAnchors[i].gx, roomAnchors[i].gz, roomAnchors[i + 1].gx, roomAnchors[i + 1].gz);
+}
+for (let i = 0; i < 3; i += 1) {
+  const a = roomAnchors[Math.floor(Math.random() * roomAnchors.length)];
+  const b = roomAnchors[Math.floor(Math.random() * roomAnchors.length)];
+  if (a && b && a !== b) carvePath(a.gx, a.gz, b.gx, b.gz);
+}
+
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
@@ -1326,19 +1367,33 @@ function setEnemyDestination(x, z, mode = 'ROAMING') {
 function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
   const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   if (!start) return false;
+  const soundProbe = new THREE.Vector3(x, 1.1, z);
   const candidates = [...navNodes.values()]
-    .filter((node) => Math.hypot(node.x - x, node.z - z) <= radius)
-    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
-  for (const target of candidates) {
-    const path = findPath(start.key, target.key);
-    if (!path.length && start.key !== target.key) continue;
-    enemyData.path = path;
-    enemyData.targetKey = target.key;
+    .filter((node) => Math.hypot(node.x - x, node.z - z) <= radius + 2.4)
+    .map((node) => {
+      const path = findPath(start.key, node.key);
+      if (!path.length && start.key !== node.key) return null;
+      const roomPenalty = getRoomAt(node.gx, node.gz) ? 5.5 : 0;
+      const sightBonus = hasLineOfSight(new THREE.Vector3(node.x, 1.1, node.z), soundProbe) ? -4.5 : 0;
+      const exactDistance = Math.hypot(node.x - x, node.z - z);
+      const pathCost = path.length * 1.25;
+      return { node, path, score: exactDistance + pathCost + roomPenalty + sightBonus };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+  if (best) {
+    enemyData.path = best.path;
+    enemyData.targetKey = best.node.key;
     enemyData.mode = mode;
     return true;
   }
   setEnemyDestination(x, z, mode);
   return enemyData.mode === mode;
+}
+
+function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING') {
+  return setEnemyDestinationNear(x, z, mode, 6.8);
 }
 
 function chooseRandomEnemyRoute(mode = 'ROAMING') {
@@ -1362,7 +1417,9 @@ function chooseSuperAlertRoute(time) {
     .filter((node) =>
       Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > 9
       || Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 11)
-    .sort(() => Math.random() - 0.5);
+    .sort((a, b) =>
+      (Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z) + Math.random() * 10)
+      - (Math.hypot(a.x - enemy.position.x, a.z - enemy.position.z) + Math.random() * 10));
   const target = farNodes[0] || [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey)[0];
   if (target) setEnemyDestination(target.x, target.z, 'SEARCHING');
   enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 30);
@@ -1376,6 +1433,12 @@ function chooseCoverSearchRoute(preferredCover = null) {
     ? coverPoints
     : coverPoints.filter((cover) => Math.hypot(cover.x - origin.x, cover.z - origin.z) < 11);
   if (!nearbyCovers.length) nearbyCovers = coverPoints;
+  if (alertWideSearch) {
+    nearbyCovers = nearbyCovers
+      .filter((cover) => Math.hypot(cover.x - enemy.position.x, cover.z - enemy.position.z) > 8)
+      .sort(() => Math.random() - 0.5);
+    if (!nearbyCovers.length) nearbyCovers = coverPoints.slice().sort(() => Math.random() - 0.5);
+  }
   const cover = preferredCover || nearbyCovers[Math.floor(Math.random() * nearbyCovers.length)];
   const inspectNodes = coverSearchNodes(cover);
   const target = inspectNodes[Math.floor(Math.random() * inspectNodes.length)] || nearestNode(cover.x, cover.z);
@@ -1430,10 +1493,10 @@ function recoverEnemyNavigation(time) {
   enemyData.lastTargetDistance = Infinity;
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.18);
   if (!state.hidden && state.detection > 70) {
-    setEnemyDestinationNear(camera.position.x, camera.position.z, state.alert === 'HUNTING' ? 'HUNTING' : 'SEARCHING', 6.4);
+    setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, state.alert === 'HUNTING' ? 'HUNTING' : 'SEARCHING');
     enemyData.repathAt = time + 1.1;
   } else if (enemyData.lastHeardPosition && time < enemyData.wallSoundRepathUntil) {
-    setEnemyDestinationNear(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', 4.2);
+    setEnemyDestinationViaCorridor(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING');
   } else {
     chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
   }
@@ -1547,8 +1610,11 @@ function playSonarRoar(volume = 0.62) {
   const growl = ctx.createBiquadFilter();
   const low = ctx.createOscillator();
   const sub = ctx.createOscillator();
+  const voice = ctx.createOscillator();
+  const voiceFilter = ctx.createBiquadFilter();
   const lowGain = ctx.createGain();
   const subGain = ctx.createGain();
+  const voiceGain = ctx.createGain();
   source.buffer = noiseBuffer;
   source.loop = true;
   source.playbackRate.value = 0.22;
@@ -1569,19 +1635,55 @@ function playSonarRoar(volume = 0.62) {
   sub.frequency.exponentialRampToValueAtTime(14, ctx.currentTime + 1.55);
   subGain.gain.setValueAtTime(volume * 0.34, ctx.currentTime);
   subGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.72);
+  voice.type = 'sawtooth';
+  voice.frequency.setValueAtTime(88, ctx.currentTime);
+  voice.frequency.linearRampToValueAtTime(64, ctx.currentTime + 0.55);
+  voice.frequency.exponentialRampToValueAtTime(42, ctx.currentTime + 1.5);
+  voiceFilter.type = 'bandpass';
+  voiceFilter.frequency.setValueAtTime(720, ctx.currentTime);
+  voiceFilter.frequency.linearRampToValueAtTime(380, ctx.currentTime + 1.2);
+  voiceFilter.Q.value = 9;
+  voiceGain.gain.setValueAtTime(0.001, ctx.currentTime);
+  voiceGain.gain.exponentialRampToValueAtTime(volume * 0.48, ctx.currentTime + 0.12);
+  voiceGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.72);
   bus.gain.setValueAtTime(0.001, ctx.currentTime);
   bus.gain.exponentialRampToValueAtTime(volume * 1.08, ctx.currentTime + 0.18);
   bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.82);
   source.connect(filter).connect(growl).connect(bus);
   low.connect(lowGain).connect(bus);
   sub.connect(subGain).connect(bus);
+  voice.connect(voiceFilter).connect(voiceGain).connect(bus);
   bus.connect(master);
   source.start();
   low.start();
   sub.start();
+  voice.start();
   source.stop(ctx.currentTime + 1.86);
   low.stop(ctx.currentTime + 1.76);
   sub.stop(ctx.currentTime + 1.82);
+  voice.stop(ctx.currentTime + 1.82);
+}
+
+function playClearSound() {
+  if (!audio) return;
+  const { ctx, master } = audio;
+  const bus = ctx.createGain();
+  bus.gain.setValueAtTime(0.001, ctx.currentTime);
+  bus.gain.exponentialRampToValueAtTime(0.38, ctx.currentTime + 0.04);
+  bus.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.25);
+  bus.connect(master);
+  [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = index === 0 ? 'triangle' : 'sine';
+    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime + index * 0.09);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime + index * 0.09);
+    gain.gain.exponentialRampToValueAtTime(0.18 / (index + 1), ctx.currentTime + index * 0.09 + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.95 + index * 0.07);
+    oscillator.connect(gain).connect(bus);
+    oscillator.start(ctx.currentTime + index * 0.09);
+    oscillator.stop(ctx.currentTime + 1.18 + index * 0.06);
+  });
 }
 
 function playFootstep(volume, pitch = 1, pan = 0) {
@@ -1781,7 +1883,7 @@ function reactToSoundEvent(event, now) {
   const noiseGain = (strength > 70 ? 9.0 : 1.15) * (1 + enemyData.alertMemory * 1.2);
   setDetection(Math.max(state.detection, strength > 70 ? 28 : 8) + noiseGain);
   if (forceTrapResponse) {
-    setEnemyDestinationNear(event.x, event.z, 'TRAP_RUSH', 2.6);
+    setEnemyDestinationViaCorridor(event.x, event.z, 'TRAP_RUSH');
     enemyData.trapRushUntil = now + 18;
     enemyData.investigateUntil = now + 18;
     enemyData.searchUntil = now + 22;
@@ -1792,13 +1894,13 @@ function reactToSoundEvent(event, now) {
     return;
   }
   if (state.alert === 'HUNTING' && state.detection > 70) {
-    setEnemyDestinationNear(event.x, event.z, 'HUNTING', wallBlockedSound ? 3.2 : 2.2);
+    setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING');
     enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
     enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, wallBlockedSound ? 5.8 : 3.4);
     return;
   }
   const firstReaction = enemyData.mode !== 'INVESTIGATING';
-  setEnemyDestinationNear(event.x, event.z, 'INVESTIGATING', wallBlockedSound ? 3.2 : 2.2);
+  setEnemyDestinationViaCorridor(event.x, event.z, 'INVESTIGATING');
   enemyData.investigateUntil = now + 3.5 + strength * 0.025 + (wallBlockedSound ? 4 : 0);
   enemyData.searchUntil = now + 16 + (wallBlockedSound ? 8 : 0);
   enemyData.investigateSpeed = wallBlockedSound ? 5.4 : strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
@@ -2159,13 +2261,17 @@ function updateCaughtCutscene(time) {
   camera.position.lerp(targetPosition, 0.045 + progress * 0.08);
   camera.lookAt(enemyFace);
   $('#danger-flash').style.opacity = String(0.45 + Math.sin(time * 18) * 0.2);
-  if (progress >= 1) respawnPlayer();
+  if (progress >= 1) {
+    state.allowExit = true;
+    location.reload();
+  }
 }
 
 function endGame(win) {
   state.ended = true;
   stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
+  if (win) playClearSound();
   controls.unlock();
   $('#message-kicker').textContent = win ? '脱出成功' : '見つかった';
   $('#message-title').textContent = win ? '生還' : '捕獲';
@@ -3117,7 +3223,7 @@ function updateEnemy(dt, time) {
     enemyData.speed = 5.2 + state.detection * 0.006;
     if (time > enemyData.repathAt) {
       if (lineOfSightToPlayer) setEnemyDestination(camera.position.x, camera.position.z, 'HUNTING');
-      else setEnemyDestinationNear(camera.position.x, camera.position.z, 'HUNTING', 5.2);
+      else setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, 'HUNTING');
       enemyData.repathAt = time + 0.48;
     }
   } else if (state.detection > 70 && !state.hidden) {
@@ -3157,7 +3263,10 @@ function updateEnemy(dt, time) {
       enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 7);
       enemyData.lookBaseYaw = enemy.rotation.y;
       enemyData.lookAroundUntil = time + 1.0;
-    } else if (enemyData.mode === 'SEARCHING' && time >= enemyData.lookAroundUntil) chooseCoverSearchRoute();
+    } else if (enemyData.mode === 'SEARCHING' && time >= enemyData.lookAroundUntil) {
+      if (state.detection > 62 && Math.random() < 0.45) chooseSuperAlertRoute(time);
+      else chooseCoverSearchRoute();
+    }
     else if (!['INVESTIGATING', 'SEARCHING', 'PASSING_BY', 'TRAP_RUSH'].includes(enemyData.mode)) chooseRandomEnemyRoute();
   }
   const target = enemyData.path[0];

@@ -334,3 +334,23 @@ Build:
 - Shop one-time upgrades now visually show purchased state:
   - Noise reduction, breaker duration x2, and flashlight range x2 buttons get a green purchased style and `購入済み` label after purchase.
   - Heal remains reusable and does not get purchased styling.
+
+## 2026-06-28 Corridor Routing / Roar Voice / Continue Regeneration
+
+- Improved routing to sound/player positions behind walls:
+  - `setEnemyDestinationNear()` now scores reachable candidates by path length, corridor preference, and final line-of-sight to the target point.
+  - Added `setEnemyDestinationViaCorridor()` and switched sound/trap/wall-heard routing to it.
+  - This should reduce direct wall pushing and favor wider corridor routes toward the sound source.
+- Added more map route variety:
+  - Random room-to-room connector paths are carved in addition to the central spine.
+  - Rooms still remain reachable from the main route, but some routes can now connect room-to-room without always returning to the center.
+- Alert/search movement was widened:
+  - Super alert routing favors farther nodes.
+  - SEARCHING can choose broader super-alert routes instead of repeatedly checking the same nearby cover.
+- Added more voice-like roar audio:
+  - `playSonarRoar()` now includes an extra sawtooth voice/formant layer.
+- Added clear SE:
+  - `playClearSound()` plays a short ascending clear sound when `endGame(true)` runs.
+- Continue after capture now regenerates the map:
+  - Caught cutscene completion reloads the page instead of calling `respawnPlayer()`.
+  - Coin persistence remains handled by localStorage.
