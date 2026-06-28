@@ -409,3 +409,28 @@ Build:
 - Note:
   - The main SONAR enemy still uses the existing 1F navigation graph.
   - The 2F mansion is intentionally separated and handled by its own simple enemy movement logic.
+
+## 2026-06-28 School / Mansion Select Rework
+
+- Removed the previous 1F ↔ 2F stair gameplay path:
+  - Mansion is no longer entered via stairs.
+  - Title screen now has separate start buttons for `学校` and `屋敷`.
+- Expanded mansion content:
+  - Mansion map is now much larger than the previous small 2F area and uses a more complex wing/room layout.
+  - Mansion has its own exit, breaker panel, shop stand, lockers/wardrobes, shelves/desks, dim lamps, and mansion-themed materials.
+  - The same five pickup objects are reused as `お札` in mansion mode and are randomly placed in the mansion.
+- Mansion ghost updates:
+  - White-robed woman enemy was upgraded with a robe cone, long black hair strands, face shadow, ragged hem pieces, and hands.
+  - Ghost reacts to sound events in mansion mode and uses the shared detection HUD.
+  - Ghost visual cone is shown on the minimap and 3D red vision rays follow the active mansion enemy.
+  - Ghost still phases every 30 seconds for 1 second.
+- Mansion systems:
+  - Noise meter, sound ripples, radar, breaker HUD, shop UI, lockers, pickups, and exit interaction work in mansion mode.
+  - Flashlight slows the ghost to half speed while aimed at it with line of sight.
+  - Battery drains 10x while the flashlight is actively hitting the ghost.
+- Trap change:
+  - Trap activation now deploys a 10m water puddle at the player's feet instead of only a small trigger marker.
+  - While standing in water, footstep SE volume is multiplied by 3 and emitted noise radius is multiplied by 2.
+- Notes:
+  - Mansion is implemented as a separate far-away play area in the same Three.js scene, selected from the title screen.
+  - Current mansion enemy navigation is direct/slide based, not a full graph pathfinder.

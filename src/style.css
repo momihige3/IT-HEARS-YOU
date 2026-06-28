@@ -84,6 +84,7 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
 #start-button:hover, #restart-button:hover, #settings-close:hover, .secondary-button:hover { background:rgba(141,160,148,.2); border-color:#9eaea4; }
 #start-button small { float:right; margin-top:4px; letter-spacing:.05em; }
 .start-actions { display:flex; gap:10px; align-items:stretch; }
+.start-actions [data-map-start] { min-width:235px; }
 .start-actions .secondary-button { min-width:auto; padding-inline:18px; color:#8e9992; font:10px 'Share Tech Mono'; }
 .controls { margin-top:28px; display:grid; grid-template-columns:repeat(3, auto); width:500px; gap:9px 20px; color:#68716c; font-size:11px; letter-spacing:.08em; }
 .controls b { color:#a4aea8; font-family:'Share Tech Mono'; margin-right:5px; }

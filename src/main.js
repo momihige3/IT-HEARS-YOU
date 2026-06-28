@@ -139,6 +139,7 @@ const state = {
   noiseMultiplier: savedShopUpgrades.noise ? 0.5 : 1,
   breakerDurationMultiplier: savedShopUpgrades.breaker ? 2 : 1,
   lightRangeMultiplier: savedShopUpgrades.light ? 2 : 1,
+  mapMode: 'school',
   screenFlashUntil: 0,
   screenFlashColor: 'red',
   nextHealAt: 0,
@@ -157,7 +158,6 @@ const state = {
   noise: 0,
   nearLocker: null,
   nearBreaker: false,
-  nearStairs: null,
   floorLevel: 1,
   currentLocker: null,
   lockerFrontYaw: 0,
@@ -684,8 +684,12 @@ const mansionTrimMat = material(0x2b1d17, 0.82, 0.04, loadTexture('old_door_wood
 const clothWhiteMat = new THREE.MeshStandardMaterial({ color: 0xdad5c8, roughness: 0.94, metalness: 0.0, emissive: 0x181714, emissiveIntensity: 0.08 });
 const hairMat = new THREE.MeshStandardMaterial({ color: 0x050403, roughness: 0.96, metalness: 0.0 });
 const mansionNodes = [];
-let stairsUp = null;
-let stairsDown = null;
+let mansionStartPoint = null;
+let mansionExit = null;
+let mansionBreakerPanel = null;
+let mansionBreakerSwitch = null;
+let mansionBreakerLight = null;
+let mansionShop = null;
 
 function addStairMarker(x, z, label = '2F') {
   const group = new THREE.Group();
@@ -721,14 +725,15 @@ function addStairMarker(x, z, label = '2F') {
 
 function buildMansionSecondFloor() {
   const offsetX = 68;
-  const minX = offsetX - 12;
-  const maxX = offsetX + 12;
-  const minZ = -34;
-  const maxZ = 10;
   const cells = [];
-  for (let ix = -3; ix <= 3; ix += 1) {
-    for (let iz = -5; iz <= 5; iz += 1) {
-      const keep = ix === 0 || iz === 0 || Math.random() > 0.34 || Math.abs(ix) + Math.abs(iz) < 4;
+  for (let ix = -8; ix <= 8; ix += 1) {
+    for (let iz = -13; iz <= 13; iz += 1) {
+      const wing = ix === 0 || iz === 0 || Math.abs(ix) === 4 || Math.abs(iz) === 6;
+      const roomCluster = (Math.abs(ix) <= 2 && Math.abs(iz) <= 12)
+        || (Math.abs(ix) <= 7 && Math.abs(iz) <= 2)
+        || (Math.abs(ix - 5) <= 2 && Math.abs(iz + 8) <= 2)
+        || (Math.abs(ix + 5) <= 2 && Math.abs(iz - 8) <= 2);
+      const keep = wing || roomCluster || Math.random() > 0.72;
       if (!keep) continue;
       const x = offsetX + ix * CELL;
       const z = -12 + iz * CELL;
@@ -736,7 +741,7 @@ function buildMansionSecondFloor() {
       mansionNodes.push({ x, z });
       addBox(x, -0.11, z, CELL + 0.04, 0.22, CELL + 0.04, mansionFloorMat, false, false, false);
       addBox(x, 4.15, z, CELL + 0.02, 0.18, CELL + 0.02, mansionWallMat, false, false, false);
-      if ((ix + iz * 2) % 4 === 0) {
+      if ((ix + iz * 2) % 7 === 0) {
         const lamp = new THREE.PointLight(0xffd9a6, 2.1, 9, 1.9);
         lamp.position.set(x, 3.2, z);
         scene.add(lamp);
@@ -758,10 +763,45 @@ function buildMansionSecondFloor() {
       addDeskSet(cell.x + (Math.random() - 0.5) * 1.4, cell.z + (Math.random() - 0.5) * 1.4, Math.random() < 0.5 ? 0 : Math.PI / 2);
     }
   }
-  const upNode = findSafeNode((node) => Math.hypot(node.gx - 2, node.gz - 16) < 4, walkableNodes[0]);
-  stairsUp = { x: upNode.x, z: upNode.z, targetX: offsetX, targetZ: -32, floor: 1, group: addStairMarker(upNode.x, upNode.z, '2F') };
-  stairsDown = { x: offsetX, z: -32, targetX: upNode.x, targetZ: upNode.z + 1.2, floor: 2, group: addStairMarker(offsetX, -32, '1F') };
-  addBox(offsetX, 2.05, -36, 8, 4.1, 0.2, mansionWallMat, true, true, false);
+  mansionStartPoint = { x: offsetX, z: 40 };
+  mansionExit = {
+    mesh: addBox(offsetX + 30, 1.45, -60, 1.55, 2.35, 0.16, doorMat, false, false, false),
+    x: offsetX + 30,
+    z: -60,
+  };
+  const exitGlow = new THREE.PointLight(0xa6d7ff, 2.8, 6);
+  exitGlow.position.set(mansionExit.x, 2.6, mansionExit.z);
+  scene.add(exitGlow);
+  schoolLights.push(exitGlow);
+  mansionBreakerPanel = addBox(offsetX - 30, 1.45, 32, 1.1, 1.35, 0.2, material(0x241915, 0.62, 0.32), true, false, false);
+  mansionBreakerSwitch = addBox(offsetX - 30, 1.78, 31.84, 0.55, 0.2, 0.05, material(0xff6d4d, 0.32), false, false, false);
+  mansionBreakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
+  mansionBreakerLight.position.set(offsetX - 30, 2.2, 31.2);
+  scene.add(mansionBreakerLight);
+  const shopGroup = new THREE.Group();
+  localBox(shopGroup, 0, 0.86, 0, 1.45, 1.35, 0.55, material(0x2a2032, 0.72, 0.08));
+  localBox(shopGroup, 0, 1.68, 0.31, 1.1, 0.24, 0.05, material(0x8ac8ff, 0.36, 0.02));
+  shopGroup.position.set(offsetX + 24, 0, 28);
+  scene.add(shopGroup);
+  mansionShop = { group: shopGroup, x: offsetX + 24, z: 28 };
+  for (const [x, z, yaw] of [
+    [offsetX - 20, 18, Math.PI / 2],
+    [offsetX + 16, 2, -Math.PI / 2],
+    [offsetX - 12, -24, Math.PI],
+    [offsetX + 28, -34, 0],
+    [offsetX - 28, -48, Math.PI / 2],
+  ]) {
+    const group = new THREE.Group();
+    localBox(group, 0, 1.2, -0.34, 1.15, 2.4, 0.14, mansionTrimMat);
+    localBox(group, -0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
+    localBox(group, 0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
+    localBox(group, 0, 2.42, 0, 1.15, 0.12, 0.86, mansionTrimMat);
+    group.position.set(x, 0, z);
+    group.rotation.y = yaw;
+    scene.add(group);
+    lockers.push({ group, x, z, yaw });
+    colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
+  }
 }
 const exitRooms = schoolRooms.filter((room) => room.id !== 'breaker');
 const exitRoom = exitRooms[Math.floor(Math.random() * exitRooms.length)] || schoolRooms[1];
@@ -1065,9 +1105,46 @@ const keyItems = selectedKeySpawns.map((keySpawn, index) => {
   const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
   light.position.copy(group.position);
   scene.add(light);
-  return { group, light, collected: false, baseY: 1.05, phase: index * 0.9 };
+  return {
+    group,
+    light,
+    collected: false,
+    baseY: 1.05,
+    phase: index * 0.9,
+    schoolPosition: { x: keySpawn.x, z: keySpawn.z },
+    mansionPosition: null,
+  };
 });
 updateExitCounter();
+
+function placeKeyItemsForMode(mode) {
+  const used = [];
+  for (const item of keyItems) {
+    let pos = item.schoolPosition;
+    if (mode === 'mansion') {
+      if (!item.mansionPosition) {
+        const choices = mansionNodes
+          .filter((node) => isSafeSpawnPoint(node.x, node.z, 0.95))
+          .filter((node) => !used.some((p) => Math.hypot(p.x - node.x, p.z - node.z) < 9))
+          .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 10)
+          .sort(() => Math.random() - 0.5);
+        item.mansionPosition = choices[0] || mansionNodes[Math.floor(Math.random() * mansionNodes.length)] || { x: 68, z: -12 };
+      }
+      pos = item.mansionPosition;
+    }
+    used.push(pos);
+    item.group.position.set(pos.x, 1.05, pos.z);
+    item.light.position.copy(item.group.position);
+    item.collected = false;
+    item.group.visible = true;
+    item.light.visible = true;
+  }
+  state.keyCount = 0;
+  updateExitCounter();
+  $('#objective-text').textContent = mode === 'mansion'
+    ? `お札を集める 0 / ${REQUIRED_KEYS}`
+    : `鍵を探す 0 / ${REQUIRED_KEYS}`;
+}
 
 // Enemy silhouette.
 const enemy = new THREE.Group();
@@ -1291,6 +1368,10 @@ function createWomanEnemy() {
   dress.position.y = 1.05;
   dress.scale.set(0.92, 1.18, 0.72);
   group.add(dress);
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.55, 18, 4, true), clothWhiteMat);
+  robe.position.y = 0.78;
+  robe.rotation.y = Math.PI / 18;
+  group.add(robe);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 14), new THREE.MeshStandardMaterial({ color: 0xc7b8aa, roughness: 0.9 }));
   head.position.y = 2.12;
   group.add(head);
@@ -1298,11 +1379,31 @@ function createWomanEnemy() {
   hair.position.set(0, 2.06, 0.02);
   hair.scale.set(0.86, 1.32, 0.72);
   group.add(hair);
+  for (let i = 0; i < 13; i += 1) {
+    const strand = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.35 + Math.random() * 0.55, 0.018), hairMat);
+    const angle = -0.9 + (i / 12) * 1.8;
+    strand.position.set(Math.sin(angle) * 0.18, 1.48 - Math.random() * 0.18, 0.18 + Math.cos(angle) * 0.08);
+    strand.rotation.z = -angle * 0.12;
+    strand.rotation.x = 0.08 + Math.random() * 0.12;
+    group.add(strand);
+  }
+  const faceShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.34), new THREE.MeshBasicMaterial({ color: 0x050403, transparent: true, opacity: 0.58, side: THREE.DoubleSide }));
+  faceShadow.position.set(0, 2.1, 0.215);
+  group.add(faceShadow);
+  for (let i = 0; i < 9; i += 1) {
+    const rag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.38 + Math.random() * 0.28, 0.025), clothWhiteMat);
+    rag.position.set(-0.42 + i * 0.105, 0.05, 0.18 + (Math.random() - 0.5) * 0.12);
+    rag.rotation.z = (Math.random() - 0.5) * 0.28;
+    group.add(rag);
+  }
   for (const side of [-1, 1]) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.92, 5, 8), clothWhiteMat);
     arm.position.set(side * 0.34, 1.18, 0.04);
     arm.rotation.z = side * 0.28;
     group.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshStandardMaterial({ color: 0xb8aa9d, roughness: 0.92 }));
+    hand.position.set(side * 0.48, 0.68, 0.1);
+    group.add(hand);
   }
   const glow = new THREE.PointLight(0xdde8ff, 0.55, 4.2);
   glow.position.set(0, 1.55, 0);
@@ -1407,21 +1508,22 @@ function visionRayDistance(originX, originZ, dx, dz, maxDistance = currentEnemyV
 }
 
 function updateEnemyVision() {
+  const visionSource = state.mapMode === 'mansion' ? womanEnemy.group : enemy;
   const visionDistance = currentEnemyVisionDistance();
-  const visionHalfAngle = currentEnemyVisionHalfAngle();
+  const visionHalfAngle = state.mapMode === 'mansion' ? Math.PI / 4.2 : currentEnemyVisionHalfAngle();
   for (let i = 0; i < VISION_RAYS; i += 1) {
     const offset = -visionHalfAngle + (visionHalfAngle * 2 * i) / (VISION_RAYS - 1);
-    const angle = enemy.rotation.y + offset;
+    const angle = visionSource.rotation.y + offset;
     const dx = Math.sin(angle);
     const dz = Math.cos(angle);
-    const distance = visionRayDistance(enemy.position.x, enemy.position.z, dx, dz, visionDistance);
+    const distance = visionRayDistance(visionSource.position.x, visionSource.position.z, dx, dz, visionDistance);
     const cursor = i * 6;
-    visionPositions[cursor] = enemy.position.x;
+    visionPositions[cursor] = visionSource.position.x;
     visionPositions[cursor + 1] = 0.08;
-    visionPositions[cursor + 2] = enemy.position.z;
-    visionPositions[cursor + 3] = enemy.position.x + dx * distance;
+    visionPositions[cursor + 2] = visionSource.position.z;
+    visionPositions[cursor + 3] = visionSource.position.x + dx * distance;
     visionPositions[cursor + 4] = 0.08;
-    visionPositions[cursor + 5] = enemy.position.z + dz * distance;
+    visionPositions[cursor + 5] = visionSource.position.z + dz * distance;
   }
   enemyVisionMaterial.opacity = state.alert === 'HUNTING' ? 0.78 : state.alert === 'SUPER_ALERT' ? 0.62 : 0.42;
   enemyVisionGeometry.attributes.position.needsUpdate = true;
@@ -1473,7 +1575,8 @@ const enemyData = {
 function nearestNode(x, z) {
   let best = null;
   let bestDistance = Infinity;
-  for (const node of navNodes.values()) {
+  const radarNodes = state.mapMode === 'mansion' ? mansionNodes : [...navNodes.values()];
+  for (const node of radarNodes) {
     const distance = Math.hypot(node.x - x, node.z - z);
     if (distance < bestDistance) {
       best = node;
@@ -2160,16 +2263,22 @@ function emitWorldSound(x, z, strength, baseHearingRadius, forceRipple = false, 
     soundEvents.push(event);
     state.nextSoundRippleAt = now + 2.6;
   }
-  reactToSoundEvent(event, now);
+  if (state.mapMode === 'mansion') reactWomanToSoundEvent(event, now);
+  else reactToSoundEvent(event, now);
 }
 
 function emitPlayerSound(strength, baseHearingRadius) {
   emitWorldSound(camera.position.x, camera.position.z, strength, baseHearingRadius, false);
 }
 
+function isPlayerInWaterTrap() {
+  return noiseTraps.some((trap) => trap.water && horizontalDistance(camera.position, trap) < trap.waterRadius);
+}
+
 function updateAudio(time) {
   if (!audio) return;
-  const enemyDistance = enemy.position.distanceTo(camera.position);
+  const activeEnemyPosition = state.mapMode === 'mansion' ? womanEnemy.group.position : enemy.position;
+  const enemyDistance = activeEnemyPosition.distanceTo(camera.position);
   const proximity = distanceAttenuation(enemyDistance, 22, 1.05);
   audio.caveGain.gain.setTargetAtTime(0.06 + Math.sin(time * 0.17) * 0.012, audio.ctx.currentTime, 0.8);
   audio.caveLowpass.frequency.setTargetAtTime(145 + Math.sin(time * 0.09) * 32, audio.ctx.currentTime, 1.1);
@@ -2177,15 +2286,16 @@ function updateAudio(time) {
 
   const moving = state.noise > 0 && !state.hidden;
   if (moving && time > audio.nextStep) {
+    const inWater = isPlayerInWaterTrap();
     const settings = state.moveMode === 'RUNNING'
       ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 21 * state.noiseMultiplier }
       : { volume: 0.46, pitch: 1, interval: 0.44, radius: 3 * state.noiseMultiplier };
-    playFootstep(settings.volume, settings.pitch, 0);
-    emitPlayerSound(state.noise, settings.radius);
+    playFootstep(settings.volume * (inWater ? 3 : 1), settings.pitch * (inWater ? 0.86 : 1), 0);
+    emitPlayerSound(state.noise * (inWater ? 3 : 1), settings.radius * (inWater ? 2 : 1));
     audio.nextStep = time + settings.interval;
   }
 
-  if (enemyData.isMoving && time > audio.nextEnemyStep) {
+  if (state.mapMode !== 'mansion' && enemyData.isMoving && time > audio.nextEnemyStep) {
     camera.getWorldDirection(forward);
     forward.y = 0;
     forward.normalize();
@@ -2209,7 +2319,7 @@ function isInsidePlayableBounds(x, z) {
   const maxX = GRID_HALF_W * CELL + CELL / 2 - 0.2;
   const maxZ = GRID_HALF_H * CELL + CELL / 2 - 0.2;
   const inSchool = x >= -maxX && x <= maxX && z >= -maxZ && z <= maxZ;
-  const inMansion = x >= 52 && x <= 84 && z >= -38 && z <= 14;
+  const inMansion = x >= 32 && x <= 104 && z >= -68 && z <= 46;
   return inSchool || inMansion;
 }
 
@@ -2261,14 +2371,19 @@ function showToast(text) {
 }
 
 function applyBreakerVisual(on) {
-  breakerLight.color.set(on ? 0x7dffad : 0xff2d1e);
-  breakerLight.intensity = on ? 2.6 : 1.25;
-  breakerPanel.material.color.set(on ? 0x26332c : 0x4d120d);
-  breakerPanel.material.emissive = new THREE.Color(on ? 0x07170d : 0x4b0705);
-  breakerPanel.material.emissiveIntensity = on ? 0.18 : 0.62;
-  breakerSwitch.material.color.set(on ? 0x7dffad : 0xff2d1e);
-  breakerSwitch.material.emissive = new THREE.Color(on ? 0x1b7a3f : 0x8f120b);
-  breakerSwitch.material.emissiveIntensity = on ? 0.75 : 1.05;
+  const applySet = (panel, switchMesh, light) => {
+    if (!panel || !switchMesh || !light) return;
+    light.color.set(on ? 0x7dffad : 0xff2d1e);
+    light.intensity = on ? 2.6 : 1.25;
+    panel.material.color.set(on ? 0x26332c : 0x4d120d);
+    panel.material.emissive = new THREE.Color(on ? 0x07170d : 0x4b0705);
+    panel.material.emissiveIntensity = on ? 0.18 : 0.62;
+    switchMesh.material.color.set(on ? 0x7dffad : 0xff2d1e);
+    switchMesh.material.emissive = new THREE.Color(on ? 0x1b7a3f : 0x8f120b);
+    switchMesh.material.emissiveIntensity = on ? 0.75 : 1.05;
+  };
+  applySet(breakerPanel, breakerSwitch, breakerLight);
+  applySet(mansionBreakerPanel, mansionBreakerSwitch, mansionBreakerLight);
 }
 
 function setBreaker(on, notify = true) {
@@ -2331,16 +2446,6 @@ function leaveLocker() {
   showToast('ロッカーから出た');
 }
 
-function useStairs(stairs) {
-  if (!stairs) return;
-  camera.position.set(stairs.targetX, 1.68, stairs.targetZ);
-  state.floorLevel = stairs.floor === 1 ? 2 : 1;
-  state.nearStairs = null;
-  state.seatedUntil = clock.elapsedTime + 0.25;
-  state.noise = Math.min(state.noise + 12, 100);
-  showToast(state.floorLevel === 2 ? '2F：朽ちた屋敷の階へ' : '1F：学校へ戻った');
-}
-
 function interact() {
   if (state.hidden) {
     leaveLocker();
@@ -2352,10 +2457,6 @@ function interact() {
   }
   if (state.nearBreaker) {
     setBreaker(!state.breakerOn);
-    return;
-  }
-  if (state.nearStairs) {
-    useStairs(state.nearStairs);
     return;
   }
   if (state.nearShop) {
@@ -2371,13 +2472,25 @@ function interact() {
     setDetection(Math.max(state.detection, detectionFloor()));
     playItemPickupSound();
     updateExitCounter();
+    if (state.mapMode === 'mansion') {
+      $('#objective-text').textContent = state.keyCount >= REQUIRED_KEYS
+        ? '屋敷の出口へ向かえ'
+        : `お札を集める ${state.keyCount} / ${REQUIRED_KEYS}`;
+      showToast(`お札を手に入れた　${state.keyCount} / ${REQUIRED_KEYS}`);
+      return;
+    }
     $('#objective-text').textContent = state.keyCount >= REQUIRED_KEYS
       ? '出口へ向かう'
       : `鍵を探す ${state.keyCount} / ${REQUIRED_KEYS}`;
     showToast(`鍵を手に入れた　${state.keyCount} / ${REQUIRED_KEYS}`);
     return;
   }
-  if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
+  if (state.mapMode === 'mansion' && mansionExit && horizontalDistance(camera.position, mansionExit) < 3.8) {
+    if (state.keyCount >= REQUIRED_KEYS) endGame(true);
+    else showToast(`お札が足りない　${state.keyCount} / ${REQUIRED_KEYS}`);
+    return;
+  }
+  if (state.mapMode !== 'mansion' && horizontalDistance(camera.position, exitDoor.position) < 3.6) {
     if (state.keyCount >= REQUIRED_KEYS) endGame(true);
     else showToast(`鍵が足りない　${state.keyCount} / ${REQUIRED_KEYS}`);
   }
@@ -2430,7 +2543,6 @@ function respawnPlayer() {
   state.noise = 0;
   state.nearLocker = null;
   state.nearBreaker = false;
-  state.nearStairs = null;
   state.floorLevel = 1;
   state.nearShop = false;
   state.currentLocker = null;
@@ -2613,7 +2725,23 @@ $('#settings-quit').addEventListener('click', () => {
 controls.addEventListener('unlock', () => {
   if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen) openSettings();
 });
-$('#start-button').addEventListener('click', () => {
+function startGame(mode = 'school') {
+  state.mapMode = mode;
+  state.floorLevel = mode === 'mansion' ? 2 : 1;
+  placeKeyItemsForMode(mode);
+  if (mode === 'mansion' && mansionStartPoint) {
+    camera.position.set(mansionStartPoint.x, 1.68, mansionStartPoint.z);
+    camera.rotation.set(0, Math.PI, 0);
+    enemy.visible = false;
+    womanEnemy.group.visible = true;
+    womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
+    womanEnemy.target = nearestMansionNode(mansionStartPoint.x, mansionStartPoint.z, 14);
+  } else {
+    camera.position.set(playerStart.x, 1.68, playerStart.z);
+    camera.rotation.set(0, 0, 0);
+    enemy.visible = true;
+    womanEnemy.group.visible = false;
+  }
   state.started = true;
   initAudio();
   scheduleNextRoar(clock.elapsedTime);
@@ -2625,6 +2753,10 @@ $('#start-button').addEventListener('click', () => {
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   lockPointer();
+}
+
+document.querySelectorAll('[data-map-start]').forEach((button) => {
+  button.addEventListener('click', () => startGame(button.dataset.mapStart || 'school'));
 });
 $('#shop-close')?.addEventListener('click', closeShop);
 document.querySelectorAll('[data-shop-buy]').forEach((button) => {
@@ -2832,6 +2964,7 @@ function updateScreenFlash(time) {
 
 const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true, opacity: 0.42, depthWrite: false });
 const trapTriggeredMat = new THREE.MeshBasicMaterial({ color: 0xff5a42, transparent: true, opacity: 0.62, depthWrite: false });
+const waterTrapMat = new THREE.MeshBasicMaterial({ color: 0x5aa7b8, transparent: true, opacity: 0.24, depthWrite: false });
 function scheduleNextTrap(time) {
   state.nextTrapAt = time + 18 + Math.random() * 28;
 }
@@ -2839,17 +2972,26 @@ function scheduleNextTrap(time) {
 function canPlaceTrapAt(x, z) {
   if (!isSafeSpawnPoint(x, z, 0.64)) return false;
   if (horizontalDistance({ x, z }, camera.position) < 3.5) return false;
-  if (horizontalDistance({ x, z }, exitDoor.position) < 2.4) return false;
-  if (horizontalDistance({ x, z }, breakerPanel.position) < 2.0) return false;
+  if (state.mapMode === 'mansion') {
+    if (mansionExit && horizontalDistance({ x, z }, mansionExit) < 4.0) return false;
+    if (mansionBreakerPanel && horizontalDistance({ x, z }, mansionBreakerPanel.position) < 2.0) return false;
+  } else {
+    if (horizontalDistance({ x, z }, exitDoor.position) < 2.4) return false;
+    if (horizontalDistance({ x, z }, breakerPanel.position) < 2.0) return false;
+  }
   if (noiseTraps.some((trap) => !trap.triggered && Math.hypot(trap.x - x, trap.z - z) < 5.2)) return false;
   return true;
 }
 
 function dropNoiseTrap(time) {
-  const baseNode = nearestNode(enemy.position.x, enemy.position.z);
-  const candidates = [baseNode, ...walkableNodes]
+  const baseNode = state.mapMode === 'mansion'
+    ? nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z)
+    : nearestNode(enemy.position.x, enemy.position.z);
+  const sourceNodes = state.mapMode === 'mansion' ? mansionNodes : walkableNodes;
+  const origin = state.mapMode === 'mansion' ? womanEnemy.group.position : enemy.position;
+  const candidates = [baseNode, ...sourceNodes]
     .filter(Boolean)
-    .filter((node) => Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) < 5.6)
+    .filter((node) => Math.hypot(node.x - origin.x, node.z - origin.z) < (state.mapMode === 'mansion' ? 18 : 5.6))
     .sort(() => Math.random() - 0.5);
   const node = candidates.find((candidate) => canPlaceTrapAt(candidate.x, candidate.z));
   if (!node) return;
@@ -2857,7 +2999,7 @@ function dropNoiseTrap(time) {
   mesh.rotation.x = Math.PI / 2;
   mesh.position.set(node.x, 0.035, node.z);
   scene.add(mesh);
-  noiseTraps.push({ mesh, x: node.x, z: node.z, createdAt: time, triggered: false, removeAt: time + 160 });
+  noiseTraps.push({ mesh, x: node.x, z: node.z, createdAt: time, triggered: false, water: false, waterRadius: 0, removeAt: time + 160 });
   if (noiseTraps.length > 6) {
     const old = noiseTraps.shift();
     scene.remove(old.mesh);
@@ -2874,13 +3016,21 @@ function updateNoiseTraps(dt, time) {
   for (let i = noiseTraps.length - 1; i >= 0; i -= 1) {
     const trap = noiseTraps[i];
     trap.mesh.rotation.z += dt * 0.8;
-    trap.mesh.visible = state.breakerOn;
-    trap.mesh.material.opacity = trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
+    trap.mesh.visible = state.mapMode === 'mansion' ? true : state.breakerOn;
+    trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
     if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
       trap.triggered = true;
-      trap.removeAt = time + 4.5;
-      trap.mesh.material = trapTriggeredMat.clone();
-      damagePlayer(40, 'trap');
+      trap.water = true;
+      trap.waterRadius = 10;
+      trap.removeAt = time + 55;
+      scene.remove(trap.mesh);
+      trap.mesh.geometry.dispose();
+      trap.mesh = new THREE.Mesh(new THREE.CircleGeometry(10, 48), waterTrapMat.clone());
+      trap.mesh.rotation.x = -Math.PI / 2;
+      trap.mesh.position.set(camera.position.x, 0.025, camera.position.z);
+      trap.x = camera.position.x;
+      trap.z = camera.position.z;
+      scene.add(trap.mesh);
       camera.getWorldDirection(forward);
       forward.y = 0;
       forward.normalize();
@@ -3194,6 +3344,7 @@ function triggerSonarRoar(time) {
 }
 
 function updateSonarRoar(time) {
+  if (state.mapMode === 'mansion') return;
   if (!state.nextRoarAt) scheduleNextRoar(time);
   if (time >= state.nextRoarAt) triggerSonarRoar(time);
 }
@@ -3249,7 +3400,8 @@ function updatePlayer(dt) {
     camera.position.y += Math.sin(state.bob * 3.6) * (running ? 0.038 : 0.022);
   }
   if (state.flashlight) {
-    state.battery = Math.max(0, state.battery - dt * 0.18);
+    const ghostDrain = isFlashlightHittingWoman() ? 10 : 1;
+    state.battery = Math.max(0, state.battery - dt * 0.18 * ghostDrain);
     if (state.battery <= 0) state.flashlight = false;
   } else {
     state.battery = Math.min(100, state.battery + dt * 1.05);
@@ -3349,6 +3501,7 @@ function updateEnemyPounce(time) {
 }
 
 function updateEnemy(dt, time) {
+  if (state.mapMode === 'mansion') return;
   if (state.ended) return;
   const roaring = time < state.roarUntil;
   if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18)) {
@@ -3681,9 +3834,37 @@ function nearestMansionNode(x, z, minDistance = 0) {
   return choices[0] || mansionNodes[0] || null;
 }
 
+function isFlashlightHittingWoman() {
+  if (!state.flashlight || state.battery <= 0 || state.mapMode !== 'mansion') return false;
+  const toGhost = new THREE.Vector3().subVectors(womanEnemy.group.position, camera.position);
+  const distance = toGhost.length();
+  if (distance > 16 || distance < 0.001) return false;
+  camera.getWorldDirection(forward);
+  const direction = toGhost.normalize();
+  return forward.dot(direction) > 0.9
+    && hasLineOfSight(camera.position.clone(), womanEnemy.group.position.clone().add(new THREE.Vector3(0, 1.3, 0)));
+}
+
+function reactWomanToSoundEvent(event, now) {
+  const distance = Math.hypot(womanEnemy.group.position.x - event.x, womanEnemy.group.position.z - event.z);
+  if (distance <= event.hearingRadius || event.forceTrapResponse) {
+    womanEnemy.target = { x: event.x, z: event.z };
+    womanEnemy.repathAt = now + 3.5;
+    womanEnemy.speed = event.strength > 70 ? 3.05 : 2.05;
+    setDetection(Math.max(state.detection, event.strength > 70 ? 34 : 14) + (event.strength > 70 ? 13 : 4));
+  } else {
+    const ratio = event.hearingRadius / Math.max(distance, 0.001);
+    if (ratio > 0.12) setDetection(state.detection + ratio * (event.strength > 70 ? 2.4 : 0.55));
+  }
+}
+
 function updateWomanEnemy(dt, time) {
   if (!womanEnemy || state.ended) return;
-  womanEnemy.group.visible = state.floorLevel === 2 || Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z) < 22;
+  if (state.mapMode !== 'mansion') {
+    womanEnemy.group.visible = false;
+    return;
+  }
+  womanEnemy.group.visible = true;
   if (time >= womanEnemy.nextPhaseAt) {
     womanEnemy.phaseUntil = time + 1.0;
     womanEnemy.nextPhaseAt = time + 30;
@@ -3696,9 +3877,25 @@ function updateWomanEnemy(dt, time) {
       child.material.opacity = phasing ? 0.52 : 1;
     }
   });
-  const playerOnSecondFloor = state.floorLevel === 2;
+  const playerOnSecondFloor = state.mapMode === 'mansion';
   const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
-  if (playerOnSecondFloor && distance < 18) {
+  const flashlightHit = isFlashlightHittingWoman();
+  const ghostEye = womanEnemy.group.position.clone().add(new THREE.Vector3(0, 1.65, 0));
+  const playerEye = camera.position.clone();
+  const ghostForward = new THREE.Vector3(0, 0, 1).applyQuaternion(womanEnemy.group.quaternion);
+  const toGhostPlayer = playerEye.clone().sub(ghostEye).setY(0).normalize();
+  const ghostSeesPlayer = playerOnSecondFloor
+    && !state.hidden
+    && distance < 14.5
+    && ghostForward.dot(toGhostPlayer) > 0.62
+    && hasLineOfSight(ghostEye, playerEye);
+  if (ghostSeesPlayer) {
+    setDetection(state.detection + dt * (distance < 6 ? 28 : 13));
+  } else if (!state.hidden) {
+    setDetection(state.detection - dt * 5.8);
+  }
+  state.alert = state.detection > 70 ? 'HUNTING' : state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
+  if (playerOnSecondFloor && (ghostSeesPlayer || state.detection > 70 || distance < 6.5)) {
     womanEnemy.target = { x: camera.position.x, z: camera.position.z };
     womanEnemy.speed = phasing ? 3.2 : 2.05;
   } else if (!womanEnemy.target || time >= womanEnemy.repathAt || Math.hypot(womanEnemy.group.position.x - womanEnemy.target.x, womanEnemy.group.position.z - womanEnemy.target.z) < 0.7) {
@@ -3706,6 +3903,10 @@ function updateWomanEnemy(dt, time) {
     if (node) womanEnemy.target = { x: node.x, z: node.z };
     womanEnemy.repathAt = time + 3 + Math.random() * 3;
     womanEnemy.speed = phasing ? 2.4 : 1.25;
+  }
+  if (flashlightHit) {
+    womanEnemy.speed *= 0.5;
+    setDetection(Math.max(state.detection - dt * 7, detectionFloor()));
   }
   if (womanEnemy.target) {
     const dx = womanEnemy.target.x - womanEnemy.group.position.x;
@@ -3740,7 +3941,6 @@ function updateWomanEnemy(dt, time) {
 function updateInteraction() {
   state.nearLocker = null;
   state.nearBreaker = false;
-  state.nearStairs = null;
   let bestDistance = 1.5;
   for (const locker of lockers) {
     const distance = Math.hypot(camera.position.x - locker.x, camera.position.z - locker.z);
@@ -3751,18 +3951,24 @@ function updateInteraction() {
   }
   let prompt = '';
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
-  state.nearBreaker = horizontalDistance(camera.position, breakerPanel.position) < 2.35;
-  state.nearShop = Boolean(shop && horizontalDistance(camera.position, shop) < 2.6);
-  if (stairsUp && horizontalDistance(camera.position, stairsUp) < 2.2) state.nearStairs = stairsUp;
-  if (stairsDown && horizontalDistance(camera.position, stairsDown) < 2.2) state.nearStairs = stairsDown;
+  const activeBreaker = state.mapMode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel : breakerPanel;
+  const activeShop = state.mapMode === 'mansion' && mansionShop ? mansionShop : shop;
+  state.nearBreaker = horizontalDistance(camera.position, activeBreaker.position) < 2.35;
+  state.nearShop = Boolean(activeShop && horizontalDistance(camera.position, activeShop) < 2.6);
   const actionPrefix = mobileInput.active ? '' : '[ E ] ';
   if (state.hidden) prompt = `${actionPrefix}ロッカーから出る`;
   else if (state.nearLocker) prompt = `${actionPrefix}ロッカーの中に隠れる`;
   else if (state.nearBreaker) prompt = state.breakerOn ? `${actionPrefix}ブレーカーをOFFにする` : `${actionPrefix}ブレーカーをONにする`;
-  else if (state.nearStairs) prompt = state.floorLevel === 1 ? `${actionPrefix}2Fへ上がる` : `${actionPrefix}1Fへ降りる`;
   else if (state.nearShop) prompt = `${actionPrefix}ショップを開く`;
-  else if (nearbyKey) prompt = `${actionPrefix}鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
-  else if (horizontalDistance(camera.position, exitDoor.position) < 3.6) {
+  else if (nearbyKey) prompt = state.mapMode === 'mansion'
+    ? `${actionPrefix}お札を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`
+    : `${actionPrefix}鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
+  else if (state.mapMode === 'mansion' && mansionExit && horizontalDistance(camera.position, mansionExit) < 3.8) {
+    prompt = state.keyCount >= REQUIRED_KEYS
+      ? `${actionPrefix}屋敷から出る`
+      : `${actionPrefix}出口（お札 ${state.keyCount} / ${REQUIRED_KEYS}）`;
+  }
+  else if (state.mapMode !== 'mansion' && horizontalDistance(camera.position, exitDoor.position) < 3.6) {
     prompt = state.keyCount >= REQUIRED_KEYS
       ? `${actionPrefix}鍵を使って脱出`
       : `${actionPrefix}出口（鍵 ${state.keyCount} / ${REQUIRED_KEYS}）`;
@@ -3923,18 +4129,19 @@ function updateRadar(dt, time) {
   radar.fill();
   radar.restore();
 
-  const enemyPoint = radarPoint(enemy.position.x, enemy.position.z, scale);
-  const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.quaternion);
+  const activeEnemy = state.mapMode === 'mansion' ? womanEnemy.group : enemy;
+  const enemyPoint = radarPoint(activeEnemy.position.x, activeEnemy.position.z, scale);
+  const radarForward = new THREE.Vector3(0, 0, 1).applyQuaternion(activeEnemy.quaternion);
   const visionDirection = Math.atan2(radarForward.z, radarForward.x);
-  const visionHalfAngle = currentEnemyVisionHalfAngle();
-  const visionDistance = currentEnemyVisionDistance();
+  const visionHalfAngle = state.mapMode === 'mansion' ? Math.PI / 4.2 : currentEnemyVisionHalfAngle();
+  const visionDistance = state.mapMode === 'mansion' ? 13.5 : currentEnemyVisionDistance();
   radar.beginPath();
   radar.moveTo(enemyPoint.x, enemyPoint.y);
   for (let i = 0; i <= 14; i += 1) {
     const angle = visionDirection - visionHalfAngle + (visionHalfAngle * 2 * i) / 14;
     const point = radarPoint(
-      enemy.position.x + Math.cos(angle) * visionDistance,
-      enemy.position.z + Math.sin(angle) * visionDistance,
+      activeEnemy.position.x + Math.cos(angle) * visionDistance,
+      activeEnemy.position.z + Math.sin(angle) * visionDistance,
       scale,
     );
     radar.lineTo(point.x, point.y);
