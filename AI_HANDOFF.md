@@ -295,3 +295,15 @@ Build:
   - It no longer requires `enemyData.mode === 'HUNTING'` only.
   - The timer now continues through HUNTING/SEARCHING/INVESTIGATING while the player was recently seen or detection remains high and line of sight is blocked.
   - This prevents the 10-second give-up timer from resetting immediately after the AI switches from HUNTING to SEARCHING.
+
+## 2026-06-28 Wall Pin Capture / Debug UI Removal
+
+- Added wall-pin close capture handling:
+  - When the enemy reaches within `2.05m` of the player during high alert/recent sight and no obstacle is between them, the enemy stops, faces the player, and captures.
+  - This is intended to catch wall-edge cases where the player is pinned against a wall but the enemy cannot fully overlap the player.
+  - Capture still requires line of sight, so walls/objects between enemy and player should block it.
+- Removed visible debug UI:
+  - Removed the startup build marker from `index.html`.
+  - Removed the FPS/draw/render `perf-panel` from `index.html`.
+  - Removed related CSS.
+  - Internal FPS sampling remains because dynamic resolution still depends on it.

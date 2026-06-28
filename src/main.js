@@ -5,7 +5,6 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
 const $ = (selector) => document.querySelector(selector);
 const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
-const PERF_BUILD_ID = 'MOBILE-COIN-SHOP-FIX-20260627';
 const INTERNAL_MAX_W = 1920;
 const INTERNAL_MAX_H = 1080;
 const scene = new THREE.Scene();
@@ -75,7 +74,6 @@ document.addEventListener('touchend', (event) => {
   if (touchDevice && now - lastTouchEndAt < 320) event.preventDefault();
   lastTouchEndAt = now;
 }, { passive: false });
-const perfPanel = $('#perf-panel');
 let perfFrames = 0;
 let perfLast = performance.now();
 let perfFps = 0;
@@ -1136,6 +1134,7 @@ const VISION_RAYS = 13;
 const CAPTURE_DISTANCE = 0.55;
 const MOVING_CAPTURE_DISTANCE = 1.55;
 const MOVING_CLOSE_CAPTURE_DISTANCE = 1.25;
+const WALL_PIN_CAPTURE_DISTANCE = 2.05;
 const POUNCE_TRIGGER_DISTANCE = 2.0;
 const POUNCE_DURATION = 1.0;
 const POUNCE_CAPTURE_DISTANCE = 1.45;
@@ -1826,6 +1825,10 @@ function hasLineOfSight(from, to) {
 
 function horizontalDistance(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+function faceEnemyToPlayer() {
+  enemy.rotation.y = Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z);
 }
 
 function detectionFloor() {
@@ -3131,7 +3134,19 @@ function updateEnemy(dt, time) {
   const closeMovingCapture = playerRunning
     && state.alert === 'HUNTING'
     && distance < MOVING_CLOSE_CAPTURE_DISTANCE;
-  const clearAtContactRange = !passByActive && (visibleCapture || closeMovingCapture);
+  const wallPinCapture = !passByActive
+    && !state.hidden
+    && !exitGraceActive
+    && lineOfSightToPlayer
+    && distance < WALL_PIN_CAPTURE_DISTANCE
+    && (state.alert === 'HUNTING' || enemyData.mode === 'HUNTING' || state.detection > 70 || recentSightActive);
+  if (wallPinCapture) {
+    enemyData.path = [];
+    enemyData.isMoving = false;
+    enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.22);
+    faceEnemyToPlayer();
+  }
+  const clearAtContactRange = !passByActive && (visibleCapture || closeMovingCapture || wallPinCapture);
   if (!state.hidden && !exitGraceActive && clearAtContactRange) startCaughtCutscene();
 }
 
@@ -3434,10 +3449,6 @@ function animate() {
     perfFrames = 0;
     perfLast = now;
     adjustDynamicResolution(now);
-    const info = renderer.info.render;
-    if (perfPanel) {
-      perfPanel.textContent = `${PERF_BUILD_ID}\nFPS ${perfFps} / draw ${info.calls} / tris ${info.triangles}\nrender ${renderer.domElement.width}x${renderer.domElement.height} / scale ${dynamicResolutionScale.toFixed(2)}\nwindow ${innerWidth}x${innerHeight}`;
-    }
   }
 }
 
