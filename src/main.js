@@ -730,11 +730,14 @@ function buildMansionSecondFloor() {
   for (let ix = -8; ix <= 8; ix += 1) {
     for (let iz = -13; iz <= 13; iz += 1) {
       const wing = ix === 0 || iz === 0 || Math.abs(ix) === 4 || Math.abs(iz) === 6;
+      const breakerRoute = iz === 11 && ix >= -8 && ix <= 0;
+      const breakerRoom = ix >= -8 && ix <= -6 && iz >= 10 && iz <= 12;
+      const startRoute = ix === 0 && iz >= 10 && iz <= 13;
       const roomCluster = (Math.abs(ix) <= 2 && Math.abs(iz) <= 12)
         || (Math.abs(ix) <= 7 && Math.abs(iz) <= 2)
         || (Math.abs(ix - 5) <= 2 && Math.abs(iz + 8) <= 2)
         || (Math.abs(ix + 5) <= 2 && Math.abs(iz - 8) <= 2);
-      const keep = wing || roomCluster || Math.random() > 0.72;
+      const keep = wing || breakerRoute || breakerRoom || startRoute || roomCluster || Math.random() > 0.72;
       if (!keep) continue;
       const x = offsetX + ix * CELL;
       const z = -12 + iz * CELL;
@@ -1090,17 +1093,47 @@ while (selectedKeySpawns.length < REQUIRED_KEYS) {
   selectedKeySpawns.push(pos);
 }
 const keyMat = material(0xc2a44e, 0.25, 0.85);
+const ofudaMat = new THREE.MeshStandardMaterial({ color: 0xe9dfbd, roughness: 0.88, metalness: 0.0, side: THREE.DoubleSide });
+const ofudaInkMat = new THREE.MeshBasicMaterial({ color: 0x2a1710 });
+const ofudaSealMat = new THREE.MeshBasicMaterial({ color: 0x8f1e18 });
+
+function createOfudaModel() {
+  const group = new THREE.Group();
+  const paper = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.015, 0.72), ofudaMat);
+  group.add(paper);
+  const topSeal = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.018, 0.12), ofudaSealMat);
+  topSeal.position.z = -0.22;
+  group.add(topSeal);
+  for (let i = 0; i < 4; i += 1) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.19 - i * 0.015, 0.02, 0.026), ofudaInkMat);
+    line.position.z = -0.02 + i * 0.105;
+    group.add(line);
+  }
+  const sideA = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.02, 0.5), ofudaInkMat);
+  sideA.position.x = -0.12;
+  sideA.position.z = 0.06;
+  const sideB = sideA.clone();
+  sideB.position.x = 0.12;
+  group.add(sideA, sideB);
+  group.rotation.x = -Math.PI / 2;
+  group.visible = false;
+  return group;
+}
+
 const keyItems = selectedKeySpawns.map((keySpawn, index) => {
   const group = new THREE.Group();
+  const keyModel = new THREE.Group();
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), keyMat);
   ring.rotation.x = Math.PI / 2;
-  group.add(ring);
+  keyModel.add(ring);
   const stem = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.035, 0.35), keyMat);
   stem.position.z = 0.24;
-  group.add(stem);
+  keyModel.add(stem);
   const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.035, 0.06), keyMat);
   tooth.position.set(0.04, 0, 0.4);
-  group.add(tooth);
+  keyModel.add(tooth);
+  const ofudaModel = createOfudaModel();
+  group.add(keyModel, ofudaModel);
   group.position.set(keySpawn.x, 1.05, keySpawn.z);
   scene.add(group);
   const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
@@ -1112,6 +1145,8 @@ const keyItems = selectedKeySpawns.map((keySpawn, index) => {
     collected: false,
     baseY: 1.05,
     phase: index * 0.9,
+    keyModel,
+    ofudaModel,
     schoolPosition: { x: keySpawn.x, z: keySpawn.z },
     mansionPosition: null,
   };
@@ -1135,6 +1170,8 @@ function placeKeyItemsForMode(mode) {
     }
     used.push(pos);
     item.group.position.set(pos.x, 1.05, pos.z);
+    item.keyModel.visible = mode !== 'mansion';
+    item.ofudaModel.visible = mode === 'mansion';
     item.light.position.copy(item.group.position);
     item.collected = false;
     item.group.visible = true;
@@ -1534,14 +1571,16 @@ function updateEnemyVision() {
     return;
   }
   enemyVisionLines.visible = true;
-  const visionDistance = currentEnemyVisionDistance();
+  const visionDistance = state.mapMode === 'mansion' ? 13.5 : currentEnemyVisionDistance();
   const visionHalfAngle = state.mapMode === 'mansion' ? Math.PI / 4.2 : currentEnemyVisionHalfAngle();
   for (let i = 0; i < VISION_RAYS; i += 1) {
     const offset = -visionHalfAngle + (visionHalfAngle * 2 * i) / (VISION_RAYS - 1);
     const angle = visionSource.rotation.y + offset;
     const dx = Math.sin(angle);
     const dz = Math.cos(angle);
-    const distance = visionRayDistance(visionSource.position.x, visionSource.position.z, dx, dz, visionDistance);
+    const distance = state.mapMode === 'mansion'
+      ? visionDistance
+      : visionRayDistance(visionSource.position.x, visionSource.position.z, dx, dz, visionDistance);
     const cursor = i * 6;
     visionPositions[cursor] = visionSource.position.x;
     visionPositions[cursor + 1] = 0.08;
@@ -3536,12 +3575,16 @@ function updateEnemyPounce(time) {
   if (Number.isFinite(yaw)) enemy.rotation.y = yaw;
   enemyData.isMoving = true;
   $('#danger-flash').style.opacity = '0.18';
-  if (!state.hidden && !state.caught && Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z) < POUNCE_CAPTURE_DISTANCE) {
+  const pounceCanSeePlayer = hasLineOfSight(
+    enemy.position.clone().add(new THREE.Vector3(0, 1.65, 0)),
+    camera.position.clone(),
+  );
+  if (!state.hidden && !state.caught && pounceCanSeePlayer && Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z) < POUNCE_CAPTURE_DISTANCE) {
     startCaughtCutscene();
     return true;
   }
   if (progress >= 1) {
-    if (!state.hidden && !state.caught && Math.hypot(target.x - camera.position.x, target.z - camera.position.z) < POUNCE_LANDING_CAPTURE_DISTANCE) {
+    if (!state.hidden && !state.caught && pounceCanSeePlayer && Math.hypot(target.x - camera.position.x, target.z - camera.position.z) < POUNCE_LANDING_CAPTURE_DISTANCE) {
       startCaughtCutscene();
       return true;
     }
@@ -3863,14 +3906,17 @@ function updateEnemy(dt, time) {
   const playerMoving = !state.hidden && state.noise > 6;
   const playerRunning = playerMoving && state.moveMode === 'RUNNING';
   const captureDistance = playerMoving ? MOVING_CAPTURE_DISTANCE : CAPTURE_DISTANCE;
-  const visibleCapture = distance < captureDistance && lineOfSightToPlayer;
+  const visibleCapture = distance < captureDistance && visible;
   const closeMovingCapture = playerRunning
     && state.alert === 'HUNTING'
+    && lineOfSightToPlayer
+    && visible
     && distance < MOVING_CLOSE_CAPTURE_DISTANCE;
   const wallPinCapture = !passByActive
     && !state.hidden
     && !exitGraceActive
     && lineOfSightToPlayer
+    && visible
     && distance < WALL_PIN_CAPTURE_DISTANCE
     && (state.alert === 'HUNTING' || enemyData.mode === 'HUNTING' || state.detection > 70 || recentSightActive);
   if (wallPinCapture) {
@@ -3963,7 +4009,7 @@ function updateWomanEnemy(dt, time) {
   const playerEye = camera.position.clone();
   const ghostForward = new THREE.Vector3(0, 0, 1).applyQuaternion(womanEnemy.group.quaternion);
   const toGhostPlayer = playerEye.clone().sub(ghostEye).setY(0).normalize();
-  if (time - womanEnemy.lastSightCheckAt > 0.12) {
+  if (time - womanEnemy.lastSightCheckAt > 0.28) {
     womanEnemy.cachedSeesPlayer = !stunned
       && playerOnSecondFloor
       && !state.hidden
@@ -4019,7 +4065,7 @@ function updateWomanEnemy(dt, time) {
     }
   }
   womanEnemy.group.position.y = Math.sin(time * 3.1) * 0.035;
-  if (!state.hidden && playerOnSecondFloor && distance < (phasing ? 1.35 : 0.78)) startCaughtCutscene();
+  if (!state.hidden && playerOnSecondFloor && ghostSeesPlayer && distance < (phasing ? 1.35 : 0.78)) startCaughtCutscene();
 }
 
 function updateInteraction() {
@@ -4353,7 +4399,7 @@ function animate() {
     updateSonarModel(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
-      nextVisionUpdate = time + 1 / 12;
+      nextVisionUpdate = time + (state.mapMode === 'mansion' ? 1 / 5 : 1 / 12);
     }
     interactionAccumulator += dt;
     if (interactionAccumulator >= 0.12) {

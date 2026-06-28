@@ -456,3 +456,22 @@ Build:
   - If outside minimap range, edge markers show `ブ` and `シ` to indicate direction.
 - Mansion locker view:
   - Mansion wardrobes now define their own inside/outside eye height so hiding no longer drops the camera to floor level.
+
+## 2026-06-29 Enemy Search Optimization / Mansion Access / Ofuda
+
+- Reduced constant enemy-search cost in mansion mode:
+  - Mansion 3D vision rays no longer raycast against every collider; they use a fixed visual cone for display.
+  - Mansion vision-line refresh rate is reduced to 5Hz.
+  - Ghost player sight checks are throttled to roughly every 0.28 seconds.
+  - This targets the heavy frame drops that occurred when enemy search was effectively active all the time.
+- Mansion breaker access:
+  - Mansion generation now force-carves a route and room around the breaker area.
+  - Start-side route to the breaker is kept walkable so the breaker can reliably be reached.
+- Mansion pickups:
+  - Mansion pickup visuals now switch from the key model to an ofuda/paper talisman model.
+  - School mode still uses the key model.
+- Capture rules:
+  - Capture now requires the player to be inside the active sight check.
+  - School enemy running/contact capture and wall-pin capture now require `visible`.
+  - Pounce capture requires line of sight at the capture moment.
+  - Mansion ghost close capture requires `ghostSeesPlayer`; distance alone no longer captures.
