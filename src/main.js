@@ -82,6 +82,7 @@ const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
 
 const COIN_STORAGE_KEY = 'it-hears-you-coins';
+const SHOP_UPGRADES_STORAGE_KEY = 'it-hears-you-shop-upgrades';
 function loadPersistentCoins() {
   try {
     return Math.max(0, Number.parseInt(localStorage.getItem(COIN_STORAGE_KEY) || '0', 10) || 0);
@@ -96,6 +97,30 @@ function savePersistentCoins() {
     // Storage can be unavailable in private/browser-restricted modes; gameplay still works in-memory.
   }
 }
+function loadPersistentShopUpgrades() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SHOP_UPGRADES_STORAGE_KEY) || '{}');
+    return {
+      noise: parsed.noise === true,
+      breaker: parsed.breaker === true,
+      light: parsed.light === true,
+    };
+  } catch {
+    return { noise: false, breaker: false, light: false };
+  }
+}
+function savePersistentShopUpgrades() {
+  try {
+    localStorage.setItem(SHOP_UPGRADES_STORAGE_KEY, JSON.stringify({
+      noise: state.noiseMultiplier <= 0.5,
+      breaker: state.breakerDurationMultiplier >= 2,
+      light: state.lightRangeMultiplier >= 2,
+    }));
+  } catch {
+    // Storage can be unavailable in private/browser-restricted modes; gameplay still works in-memory.
+  }
+}
+const savedShopUpgrades = loadPersistentShopUpgrades();
 
 const state = {
   started: false,
@@ -111,9 +136,9 @@ const state = {
   nearShop: false,
   shopOpen: false,
   nextCoinAt: 0,
-  noiseMultiplier: 1,
-  breakerDurationMultiplier: 1,
-  lightRangeMultiplier: 1,
+  noiseMultiplier: savedShopUpgrades.noise ? 0.5 : 1,
+  breakerDurationMultiplier: savedShopUpgrades.breaker ? 2 : 1,
+  lightRangeMultiplier: savedShopUpgrades.light ? 2 : 1,
   screenFlashUntil: 0,
   screenFlashColor: 'red',
   nextHealAt: 0,
@@ -1292,6 +1317,7 @@ const enemyData = {
   lastMoveX: enemy.position.x,
   lastMoveZ: enemy.position.z,
   lastTargetDistance: Infinity,
+  recentTargetKeys: [],
 };
 
 function nearestNode(x, z) {
@@ -1343,6 +1369,18 @@ function findPath(startKey, targetKey) {
   return result;
 }
 
+function rememberEnemyTarget(key) {
+  if (!key) return;
+  enemyData.recentTargetKeys = [key, ...enemyData.recentTargetKeys.filter((recent) => recent !== key)].slice(0, 8);
+}
+
+function commitEnemyPath(path, target, mode) {
+  enemyData.path = path;
+  enemyData.targetKey = target?.key || null;
+  enemyData.mode = mode;
+  rememberEnemyTarget(enemyData.targetKey);
+}
+
 function setEnemyDestination(x, z, mode = 'ROAMING') {
   const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   const target = nearestNode(x, z);
@@ -1361,9 +1399,7 @@ function setEnemyDestination(x, z, mode = 'ROAMING') {
       }
     }
   }
-  enemyData.path = path;
-  enemyData.targetKey = finalTarget.key;
-  enemyData.mode = mode;
+  commitEnemyPath(path, finalTarget, mode);
 }
 
 function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
@@ -1385,9 +1421,7 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
     .sort((a, b) => a.score - b.score);
   const best = candidates[0];
   if (best) {
-    enemyData.path = best.path;
-    enemyData.targetKey = best.node.key;
-    enemyData.mode = mode;
+    commitEnemyPath(best.path, best.node, mode);
     return true;
   }
   setEnemyDestination(x, z, mode);
@@ -1430,9 +1464,7 @@ function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING', forceCente
     }
   }
   if (best?.path?.length) {
-    enemyData.path = best.path;
-    enemyData.targetKey = best.target.key;
-    enemyData.mode = mode;
+    commitEnemyPath(best.path, best.target, mode);
     return true;
   }
   return setEnemyDestinationNear(x, z, mode, 8.6);
@@ -1440,7 +1472,9 @@ function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING', forceCente
 
 function chooseRandomEnemyRoute(mode = 'ROAMING') {
   const alertSpread = THREE.MathUtils.clamp((state.detection + enemyData.alertMemory * 55) / 100, 0, 1);
-  let choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
+  let choices = [...navNodes.values()]
+    .filter((node) => node.key !== enemyData.targetKey)
+    .filter((node) => !enemyData.recentTargetKeys.includes(node.key));
   if (alertSpread > 0.45 && Math.random() < alertSpread) {
     choices = choices
       .filter((node) => Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > 10 * alertSpread)
@@ -1456,8 +1490,9 @@ function chooseRandomEnemyRoute(mode = 'ROAMING') {
 function chooseSuperAlertRoute(time) {
   const farNodes = [...navNodes.values()]
     .filter((node) => node.key !== enemyData.targetKey)
+    .filter((node) => !enemyData.recentTargetKeys.slice(0, 5).includes(node.key))
     .filter((node) =>
-      Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > 9
+      Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > 14
       || Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 11)
     .sort((a, b) =>
       (Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z) + Math.random() * 10)
@@ -1477,7 +1512,7 @@ function chooseCoverSearchRoute(preferredCover = null) {
   if (!nearbyCovers.length) nearbyCovers = coverPoints;
   if (alertWideSearch) {
     nearbyCovers = nearbyCovers
-      .filter((cover) => Math.hypot(cover.x - enemy.position.x, cover.z - enemy.position.z) > 8)
+      .filter((cover) => Math.hypot(cover.x - enemy.position.x, cover.z - enemy.position.z) > 12)
       .sort(() => Math.random() - 0.5);
     if (!nearbyCovers.length) nearbyCovers = coverPoints.slice().sort(() => Math.random() - 0.5);
   }
@@ -2199,9 +2234,10 @@ function respawnPlayer() {
   state.nearShop = false;
   state.shopOpen = false;
   state.nextCoinAt = 0;
-  state.noiseMultiplier = 1;
-  state.breakerDurationMultiplier = 1;
-  state.lightRangeMultiplier = 1;
+  const savedUpgrades = loadPersistentShopUpgrades();
+  state.noiseMultiplier = savedUpgrades.noise ? 0.5 : 1;
+  state.breakerDurationMultiplier = savedUpgrades.breaker ? 2 : 1;
+  state.lightRangeMultiplier = savedUpgrades.light ? 2 : 1;
   state.screenFlashUntil = 0;
   state.nextHealAt = 0;
   state.detection = 0;
@@ -2279,6 +2315,7 @@ function respawnPlayer() {
     lastMoveX: enemyStart.x,
     lastMoveZ: enemyStart.z,
     lastTargetDistance: Infinity,
+    recentTargetKeys: [],
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
@@ -2911,6 +2948,7 @@ function buyShopItem(type) {
     if (state.noiseMultiplier <= 0.5) return setShopMessage('ノイズ半減は購入済み');
     if (!spendCoins(SHOP_PRICES.noise)) return setShopMessage(`コインが足りない（ノイズ半減：${SHOP_PRICES.noise}コイン）`);
     state.noiseMultiplier = 0.5;
+    savePersistentShopUpgrades();
     updateShopButtons();
     return setShopMessage(`ノイズ音が半分になった / 所持コイン：${state.coins}`);
   }
@@ -2919,6 +2957,7 @@ function buyShopItem(type) {
     if (!spendCoins(SHOP_PRICES.breaker)) return setShopMessage(`コインが足りない（ブレーカー強化：${SHOP_PRICES.breaker}コイン）`);
     state.breakerDurationMultiplier = 2;
     if (state.breakerOn) state.breakerOutAt = clock.elapsedTime + Math.max(0, state.breakerOutAt - clock.elapsedTime) * 2;
+    savePersistentShopUpgrades();
     updateShopButtons();
     return setShopMessage(`ブレーカーON時間が2倍になった / 所持コイン：${state.coins}`);
   }
@@ -2926,6 +2965,7 @@ function buyShopItem(type) {
     if (state.lightRangeMultiplier >= 2) return setShopMessage('ライト範囲強化は購入済み');
     if (!spendCoins(SHOP_PRICES.light)) return setShopMessage(`コインが足りない（ライト範囲2倍：${SHOP_PRICES.light}コイン）`);
     state.lightRangeMultiplier = 2;
+    savePersistentShopUpgrades();
     updateShopButtons();
     return setShopMessage(`ライト範囲が2倍になった / 所持コイン：${state.coins}`);
   }
@@ -3003,7 +3043,7 @@ function updatePlayer(dt) {
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   if (active && !state.hidden) {
     const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    const movementAlertGain = running ? 5.25 : 4.75;
+    const movementAlertGain = running ? 1.75 : 0.7;
     setDetection(state.detection + dt * movementAlertGain * memoryBoost);
     enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
   }
@@ -3238,8 +3278,8 @@ function updateEnemy(dt, time) {
       enemyData.lastMemoryGainAt = time;
     }
   } else {
-    const baseCalmRate = ['INVESTIGATING', 'SEARCHING'].includes(enemyData.mode) ? 2.3 : 4.5;
-    const calmRate = Math.max(0.65, baseCalmRate * (1 - enemyData.alertMemory * 0.82));
+    const baseCalmRate = ['INVESTIGATING', 'SEARCHING'].includes(enemyData.mode) ? 4.2 : 7.5;
+    const calmRate = Math.max(1.6, baseCalmRate * (1 - enemyData.alertMemory * 0.62));
     state.detection -= calmRate * dt;
   }
   if (checkingSameCover) state.detection += (72 + enemyData.alertMemory * 35) * dt;

@@ -221,10 +221,10 @@ html, body { touch-action: none; }
 
 @media (hover:none) and (pointer:coarse) and (orientation:landscape) {
   :root {
-    --safe-left: max(5vw, env(safe-area-inset-left));
-    --safe-right: max(5vw, env(safe-area-inset-right));
-    --safe-top: max(5vh, env(safe-area-inset-top));
-    --safe-bottom: max(5vh, env(safe-area-inset-bottom));
+    --safe-left: max(7vw, calc(env(safe-area-inset-left) + 18px));
+    --safe-right: max(7vw, calc(env(safe-area-inset-right) + 18px));
+    --safe-top: max(6vh, calc(env(safe-area-inset-top) + 14px));
+    --safe-bottom: max(6vh, calc(env(safe-area-inset-bottom) + 14px));
   }
   .controls { display: none; }
   #hud {
@@ -326,19 +326,19 @@ html, body { touch-action: none; }
 
 @media (hover:none) and (pointer:coarse) {
   :root {
-    --safe-left: max(5vmin, env(safe-area-inset-left));
-    --safe-right: max(5vmin, env(safe-area-inset-right));
-    --safe-top: max(5vmin, env(safe-area-inset-top));
-    --safe-bottom: max(5vmin, env(safe-area-inset-bottom));
+    --safe-left: max(4vmin, calc(env(safe-area-inset-left) + 10px));
+    --safe-right: max(4vmin, calc(env(safe-area-inset-right) + 10px));
+    --safe-top: max(4vmin, calc(env(safe-area-inset-top) + 10px));
+    --safe-bottom: max(4vmin, calc(env(safe-area-inset-bottom) + 10px));
   }
   #rotate-device { display: none !important; }
   body.game-running #mobile-controls { display:block; }
   body.mobile-portrait-landscape #app {
     position: fixed;
-    left: max(2vmin, env(safe-area-inset-left));
-    top: max(2vmin, env(safe-area-inset-top));
-    width: min(var(--game-landscape-w, 100svh), calc(100svh - max(4vmin, env(safe-area-inset-left)) - max(4vmin, env(safe-area-inset-right))));
-    height: min(var(--game-landscape-h, 100vw), calc(100vw - max(4vmin, env(safe-area-inset-top)) - max(4vmin, env(safe-area-inset-bottom))));
+    left: 0;
+    top: 0;
+    width: 100svh;
+    height: 100svw;
     transform: rotate(90deg) translateY(-100%);
     transform-origin: top left;
     overflow: hidden;

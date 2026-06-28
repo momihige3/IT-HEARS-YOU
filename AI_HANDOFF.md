@@ -366,3 +366,19 @@ Build:
   - When sound line of sight is blocked, routing becomes `enemy -> center corridor node -> reachable sound-side node`.
   - Recovery from wall-sound investigation also uses the forced center route.
 - Goal is to prevent the enemy from sticking to the wall facing a sound source on the other side.
+
+## 2026-06-28 Detection / Shop Persistence / Mobile Safe Area / Anti Ping-Pong
+
+- Rebalanced out-of-detection alert:
+  - Passive movement detection gain reduced to walking `0.7`, running `1.75`.
+  - Out-of-sight calm-down increased: base `7.5`, searching/investigating `4.2`, minimum `1.6`.
+- Shop one-time upgrade state is now persisted in localStorage:
+  - Key: `it-hears-you-shop-upgrades`.
+  - Noise reduction, breaker duration x2, and flashlight range x2 now survive reload/continue.
+- Enemy anti ping-pong targeting:
+  - Added `recentTargetKeys` memory.
+  - Route commits remember recent destinations and roaming/super-alert route selection avoids recent targets when possible.
+  - Super-alert and cover-search routes require farther target distances to reduce local back-and-forth loops.
+- Mobile layout:
+  - Portrait-forced-landscape app now uses full `100svh x 100svw` instead of shrinking by margins.
+  - Landscape safe-area margins increased using `env(safe-area-inset-*) + px` so UI avoids notches more reliably.
