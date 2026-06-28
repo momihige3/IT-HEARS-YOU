@@ -382,3 +382,30 @@ Build:
 - Mobile layout:
   - Portrait-forced-landscape app now uses full `100svh x 100svw` instead of shrinking by margins.
   - Landscape safe-area margins increased using `env(safe-area-inset-*) + px` so UI avoids notches more reliably.
+
+## 2026-06-28 Alert Vision / Breaker HUD / 2F Mansion
+
+- Enemy vision now scales with alert/detection:
+  - 3D red vision rays and minimap vision cone both use dynamic length/width.
+  - Detection, alert memory, SUPER_ALERT, and HUNTING extend the visible range and cone width.
+- Roar SE was reinforced:
+  - `playSonarRoar()` now has an additional throat/formant oscillator layer for a more monster-like voice.
+  - The enemy still stops while roaring.
+- Breaker interaction changed:
+  - Breaker can be manually toggled ON/OFF from the interaction prompt.
+  - ON toast/log was removed.
+  - HUD now shows `ブレーカー：残り m:ss` in real time, or `OFF`.
+- AI wall-running mitigation:
+  - Blocked high-alert chasing now forces corridor detour routing instead of repeatedly choosing cover-near-player routes.
+  - Stuck recovery during high detection also forces corridor detour routing.
+- Added a 2F area:
+  - Implemented as a stair-linked separate play area to avoid breaking current 1F navigation/collision logic.
+  - 2F uses an old ruined mansion visual theme with wood floors, stained walls, shelves/desks, and dim lamps.
+  - Player can use the stair prompt to move 1F ↔ 2F.
+- Added a 2F enemy:
+  - White-robed woman enemy patrols the 2F mansion area.
+  - Every 30 seconds it phases through walls for 1 second.
+  - It can catch the player on 2F at close range.
+- Note:
+  - The main SONAR enemy still uses the existing 1F navigation graph.
+  - The 2F mansion is intentionally separated and handled by its own simple enemy movement logic.

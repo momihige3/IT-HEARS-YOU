@@ -160,6 +160,20 @@ html, body { touch-action: none; }
 }
 #coin-panel span { color:#d6a842; font: 11px 'Share Tech Mono'; letter-spacing:.16em; }
 #coin-panel strong { color:#ffe286; font: 24px 'Share Tech Mono'; letter-spacing:.08em; }
+#breaker-hud {
+  min-width: 188px;
+  padding: 8px 12px;
+  border-left: 3px solid #78d99a;
+  background: rgba(4,7,5,.38);
+  display: grid;
+  gap: 2px;
+  text-shadow: 0 2px 8px #000;
+}
+#breaker-hud span { color:#9bd8ad; font: 11px 'Share Tech Mono'; letter-spacing:.16em; }
+#breaker-hud strong { color:#d8ffe2; font: 22px 'Share Tech Mono'; letter-spacing:.08em; }
+#breaker-hud.off { border-left-color:#d95344; }
+#breaker-hud.off span { color:#d9877e; }
+#breaker-hud.off strong { color:#ffb7ad; }
 .shop-screen { z-index: 25; background: rgba(2,4,3,.86); }
 .shop-card {
   width: min(520px, 88vw);
