@@ -1125,9 +1125,11 @@ const VISION_HALF_ANGLE = Math.acos(0.84);
 const VISION_RAYS = 13;
 const CAPTURE_DISTANCE = 0.55;
 const MOVING_CAPTURE_DISTANCE = 1.55;
-const MOVING_CLOSE_CAPTURE_DISTANCE = 0.88;
+const MOVING_CLOSE_CAPTURE_DISTANCE = 1.25;
 const POUNCE_TRIGGER_DISTANCE = 2.0;
 const POUNCE_DURATION = 1.0;
+const POUNCE_CAPTURE_DISTANCE = 1.45;
+const POUNCE_LANDING_CAPTURE_DISTANCE = 1.7;
 const RECENT_SIGHT_MEMORY = 5.0;
 const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
 const enemyVisionGeometry = new THREE.BufferGeometry();
@@ -1659,7 +1661,26 @@ function playLockerSound(opening) {
 function reactToSoundEvent(event, now) {
   const distance = Math.hypot(enemy.position.x - event.x, enemy.position.z - event.z);
   const forceTrapResponse = event.forceTrapResponse === true;
-  if (!forceTrapResponse && distance > event.hearingRadius) return;
+  const heardClearly = forceTrapResponse || distance <= event.hearingRadius;
+  if (!heardClearly) {
+    const rangeRatio = event.hearingRadius / Math.max(distance, 0.001);
+    const distantFalloff = THREE.MathUtils.clamp(rangeRatio * rangeRatio, 0.08, 0.45);
+    const distantGain = (event.strength > 70 ? 3.2 : 0.55) * distantFalloff * (1 + enemyData.alertMemory * 0.35);
+    state.detection = THREE.MathUtils.clamp(
+      Math.max(state.detection, event.strength > 70 ? 10 : state.detection) + distantGain,
+      0,
+      100,
+    );
+    if (now - enemyData.lastMemoryGainAt > 2.5) {
+      enemyData.alertMemory = THREE.MathUtils.clamp(
+        enemyData.alertMemory + (event.strength > 70 ? 0.035 : 0.008),
+        0,
+        1,
+      );
+      enemyData.lastMemoryGainAt = now;
+    }
+    return;
+  }
   if (!forceTrapResponse && enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
   enemyData.lastHeardAt = now;
   enemyData.lastHeardPosition = { x: event.x, z: event.z };
@@ -2708,7 +2729,7 @@ function updatePlayer(dt) {
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   if (active && !state.hidden) {
     const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    const movementAlertGain = running ? 2.5 : 0.38;
+    const movementAlertGain = running ? 8.5 : 5.0;
     state.detection = THREE.MathUtils.clamp(state.detection + dt * movementAlertGain * memoryBoost, 0, 100);
     enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
   }
@@ -2768,7 +2789,7 @@ function updateSonarModel(dt, time) {
 function startEnemyPounce(time) {
   if (state.hidden || state.caught || state.ended) return false;
   if (enemyData.mode === 'POUNCING' && time < enemyData.pounceUntil) return false;
-  const target = enemyData.lastSeenPlayerPosition || { x: camera.position.x, z: camera.position.z };
+  const target = { x: camera.position.x, z: camera.position.z };
   enemyData.mode = 'POUNCING';
   enemyData.path = [];
   enemyData.pounceStartedAt = time;
@@ -2801,11 +2822,15 @@ function updateEnemyPounce(time) {
   if (Number.isFinite(yaw)) enemy.rotation.y = yaw;
   enemyData.isMoving = true;
   $('#danger-flash').style.opacity = '0.18';
-  if (!state.hidden && !state.caught && Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z) < 1.05) {
+  if (!state.hidden && !state.caught && Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z) < POUNCE_CAPTURE_DISTANCE) {
     startCaughtCutscene();
     return true;
   }
   if (progress >= 1) {
+    if (!state.hidden && !state.caught && Math.hypot(target.x - camera.position.x, target.z - camera.position.z) < POUNCE_LANDING_CAPTURE_DISTANCE) {
+      startCaughtCutscene();
+      return true;
+    }
     enemy.position.y = 0;
     enemyData.mode = 'SEARCHING';
     enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 7);

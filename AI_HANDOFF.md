@@ -256,3 +256,15 @@ Build:
   - If player was visible within the last 5 seconds, alert is HUNTING/detection > 70, LoS is currently blocked, and distance is within 2m, enemy enters `POUNCING`.
   - Pounce lasts 1 second, arcs toward the last seen player point, and captures if the player is still within near-contact range.
 - Existing direct capture logic remains in place for clear line-of-sight contact.
+
+## 2026-06-28 Distant Noise / Pounce Capture Follow-up
+
+- Fixed out-of-hearing-range player noise being ignored completely:
+  - Distant footsteps now add a small detection increase with distance falloff.
+  - Distant sounds still do not force pathing unless they are inside hearing range, so the enemy should not instantly know the exact location from far away.
+- Increased passive movement alert gain so running/walking outside detection range can visibly raise alert instead of being canceled by calm-down decay:
+  - Running gain: `8.5`
+  - Walking gain: `5.0`
+- Pounce target now uses the player's current position at trigger time, not only the last remembered sight point.
+- Pounce capture radius widened and a landing capture check was added, so close blocked chases should no longer fail just because the player is moving or hugging an obstacle.
+- Running close-capture distance was raised to `1.25` while stationary direct capture remains unchanged.
