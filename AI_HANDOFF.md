@@ -320,3 +320,17 @@ Build:
 - Added wall-slide movement when enemy collides:
   - On blocked forward movement, the AI tries left/right slide vectors along the obstacle before clearing the path.
   - If sliding fails, existing repath/pass-by/super-alert route recovery remains as fallback.
+
+## 2026-06-28 Smarter Navigation / Shop Purchased Visual
+
+- Improved enemy navigation when the player is behind walls:
+  - `setEnemyDestination()` / `setEnemyDestinationNear()` now start from `nearestReachableNode()` instead of a purely nearest node.
+  - This avoids selecting a wall-separated nav node as the enemy's current node and reduces direct wall ramming.
+- Added stuck recovery:
+  - Enemy tracks progress toward the current path target.
+  - If movement does not meaningfully improve for a short time, `recoverEnemyNavigation()` snaps to a nearby reachable node when safe and repaths.
+  - Recovery prefers player-near routing during high detection, last-heard routing during wall-sound response, otherwise roaming/searching.
+- Wall collision fallback now tries slide movement first, then uses navigation recovery instead of repeatedly clearing the path in place.
+- Shop one-time upgrades now visually show purchased state:
+  - Noise reduction, breaker duration x2, and flashlight range x2 buttons get a green purchased style and `購入済み` label after purchase.
+  - Heal remains reusable and does not get purchased styling.

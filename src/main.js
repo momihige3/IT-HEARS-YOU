@@ -1245,6 +1245,10 @@ const enemyData = {
   pounceTarget: null,
   wallSoundRepathUntil: 0,
   superSearchUntil: 0,
+  stuckSince: 0,
+  lastMoveX: enemy.position.x,
+  lastMoveZ: enemy.position.z,
+  lastTargetDistance: Infinity,
 };
 
 function nearestNode(x, z) {
@@ -1258,6 +1262,17 @@ function nearestNode(x, z) {
     }
   }
   return best;
+}
+
+function nearestReachableNode(x, z, maxProbeDistance = 8) {
+  const probe = new THREE.Vector3(x, 1.1, z);
+  const sorted = [...navNodes.values()]
+    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+  const visible = sorted.find((node) =>
+    Math.hypot(node.x - x, node.z - z) <= maxProbeDistance
+    && canEnemyMoveTo(node.x, node.z)
+    && hasLineOfSight(probe, new THREE.Vector3(node.x, 1.1, node.z)));
+  return visible || sorted.find((node) => canEnemyMoveTo(node.x, node.z)) || sorted[0] || null;
 }
 
 function findPath(startKey, targetKey) {
@@ -1286,16 +1301,30 @@ function findPath(startKey, targetKey) {
 }
 
 function setEnemyDestination(x, z, mode = 'ROAMING') {
-  const start = nearestNode(enemy.position.x, enemy.position.z);
+  const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   const target = nearestNode(x, z);
   if (!start || !target) return;
-  enemyData.path = findPath(start.key, target.key);
-  enemyData.targetKey = target.key;
+  let path = findPath(start.key, target.key);
+  let finalTarget = target;
+  if (!path.length && start.key !== target.key) {
+    const alternatives = [...navNodes.values()]
+      .filter((node) => node.key !== start.key)
+      .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+    for (const candidate of alternatives) {
+      path = findPath(start.key, candidate.key);
+      if (path.length) {
+        finalTarget = candidate;
+        break;
+      }
+    }
+  }
+  enemyData.path = path;
+  enemyData.targetKey = finalTarget.key;
   enemyData.mode = mode;
 }
 
 function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
-  const start = nearestNode(enemy.position.x, enemy.position.z);
+  const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   if (!start) return false;
   const candidates = [...navNodes.values()]
     .filter((node) => Math.hypot(node.x - x, node.z - z) <= radius)
@@ -1388,6 +1417,26 @@ function choosePassByRoute(time) {
   enemyData.lookBackYaw = Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z)
     + (Math.random() < 0.5 ? -0.75 : 0.75);
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.25);
+}
+
+function recoverEnemyNavigation(time) {
+  const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 10) || nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
+  if (anchor && Math.hypot(enemy.position.x - anchor.x, enemy.position.z - anchor.z) < 2.8) {
+    enemy.position.x = anchor.x;
+    enemy.position.z = anchor.z;
+  }
+  enemyData.path = [];
+  enemyData.stuckSince = 0;
+  enemyData.lastTargetDistance = Infinity;
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.18);
+  if (!state.hidden && state.detection > 70) {
+    setEnemyDestinationNear(camera.position.x, camera.position.z, state.alert === 'HUNTING' ? 'HUNTING' : 'SEARCHING', 6.4);
+    enemyData.repathAt = time + 1.1;
+  } else if (enemyData.lastHeardPosition && time < enemyData.wallSoundRepathUntil) {
+    setEnemyDestinationNear(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', 4.2);
+  } else {
+    chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
+  }
 }
 
 // Flashlight.
@@ -2077,6 +2126,10 @@ function respawnPlayer() {
     pounceTarget: null,
     wallSoundRepathUntil: 0,
     superSearchUntil: 0,
+    stuckSince: 0,
+    lastMoveX: enemyStart.x,
+    lastMoveZ: enemyStart.z,
+    lastTargetDistance: Infinity,
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
@@ -2654,10 +2707,22 @@ function setShopMessage(text) {
   if (message) message.textContent = text;
 }
 
+function updateShopButtons() {
+  document.querySelectorAll('[data-shop-buy]').forEach((button) => {
+    const type = button.dataset.shopBuy;
+    const purchased = (type === 'noise' && state.noiseMultiplier <= 0.5)
+      || (type === 'breaker' && state.breakerDurationMultiplier >= 2)
+      || (type === 'light' && state.lightRangeMultiplier >= 2);
+    button.classList.toggle('purchased', purchased);
+    button.setAttribute('aria-pressed', purchased ? 'true' : 'false');
+  });
+}
+
 function openShop() {
   state.shopOpen = true;
   $('#shop-screen')?.classList.add('visible');
   setShopMessage(`所持コイン：${state.coins}`);
+  updateShopButtons();
   if (controls.isLocked) controls.unlock();
 }
 
@@ -2693,6 +2758,7 @@ function buyShopItem(type) {
     if (state.noiseMultiplier <= 0.5) return setShopMessage('ノイズ半減は購入済み');
     if (!spendCoins(SHOP_PRICES.noise)) return setShopMessage(`コインが足りない（ノイズ半減：${SHOP_PRICES.noise}コイン）`);
     state.noiseMultiplier = 0.5;
+    updateShopButtons();
     return setShopMessage(`ノイズ音が半分になった / 所持コイン：${state.coins}`);
   }
   if (type === 'breaker') {
@@ -2700,12 +2766,14 @@ function buyShopItem(type) {
     if (!spendCoins(SHOP_PRICES.breaker)) return setShopMessage(`コインが足りない（ブレーカー強化：${SHOP_PRICES.breaker}コイン）`);
     state.breakerDurationMultiplier = 2;
     if (state.breakerOn) state.breakerOutAt = clock.elapsedTime + Math.max(0, state.breakerOutAt - clock.elapsedTime) * 2;
+    updateShopButtons();
     return setShopMessage(`ブレーカーON時間が2倍になった / 所持コイン：${state.coins}`);
   }
   if (type === 'light') {
     if (state.lightRangeMultiplier >= 2) return setShopMessage('ライト範囲強化は購入済み');
     if (!spendCoins(SHOP_PRICES.light)) return setShopMessage(`コインが足りない（ライト範囲2倍：${SHOP_PRICES.light}コイン）`);
     state.lightRangeMultiplier = 2;
+    updateShopButtons();
     return setShopMessage(`ライト範囲が2倍になった / 所持コイン：${state.coins}`);
   }
 }
@@ -3048,7 +3116,8 @@ function updateEnemy(dt, time) {
     enemyData.mode = 'HUNTING';
     enemyData.speed = 5.2 + state.detection * 0.006;
     if (time > enemyData.repathAt) {
-      setEnemyDestination(camera.position.x, camera.position.z, 'HUNTING');
+      if (lineOfSightToPlayer) setEnemyDestination(camera.position.x, camera.position.z, 'HUNTING');
+      else setEnemyDestinationNear(camera.position.x, camera.position.z, 'HUNTING', 5.2);
       enemyData.repathAt = time + 0.48;
     }
   } else if (state.detection > 70 && !state.hidden) {
@@ -3094,8 +3163,11 @@ function updateEnemy(dt, time) {
   const target = enemyData.path[0];
   if (!roaring && target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
     const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
-    if (direction.length() < 0.18) {
+    const distanceToPathTarget = direction.length();
+    if (distanceToPathTarget < 0.18) {
       enemyData.path.shift();
+      enemyData.stuckSince = 0;
+      enemyData.lastTargetDistance = Infinity;
       if (enemyData.path.length === 0 && enemyData.mode === 'SEARCHING') {
         enemyData.lookBaseYaw = enemyData.coverLookYaw || enemy.rotation.y;
         enemyData.lookAroundUntil = time + 1.0 + Math.random() * 1.1;
@@ -3105,11 +3177,13 @@ function updateEnemy(dt, time) {
       direction.normalize();
       const nextX = enemy.position.x + direction.x * enemyData.speed * dt;
       const nextZ = enemy.position.z + direction.z * enemyData.speed * dt;
+      let movedThisFrame = false;
       if (canEnemyMoveTo(nextX, nextZ)) {
         enemy.position.x = nextX;
         enemy.position.z = nextZ;
         enemy.rotation.y = Math.atan2(direction.x, direction.z);
         enemyData.isMoving = true;
+        movedThisFrame = true;
       } else {
         const slideStep = enemyData.speed * dt * 0.82;
         const slideOptions = [
@@ -3125,18 +3199,30 @@ function updateEnemy(dt, time) {
           enemy.position.z += slide.z * slideStep;
           enemy.rotation.y = Math.atan2(slide.x, slide.z);
           enemyData.isMoving = true;
+          movedThisFrame = true;
         } else {
           const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
           if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18)) enemy.position.set(safe.x, 0, safe.z);
-          enemyData.path = [];
-          if (time < enemyData.wallSoundRepathUntil && enemyData.lastHeardPosition) {
-            setEnemyDestinationNear(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', 3.4);
-            enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, 5.2);
-            enemyData.lookAroundUntil = 0;
-          } else if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
-          else if (state.alert === 'SUPER_ALERT') chooseSuperAlertRoute(time);
-          else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
+          recoverEnemyNavigation(time);
         }
+      }
+      if (movedThisFrame) {
+        const newDistanceToPathTarget = Math.hypot(target.x - enemy.position.x, target.z - enemy.position.z);
+        const improving = !Number.isFinite(enemyData.lastTargetDistance)
+          || newDistanceToPathTarget < enemyData.lastTargetDistance - 0.035;
+        if (improving) {
+          enemyData.stuckSince = 0;
+          enemyData.lastTargetDistance = newDistanceToPathTarget;
+        } else {
+          if (!enemyData.stuckSince) enemyData.stuckSince = time;
+          if (time - enemyData.stuckSince > 1.25) recoverEnemyNavigation(time);
+        }
+        enemyData.lastMoveX = enemy.position.x;
+        enemyData.lastMoveZ = enemy.position.z;
+      } else if (!enemyData.stuckSince) {
+        enemyData.stuckSince = time;
+      } else if (time - enemyData.stuckSince > 0.55) {
+        recoverEnemyNavigation(time);
       }
     }
   }
