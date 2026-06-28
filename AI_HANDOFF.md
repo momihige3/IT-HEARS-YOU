@@ -475,3 +475,15 @@ Build:
   - School enemy running/contact capture and wall-pin capture now require `visible`.
   - Pounce capture requires line of sight at the capture moment.
   - Mansion ghost close capture requires `ghostSeesPlayer`; distance alone no longer captures.
+
+## 2026-06-29 Mansion Spawn / Ghost Facing Performance
+
+- Fixed mansion start soft-lock:
+  - Mansion generation now protects the start cell and breaker route from furniture placement.
+  - Mansion start uses `nearestSafeMansionNode()` as a fallback so the camera does not spawn on top of a table or shelf.
+- Reduced frame drops when looking at the mansion ghost:
+  - Lowered ghost mesh segment counts.
+  - Reduced independent hair strand meshes from 13 to 6.
+  - Reduced ragged hem meshes from 9 to 5.
+  - Reduced ghost point-light intensity and distance.
+  - Added a simple LOD: if FPS is below 50 while the ghost is nearby, small hair/hem detail meshes are hidden temporarily.

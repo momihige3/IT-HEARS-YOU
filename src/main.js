@@ -727,6 +727,10 @@ function addStairMarker(x, z, label = '2F') {
 function buildMansionSecondFloor() {
   const offsetX = 68;
   const cells = [];
+  const mansionProtectedSpot = (x, z) =>
+    Math.hypot(x - offsetX, z - 40) < 8.5
+    || Math.hypot(x - (offsetX - 30), z - 32) < 8.0
+    || (z > 28 && x > offsetX - 34 && x < offsetX + 6);
   for (let ix = -8; ix <= 8; ix += 1) {
     for (let iz = -13; iz <= 13; iz += 1) {
       const wing = ix === 0 || iz === 0 || Math.abs(ix) === 4 || Math.abs(iz) === 6;
@@ -760,7 +764,9 @@ function buildMansionSecondFloor() {
       if (dx !== 0) addBox(cell.x + dx / 2, 2.05, cell.z, 0.2, 4.1, CELL + 0.18, mansionWallMat, true, true, false);
       else addBox(cell.x, 2.05, cell.z + dz / 2, CELL + 0.18, 4.1, 0.2, mansionWallMat, true, true, false);
     }
-    if (Math.random() < 0.18) {
+    if (mansionProtectedSpot(cell.x, cell.z)) {
+      // Keep the mansion spawn point and breaker route clear.
+    } else if (Math.random() < 0.18) {
       const rot = Math.random() < 0.5 ? 0 : Math.PI / 2;
       addShelf(cell.x + (Math.random() < 0.5 ? -1.2 : 1.2), cell.z + (Math.random() < 0.5 ? -1.1 : 1.1), 1.7, rot);
     } else if (Math.random() < 0.2) {
@@ -1402,48 +1408,51 @@ loadExternalSonarModel();
 
 function createWomanEnemy() {
   const group = new THREE.Group();
-  const dress = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.45, 8, 18), clothWhiteMat);
+  const detailParts = [];
+  const dress = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.45, 6, 12), clothWhiteMat);
   dress.position.y = 1.05;
   dress.scale.set(0.92, 1.18, 0.72);
   group.add(dress);
-  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.55, 18, 4, true), clothWhiteMat);
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.55, 12, 3, true), clothWhiteMat);
   robe.position.y = 0.78;
   robe.rotation.y = Math.PI / 18;
   group.add(robe);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 14), new THREE.MeshStandardMaterial({ color: 0xc7b8aa, roughness: 0.9 }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 9), new THREE.MeshStandardMaterial({ color: 0xc7b8aa, roughness: 0.9 }));
   head.position.y = 2.12;
   group.add(head);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.29, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.88), hairMat);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.29, 12, 9, 0, Math.PI * 2, 0, Math.PI * 0.88), hairMat);
   hair.position.set(0, 2.06, 0.02);
   hair.scale.set(0.86, 1.32, 0.72);
   group.add(hair);
-  for (let i = 0; i < 13; i += 1) {
+  for (let i = 0; i < 6; i += 1) {
     const strand = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.35 + Math.random() * 0.55, 0.018), hairMat);
-    const angle = -0.9 + (i / 12) * 1.8;
+    const angle = -0.85 + (i / 5) * 1.7;
     strand.position.set(Math.sin(angle) * 0.18, 1.48 - Math.random() * 0.18, 0.18 + Math.cos(angle) * 0.08);
     strand.rotation.z = -angle * 0.12;
     strand.rotation.x = 0.08 + Math.random() * 0.12;
     group.add(strand);
+    detailParts.push(strand);
   }
   const faceShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.34), new THREE.MeshBasicMaterial({ color: 0x050403, transparent: true, opacity: 0.58, side: THREE.DoubleSide }));
   faceShadow.position.set(0, 2.1, 0.215);
   group.add(faceShadow);
-  for (let i = 0; i < 9; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     const rag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.38 + Math.random() * 0.28, 0.025), clothWhiteMat);
-    rag.position.set(-0.42 + i * 0.105, 0.05, 0.18 + (Math.random() - 0.5) * 0.12);
+    rag.position.set(-0.26 + i * 0.13, 0.05, 0.18 + (Math.random() - 0.5) * 0.12);
     rag.rotation.z = (Math.random() - 0.5) * 0.28;
     group.add(rag);
+    detailParts.push(rag);
   }
   for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.92, 5, 8), clothWhiteMat);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.92, 4, 6), clothWhiteMat);
     arm.position.set(side * 0.34, 1.18, 0.04);
     arm.rotation.z = side * 0.28;
     group.add(arm);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshStandardMaterial({ color: 0xb8aa9d, roughness: 0.92 }));
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0xb8aa9d, roughness: 0.92 }));
     hand.position.set(side * 0.48, 0.68, 0.1);
     group.add(hand);
   }
-  const glow = new THREE.PointLight(0xdde8ff, 0.55, 4.2);
+  const glow = new THREE.PointLight(0xdde8ff, 0.12, 2.2);
   glow.position.set(0, 1.55, 0);
   group.add(glow);
   const start = mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
@@ -1460,6 +1469,7 @@ function createWomanEnemy() {
     stunnedUntil: 0,
     phasingVisual: false,
     visualMaterials: [],
+    detailParts,
     lastSightCheckAt: -Infinity,
     cachedSeesPlayer: false,
     repathAt: 0,
@@ -2799,7 +2809,8 @@ function startGame(mode = 'school') {
   state.floorLevel = mode === 'mansion' ? 2 : 1;
   placeKeyItemsForMode(mode);
   if (mode === 'mansion' && mansionStartPoint) {
-    camera.position.set(mansionStartPoint.x, 1.68, mansionStartPoint.z);
+    const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
+    camera.position.set(safeStart.x, 1.68, safeStart.z);
     camera.rotation.set(0, Math.PI, 0);
     enemy.visible = false;
     womanEnemy.group.visible = true;
@@ -2807,7 +2818,7 @@ function startGame(mode = 'school') {
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
     setWomanPhasingVisual(false);
-    womanEnemy.target = nearestMansionNode(mansionStartPoint.x, mansionStartPoint.z, 14);
+    womanEnemy.target = nearestMansionNode(safeStart.x, safeStart.z, 14);
   } else {
     camera.position.set(playerStart.x, 1.68, playerStart.z);
     camera.rotation.set(0, 0, 0);
@@ -3936,6 +3947,14 @@ function nearestMansionNode(x, z, minDistance = 0) {
   return choices[0] || mansionNodes[0] || null;
 }
 
+function nearestSafeMansionNode(x, z, minDistance = 0) {
+  const choices = mansionNodes
+    .filter((node) => Math.hypot(node.x - x, node.z - z) >= minDistance)
+    .filter((node) => isSafeSpawnPoint(node.x, node.z, 0.78))
+    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+  return choices[0] || nearestMansionNode(x, z, minDistance);
+}
+
 function isFlashlightHittingWoman() {
   const now = clock.elapsedTime;
   if (isFlashlightHittingWoman.cachedAt === now) return isFlashlightHittingWoman.cachedValue;
@@ -3995,6 +4014,8 @@ function updateWomanEnemy(dt, time) {
   setWomanPhasingVisual(phasing);
   const playerOnSecondFloor = state.mapMode === 'mansion';
   const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
+  const hideGhostDetails = perfFps > 0 && perfFps < 50 && distance < 18;
+  for (const part of womanEnemy.detailParts) part.visible = !hideGhostDetails;
   const flashlightHit = isFlashlightHittingWoman();
   state.ghostLightSeconds = flashlightHit ? state.ghostLightSeconds + dt : Math.max(0, state.ghostLightSeconds - dt * 1.8);
   if (state.ghostLightSeconds >= 5) {
