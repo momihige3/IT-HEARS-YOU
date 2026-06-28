@@ -283,3 +283,15 @@ Build:
 - Key spawn placement now uses stricter collider/cover spacing and avoids unsafe fallback positions that could overlap furniture or objects.
 - Key pickups now raise the minimum detection floor by 10% per key, up to 50% at five keys.
 - High alert/search memory now makes enemy roaming and cover search choose from a wider map-wide pool instead of staying mostly near the last local point.
+
+## 2026-06-28 Fire Extinguisher / Slow Alert Buildup / Chase Give-up Fix
+
+- Removed corridor fire extinguisher generation entirely.
+- Restored slow continuous alert buildup while the player is moving outside direct detection:
+  - Walking gain is now `4.75`.
+  - Running gain is now `5.25`.
+  - This is intended to slightly beat natural calm-down without returning to the previous rapid buildup.
+- Fixed blocked chase give-up timer:
+  - It no longer requires `enemyData.mode === 'HUNTING'` only.
+  - The timer now continues through HUNTING/SEARCHING/INVESTIGATING while the player was recently seen or detection remains high and line of sight is blocked.
+  - This prevents the 10-second give-up timer from resetting immediately after the AI switches from HUNTING to SEARCHING.

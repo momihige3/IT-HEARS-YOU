@@ -697,17 +697,6 @@ function addShelf(x, z, w = 1.8, rot = 0) {
   return group;
 }
 
-function addFireExtinguisher(x, z, rot = 0) {
-  const group = new THREE.Group();
-  group.rotation.y = rot;
-  localBox(group, 0, 0.68, 0, 0.34, 1.0, 0.18, material(0x5b1712, 0.42, 0.08), false);
-  localBox(group, 0, 1.22, 0.01, 0.42, 0.14, 0.2, material(0x8a2b20, 0.35, 0.08), false);
-  localBox(group, 0, 0.66, 0.12, 0.24, 0.34, 0.02, paperMat, false);
-  group.position.set(x, 0, z);
-  scene.add(group);
-  return group;
-}
-
 function addSinkRow(x, z, rot = 0) {
   const group = new THREE.Group();
   group.rotation.y = rot;
@@ -775,8 +764,6 @@ function addRoomFixtures(room) {
 function addCorridorDetails() {
   addSinkRow(worldFromGrid(6, 8).x - 1.36, worldFromGrid(6, 8).z + 1.45, 0);
   addSinkRow(worldFromGrid(6, 13).x + 1.36, worldFromGrid(6, 13).z - 1.45, Math.PI);
-  addFireExtinguisher(worldFromGrid(6, 5).x + 1.72, worldFromGrid(6, 5).z, -Math.PI / 2);
-  addFireExtinguisher(worldFromGrid(6, 15).x - 1.72, worldFromGrid(6, 15).z, Math.PI / 2);
 }
 
 function addWallPlate(text, plateInfo) {
@@ -2774,7 +2761,7 @@ function updatePlayer(dt) {
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   if (active && !state.hidden) {
     const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    const movementAlertGain = running ? 1.7 : 1.0;
+    const movementAlertGain = running ? 5.25 : 4.75;
     setDetection(state.detection + dt * movementAlertGain * memoryBoost);
     enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
   }
@@ -2933,8 +2920,9 @@ function updateEnemy(dt, time) {
   }
   const blockedChase = !state.hidden
     && !exitGraceActive
-    && enemyData.mode === 'HUNTING'
-    && distance < 4.8
+    && (state.alert === 'HUNTING' || enemyData.mode === 'HUNTING' || state.detection > 70 || recentSightActive)
+    && ['HUNTING', 'SEARCHING', 'INVESTIGATING'].includes(enemyData.mode)
+    && distance < 5.4
     && !lineOfSightToPlayer;
   if (blockedChase) {
     if (!enemyData.blockedChaseSince) enemyData.blockedChaseSince = time;
