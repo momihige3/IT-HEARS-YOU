@@ -268,3 +268,18 @@ Build:
 - Pounce target now uses the player's current position at trigger time, not only the last remembered sight point.
 - Pounce capture radius widened and a landing capture check was added, so close blocked chases should no longer fail just because the player is moving or hugging an obstacle.
 - Running close-capture distance was raised to `1.25` while stationary direct capture remains unchanged.
+
+## 2026-06-28 Alert Balance / Persistent Coins / Pickup Placement
+
+- Reduced out-of-detection passive alert buildup:
+  - Distant sound detection gain is now roughly one fifth of the previous follow-up value.
+  - Passive walking/running alert gain was reduced to `1.0` / `1.7`.
+- If the enemy remains in a blocked wall/object chase for more than 10 seconds without capturing, it clears active chase, drops detection to the current key-based floor, and passes by.
+- Coins are now persisted in `localStorage` under `it-hears-you-coins`.
+  - Coin pickups save immediately.
+  - Shop spending saves immediately.
+  - Respawn/game over/clear/reload no longer resets the coin wallet.
+- Heal item spawning now strongly favors the nurse room when valid spawn points exist there.
+- Key spawn placement now uses stricter collider/cover spacing and avoids unsafe fallback positions that could overlap furniture or objects.
+- Key pickups now raise the minimum detection floor by 10% per key, up to 50% at five keys.
+- High alert/search memory now makes enemy roaming and cover search choose from a wider map-wide pool instead of staying mostly near the last local point.

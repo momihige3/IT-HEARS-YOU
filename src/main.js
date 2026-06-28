@@ -83,6 +83,22 @@ let perfFps = 0;
 const controls = new PointerLockControls(camera, document.body);
 controls.pointerSpeed = 0.45;
 
+const COIN_STORAGE_KEY = 'it-hears-you-coins';
+function loadPersistentCoins() {
+  try {
+    return Math.max(0, Number.parseInt(localStorage.getItem(COIN_STORAGE_KEY) || '0', 10) || 0);
+  } catch {
+    return 0;
+  }
+}
+function savePersistentCoins() {
+  try {
+    localStorage.setItem(COIN_STORAGE_KEY, String(Math.max(0, Math.floor(state.coins))));
+  } catch {
+    // Storage can be unavailable in private/browser-restricted modes; gameplay still works in-memory.
+  }
+}
+
 const state = {
   started: false,
   ended: false,
@@ -93,7 +109,7 @@ const state = {
   flashlight: true,
   battery: 100,
   hp: 100,
-  coins: 0,
+  coins: loadPersistentCoins(),
   nearShop: false,
   shopOpen: false,
   nextCoinAt: 0,
@@ -148,6 +164,7 @@ const GRID_H = 19;
 const GRID_HALF_W = (GRID_W - 1) / 2;
 const GRID_HALF_H = (GRID_H - 1) / 2;
 const REQUIRED_KEYS = 5;
+const KEY_DETECTION_FLOOR_STEP = 10;
 const walkable = new Set();
 const navNodes = new Map();
 
@@ -857,14 +874,15 @@ const keyOffsets = [
 ];
 function findSafePickupPosition(node, used = []) {
   const base = worldFromGrid(node.gx, node.gz);
-  for (const [ox, oz] of keyOffsets.sort(() => Math.random() - 0.5)) {
+  for (const [ox, oz] of keyOffsets.slice().sort(() => Math.random() - 0.5)) {
     const x = base.x + ox;
     const z = base.z + oz;
     if (horizontalDistance({ x, z }, exitDoor.position) < 3.2) continue;
     if (horizontalDistance({ x, z }, breakerPanel.position) < 2.2) continue;
     if (used.some((p) => Math.hypot(p.x - x, p.z - z) < 2.25)) continue;
     if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 1.65)) continue;
-    if (!isSafeSpawnPoint(x, z, 0.78)) continue;
+    if (!isSafeSpawnPoint(x, z, 1.05)) continue;
+    if (coverPoints.some((cover) => Math.hypot(cover.x - x, cover.z - z) < 1.65)) continue;
     return { x, z };
   }
   return null;
@@ -879,8 +897,13 @@ for (const node of keyCandidates) {
   if (selectedKeySpawns.length >= REQUIRED_KEYS) break;
 }
 while (selectedKeySpawns.length < REQUIRED_KEYS) {
-  const node = findSafeNode((candidate) => Math.hypot(candidate.gx - 6, candidate.gz - 18) > 2);
-  const pos = findSafePickupPosition(node, selectedKeySpawns) || { x: node.x, z: node.z };
+  const remaining = walkableNodes
+    .filter((candidate) => Math.hypot(candidate.gx - 6, candidate.gz - 18) > 2)
+    .sort(() => Math.random() - 0.5);
+  const node = remaining.find((candidate) => findSafePickupPosition(candidate, selectedKeySpawns))
+    || findSafeNode((candidate) => Math.hypot(candidate.gx - 6, candidate.gz - 18) > 2);
+  const pos = findSafePickupPosition(node, selectedKeySpawns);
+  if (!pos) break;
   selectedKeySpawns.push(pos);
 }
 const keyMat = material(0xc2a44e, 0.25, 0.85);
@@ -1303,14 +1326,26 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
 }
 
 function chooseRandomEnemyRoute() {
-  const choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
+  const alertSpread = THREE.MathUtils.clamp((state.detection + enemyData.alertMemory * 55) / 100, 0, 1);
+  let choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
+  if (alertSpread > 0.45 && Math.random() < alertSpread) {
+    choices = choices
+      .filter((node) => Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > 10 * alertSpread)
+      .sort((a, b) =>
+        Math.hypot(b.x - camera.position.x, b.z - camera.position.z)
+        - Math.hypot(a.x - camera.position.x, a.z - camera.position.z));
+  }
+  if (!choices.length) choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
   const target = choices[Math.floor(Math.random() * choices.length)];
   setEnemyDestination(target.x, target.z, 'ROAMING');
 }
 
 function chooseCoverSearchRoute(preferredCover = null) {
   const origin = enemyData.lastHeardPosition || { x: enemy.position.x, z: enemy.position.z };
-  let nearbyCovers = coverPoints.filter((cover) => Math.hypot(cover.x - origin.x, cover.z - origin.z) < 11);
+  const alertWideSearch = state.detection > 62 || enemyData.alertMemory > 0.58;
+  let nearbyCovers = alertWideSearch
+    ? coverPoints
+    : coverPoints.filter((cover) => Math.hypot(cover.x - origin.x, cover.z - origin.z) < 11);
   if (!nearbyCovers.length) nearbyCovers = coverPoints;
   const cover = preferredCover || nearbyCovers[Math.floor(Math.random() * nearbyCovers.length)];
   const inspectNodes = coverSearchNodes(cover);
@@ -1665,12 +1700,8 @@ function reactToSoundEvent(event, now) {
   if (!heardClearly) {
     const rangeRatio = event.hearingRadius / Math.max(distance, 0.001);
     const distantFalloff = THREE.MathUtils.clamp(rangeRatio * rangeRatio, 0.08, 0.45);
-    const distantGain = (event.strength > 70 ? 3.2 : 0.55) * distantFalloff * (1 + enemyData.alertMemory * 0.35);
-    state.detection = THREE.MathUtils.clamp(
-      Math.max(state.detection, event.strength > 70 ? 10 : state.detection) + distantGain,
-      0,
-      100,
-    );
+    const distantGain = (event.strength > 70 ? 0.64 : 0.11) * distantFalloff * (1 + enemyData.alertMemory * 0.35);
+    setDetection(Math.max(state.detection, event.strength > 70 ? detectionFloor() + 2 : state.detection) + distantGain);
     if (now - enemyData.lastMemoryGainAt > 2.5) {
       enemyData.alertMemory = THREE.MathUtils.clamp(
         enemyData.alertMemory + (event.strength > 70 ? 0.035 : 0.008),
@@ -1699,8 +1730,7 @@ function reactToSoundEvent(event, now) {
   }
   // 歩き音は警戒度上昇をゆっくり、走り音はより危険にする。
   const noiseGain = (strength > 70 ? 9.0 : 1.15) * (1 + enemyData.alertMemory * 1.2);
-  state.detection = Math.max(state.detection, strength > 70 ? 28 : 8);
-  state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
+  setDetection(Math.max(state.detection, strength > 70 ? 28 : 8) + noiseGain);
   if (forceTrapResponse) {
     setEnemyDestinationNear(event.x, event.z, 'TRAP_RUSH', 2.6);
     enemyData.trapRushUntil = now + 18;
@@ -1811,6 +1841,14 @@ function horizontalDistance(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
 
+function detectionFloor() {
+  return Math.min(50, state.keyCount * KEY_DETECTION_FLOOR_STEP);
+}
+
+function setDetection(value) {
+  state.detection = THREE.MathUtils.clamp(value, detectionFloor(), 100);
+}
+
 function showToast(text) {
   const toast = $('#toast');
   toast.textContent = text;
@@ -1880,7 +1918,7 @@ function leaveLocker() {
   state.hidden = false;
   state.currentLocker = null;
   state.lockerExitGraceUntil = clock.elapsedTime + 1.4;
-  state.detection = Math.min(state.detection, 55);
+  setDetection(Math.min(state.detection, 55));
   document.body.classList.remove('hidden-in-locker');
   playLockerSound(false);
   emitPlayerSound(45, 6);
@@ -1911,6 +1949,7 @@ function interact() {
     nearbyKey.group.visible = false;
     nearbyKey.light.visible = false;
     state.keyCount += 1;
+    setDetection(Math.max(state.detection, detectionFloor()));
     playItemPickupSound();
     updateExitCounter();
     $('#objective-text').textContent = state.keyCount >= REQUIRED_KEYS
@@ -1957,7 +1996,6 @@ function respawnPlayer() {
   state.flashlight = true;
   state.battery = 100;
   state.hp = 100;
-  state.coins = 0;
   state.nearShop = false;
   state.shopOpen = false;
   state.nextCoinAt = 0;
@@ -2048,6 +2086,8 @@ function respawnPlayer() {
   scheduleNextCoin(clock.elapsedTime);
   scheduleNextHeal(clock.elapsedTime);
   chooseRandomEnemyRoute();
+  savePersistentCoins();
+  updateHUD();
   showToast('意識を取り戻した');
   if (!mobileInput.active) lockPointer();
 }
@@ -2440,7 +2480,10 @@ function spawnHealItem(time, allowNearPlayer = false) {
   const candidates = walkableNodes
     .filter((node) => canPlaceHealAt(node.x, node.z, allowNearPlayer))
     .sort(() => Math.random() - 0.5);
-  const node = candidates[0];
+  const nurseCandidates = candidates.filter((node) => getRoomAt(node.gx, node.gz)?.id === 'nurse');
+  const node = (nurseCandidates.length && Math.random() < 0.72)
+    ? nurseCandidates[Math.floor(Math.random() * nurseCandidates.length)]
+    : candidates[0];
   if (!node) return;
   const group = new THREE.Group();
   const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.26, 0.34), healMat);
@@ -2558,6 +2601,7 @@ function updateCoins(dt, time) {
     if (!state.hidden && horizontalDistance(camera.position, coin) < 1.25) {
       coin.collected = true;
       state.coins += 1;
+      savePersistentCoins();
       playCoinSound();
       removeCoinAt(i);
       updateHUD();
@@ -2621,6 +2665,7 @@ function closeShop() {
 function spendCoins(cost) {
   if (state.coins < cost) return false;
   state.coins -= cost;
+  savePersistentCoins();
   updateHUD();
   return true;
 }
@@ -2729,8 +2774,8 @@ function updatePlayer(dt) {
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   if (active && !state.hidden) {
     const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    const movementAlertGain = running ? 8.5 : 5.0;
-    state.detection = THREE.MathUtils.clamp(state.detection + dt * movementAlertGain * memoryBoost, 0, 100);
+    const movementAlertGain = running ? 1.7 : 1.0;
+    setDetection(state.detection + dt * movementAlertGain * memoryBoost);
     enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
   }
   const nextX = camera.position.x + move.x * speed * dt;
@@ -2893,9 +2938,21 @@ function updateEnemy(dt, time) {
     && !lineOfSightToPlayer;
   if (blockedChase) {
     if (!enemyData.blockedChaseSince) enemyData.blockedChaseSince = time;
-    if (time - enemyData.blockedChaseSince > 0.65) {
+    if (time - enemyData.blockedChaseSince > 10) {
+      setDetection(detectionFloor());
+      state.alert = 'UNNOTICED';
+      enemyData.mode = 'PASSING_BY';
+      enemyData.searchUntil = 0;
+      enemyData.investigateUntil = 0;
+      enemyData.alertMemory = Math.max(0, enemyData.alertMemory - 0.42);
+      enemyData.blockedChaseSince = 0;
+      enemyData.coverPeekUntil = 0;
+      enemyData.lookAroundUntil = 0;
+      choosePassByRoute(time);
+      passByActive = true;
+    } else if (time - enemyData.blockedChaseSince > 0.65) {
       if (state.detection > 58 || enemyData.alertMemory > 0.48) {
-        state.detection = Math.max(state.detection, 72);
+        setDetection(Math.max(state.detection, 72));
         state.alert = 'HUNTING';
         enemyData.mode = 'SEARCHING';
         enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 10);
@@ -2906,7 +2963,7 @@ function updateEnemy(dt, time) {
         enemyData.lastHeardPosition = { x: camera.position.x, z: camera.position.z };
         chooseCoverSearchRouteNearPlayer();
       } else {
-        state.detection = Math.min(state.detection, 18);
+        setDetection(Math.min(state.detection, 18));
         state.alert = 'UNNOTICED';
         enemyData.alertMemory = Math.max(0, enemyData.alertMemory - 0.28);
         enemyData.blockedChaseSince = 0;
@@ -2958,7 +3015,7 @@ function updateEnemy(dt, time) {
   if (checkingSameCover) state.detection += (72 + enemyData.alertMemory * 35) * dt;
   enemyData.alertMemory = Math.max(0, enemyData.alertMemory - dt * 0.0025);
   if (!passByActive && !state.hidden && !exitGraceActive && distance < 1.8) state.detection += 90 * dt;
-  state.detection = THREE.MathUtils.clamp(state.detection, 0, 100);
+  setDetection(state.detection);
 
   if (visible && state.detection <= 70) {
     setEnemyDestination(camera.position.x, camera.position.z, 'INVESTIGATING');
@@ -2976,7 +3033,7 @@ function updateEnemy(dt, time) {
   if (passByActive) {
     state.alert = 'UNNOTICED';
     enemyData.speed = 2.6;
-    state.detection = Math.max(0, state.detection - 42 * dt);
+    setDetection(state.detection - 42 * dt);
   } else if (enemyData.mode === 'TRAP_RUSH' && time < enemyData.trapRushUntil) {
     state.alert = 'SUSPICIOUS';
     enemyData.speed = 6.4;
