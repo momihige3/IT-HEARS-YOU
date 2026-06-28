@@ -1126,6 +1126,9 @@ const VISION_RAYS = 13;
 const CAPTURE_DISTANCE = 0.55;
 const MOVING_CAPTURE_DISTANCE = 1.55;
 const MOVING_CLOSE_CAPTURE_DISTANCE = 0.88;
+const POUNCE_TRIGGER_DISTANCE = 2.0;
+const POUNCE_DURATION = 1.0;
+const RECENT_SIGHT_MEMORY = 5.0;
 const visionPositions = new Float32Array(VISION_RAYS * 2 * 3);
 const enemyVisionGeometry = new THREE.BufferGeometry();
 enemyVisionGeometry.setAttribute('position', new THREE.BufferAttribute(visionPositions, 3));
@@ -1223,6 +1226,13 @@ const enemyData = {
   trapRushUntil: 0,
   lookBackUntil: 0,
   lookBackYaw: 0,
+  lastSawPlayerAt: -Infinity,
+  lastSeenPlayerPosition: null,
+  pounceUntil: 0,
+  pounceStartedAt: 0,
+  pounceFrom: null,
+  pounceTarget: null,
+  wallSoundRepathUntil: 0,
 };
 
 function nearestNode(x, z) {
@@ -1270,6 +1280,24 @@ function setEnemyDestination(x, z, mode = 'ROAMING') {
   enemyData.path = findPath(start.key, target.key);
   enemyData.targetKey = target.key;
   enemyData.mode = mode;
+}
+
+function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
+  const start = nearestNode(enemy.position.x, enemy.position.z);
+  if (!start) return false;
+  const candidates = [...navNodes.values()]
+    .filter((node) => Math.hypot(node.x - x, node.z - z) <= radius)
+    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+  for (const target of candidates) {
+    const path = findPath(start.key, target.key);
+    if (!path.length && start.key !== target.key) continue;
+    enemyData.path = path;
+    enemyData.targetKey = target.key;
+    enemyData.mode = mode;
+    return true;
+  }
+  setEnemyDestination(x, z, mode);
+  return enemyData.mode === mode;
 }
 
 function chooseRandomEnemyRoute() {
@@ -1635,6 +1663,10 @@ function reactToSoundEvent(event, now) {
   if (!forceTrapResponse && enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
   enemyData.lastHeardAt = now;
   enemyData.lastHeardPosition = { x: event.x, z: event.z };
+  const wallBlockedSound = !hasLineOfSight(
+    enemy.position.clone().add(new THREE.Vector3(0, 1.4, 0)),
+    new THREE.Vector3(event.x, 1.4, event.z),
+  );
   const strength = event.strength;
   if (now - enemyData.lastMemoryGainAt > 0.85) {
     enemyData.alertMemory = THREE.MathUtils.clamp(
@@ -1649,7 +1681,7 @@ function reactToSoundEvent(event, now) {
   state.detection = Math.max(state.detection, strength > 70 ? 28 : 8);
   state.detection = THREE.MathUtils.clamp(state.detection + noiseGain, 0, 100);
   if (forceTrapResponse) {
-    setEnemyDestination(event.x, event.z, 'TRAP_RUSH');
+    setEnemyDestinationNear(event.x, event.z, 'TRAP_RUSH', 2.6);
     enemyData.trapRushUntil = now + 18;
     enemyData.investigateUntil = now + 18;
     enemyData.searchUntil = now + 22;
@@ -1660,15 +1692,18 @@ function reactToSoundEvent(event, now) {
     return;
   }
   if (state.alert === 'HUNTING' && state.detection > 70) {
-    setEnemyDestination(event.x, event.z, 'HUNTING');
+    setEnemyDestinationNear(event.x, event.z, 'HUNTING', wallBlockedSound ? 3.2 : 2.2);
+    enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
+    enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, wallBlockedSound ? 5.8 : 3.4);
     return;
   }
   const firstReaction = enemyData.mode !== 'INVESTIGATING';
-  setEnemyDestination(event.x, event.z, 'INVESTIGATING');
-  enemyData.investigateUntil = now + 3.5 + strength * 0.025;
-  enemyData.searchUntil = now + 16;
-  enemyData.investigateSpeed = strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
-  if (firstReaction) enemyData.pauseUntil = now + 0.7;
+  setEnemyDestinationNear(event.x, event.z, 'INVESTIGATING', wallBlockedSound ? 3.2 : 2.2);
+  enemyData.investigateUntil = now + 3.5 + strength * 0.025 + (wallBlockedSound ? 4 : 0);
+  enemyData.searchUntil = now + 16 + (wallBlockedSound ? 8 : 0);
+  enemyData.investigateSpeed = wallBlockedSound ? 5.4 : strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
+  enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
+  if (firstReaction) enemyData.pauseUntil = wallBlockedSound ? 0 : now + 0.7;
 }
 
 function emitWorldSound(x, z, strength, baseHearingRadius, forceRipple = false, options = {}) {
@@ -1971,6 +2006,13 @@ function respawnPlayer() {
     trapRushUntil: 0,
     lookBackUntil: 0,
     lookBackYaw: 0,
+    lastSawPlayerAt: -Infinity,
+    lastSeenPlayerPosition: null,
+    pounceUntil: 0,
+    pounceStartedAt: 0,
+    pounceFrom: null,
+    pounceTarget: null,
+    wallSoundRepathUntil: 0,
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
@@ -2434,7 +2476,7 @@ const shopAccentMat = new THREE.MeshBasicMaterial({ color: 0x9fe7ff });
 const MAX_ACTIVE_COINS = 10;
 
 function scheduleNextCoin(time) {
-  state.nextCoinAt = time + 30;
+  state.nextCoinAt = time + 10;
 }
 
 function removeCoinAt(index) {
@@ -2664,10 +2706,11 @@ function updatePlayer(dt) {
   const speed = running ? 4.7 : 2.35;
   state.moveMode = running ? 'RUNNING' : 'WALKING';
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
-  if (active && running && !state.hidden) {
+  if (active && !state.hidden) {
     const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    state.detection = THREE.MathUtils.clamp(state.detection + dt * 1.25 * memoryBoost, 0, 100);
-    enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * 0.004, 0, 1);
+    const movementAlertGain = running ? 2.5 : 0.38;
+    state.detection = THREE.MathUtils.clamp(state.detection + dt * movementAlertGain * memoryBoost, 0, 100);
+    enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
   }
   const nextX = camera.position.x + move.x * speed * dt;
   const nextZ = camera.position.z + move.z * speed * dt;
@@ -2722,6 +2765,58 @@ function updateSonarModel(dt, time) {
   }
 }
 
+function startEnemyPounce(time) {
+  if (state.hidden || state.caught || state.ended) return false;
+  if (enemyData.mode === 'POUNCING' && time < enemyData.pounceUntil) return false;
+  const target = enemyData.lastSeenPlayerPosition || { x: camera.position.x, z: camera.position.z };
+  enemyData.mode = 'POUNCING';
+  enemyData.path = [];
+  enemyData.pounceStartedAt = time;
+  enemyData.pounceUntil = time + POUNCE_DURATION;
+  enemyData.pounceFrom = { x: enemy.position.x, z: enemy.position.z };
+  enemyData.pounceTarget = { x: target.x, z: target.z };
+  enemyData.speed = 0;
+  enemyData.isMoving = false;
+  enemyData.pauseUntil = 0;
+  enemyData.lookAroundUntil = 0;
+  return true;
+}
+
+function updateEnemyPounce(time) {
+  if (enemyData.mode !== 'POUNCING') return false;
+  const from = enemyData.pounceFrom;
+  const target = enemyData.pounceTarget;
+  if (!from || !target) {
+    enemyData.mode = 'SEARCHING';
+    return false;
+  }
+  const progress = THREE.MathUtils.clamp((time - enemyData.pounceStartedAt) / POUNCE_DURATION, 0, 1);
+  const eased = progress < 0.5
+    ? 2 * progress * progress
+    : 1 - ((-2 * progress + 2) ** 2) / 2;
+  enemy.position.x = THREE.MathUtils.lerp(from.x, target.x, eased);
+  enemy.position.z = THREE.MathUtils.lerp(from.z, target.z, eased);
+  enemy.position.y = Math.sin(progress * Math.PI) * 0.78;
+  const yaw = Math.atan2(target.x - from.x, target.z - from.z);
+  if (Number.isFinite(yaw)) enemy.rotation.y = yaw;
+  enemyData.isMoving = true;
+  $('#danger-flash').style.opacity = '0.18';
+  if (!state.hidden && !state.caught && Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z) < 1.05) {
+    startCaughtCutscene();
+    return true;
+  }
+  if (progress >= 1) {
+    enemy.position.y = 0;
+    enemyData.mode = 'SEARCHING';
+    enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 7);
+    enemyData.lastHeardPosition = { x: target.x, z: target.z };
+    enemyData.lookBaseYaw = enemy.rotation.y;
+    enemyData.lookAroundUntil = time + 1.2;
+    setEnemyDestinationNear(target.x, target.z, 'SEARCHING', 2.4);
+  }
+  return true;
+}
+
 function updateEnemy(dt, time) {
   if (state.ended) return;
   const roaring = time < state.roarUntil;
@@ -2739,6 +2834,7 @@ function updateEnemy(dt, time) {
   const facing = enemyForward.dot(toPlayer.clone().normalize());
   const exitGraceActive = time < state.lockerExitGraceUntil;
   const lineOfSightToPlayer = hasLineOfSight(enemyEye, playerEye);
+  if (updateEnemyPounce(time)) return;
   const highAlertSearch = !state.hidden
     && !exitGraceActive
     && (state.detection > 58 || enemyData.alertMemory > 0.55 || enemyData.mode === 'HUNTING')
@@ -2751,6 +2847,20 @@ function updateEnemy(dt, time) {
     && distance < 10.5
     && lineOfSightToPlayer
     && (facing > 0.84 || highAlertSearch);
+  if (visible) {
+    enemyData.lastSawPlayerAt = time;
+    enemyData.lastSeenPlayerPosition = { x: camera.position.x, z: camera.position.z };
+  }
+  const recentSightActive = time - enemyData.lastSawPlayerAt <= RECENT_SIGHT_MEMORY;
+  if (!state.hidden
+    && !exitGraceActive
+    && (state.alert === 'HUNTING' || enemyData.mode === 'HUNTING' || state.detection > 70)
+    && !lineOfSightToPlayer
+    && recentSightActive
+    && distance <= POUNCE_TRIGGER_DISTANCE) {
+    startEnemyPounce(time);
+    return;
+  }
   const blockedChase = !state.hidden
     && !exitGraceActive
     && enemyData.mode === 'HUNTING'
@@ -2903,7 +3013,11 @@ function updateEnemy(dt, time) {
         const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
         if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.36)) enemy.position.set(safe.x, 0, safe.z);
         enemyData.path = [];
-        if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
+        if (time < enemyData.wallSoundRepathUntil && enemyData.lastHeardPosition) {
+          setEnemyDestinationNear(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, 'INVESTIGATING', 3.4);
+          enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, 5.2);
+          enemyData.lookAroundUntil = 0;
+        } else if (enemyData.mode === 'HUNTING') choosePassByRoute(time);
         else enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.8);
       }
     }

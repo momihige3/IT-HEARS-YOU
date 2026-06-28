@@ -240,3 +240,19 @@ Build:
 - GLB runtime scale is set to `0.49` with `position.y = 0.49` so the existing enemy group scale keeps the visible height near the intended ~2.4m.
 - The previous OBJ loader remains as fallback if the GLB fails to load; procedural SONAR remains the final fallback.
 - Game behavior/collision is still driven by the existing enemy group/AI logic; only the visible model asset was replaced.
+
+## 2026-06-28 Coin Spawn / Pounce / Wall Sound AI Fix
+
+- Coin spawn interval changed from 30 seconds to 10 seconds while keeping the max active coin cap at 10.
+- Movement alert gain changed:
+  - Running out-of-range passive detection gain doubled from `1.25` to `2.5`.
+  - Walking now slowly raises detection with `0.38` gain.
+- Added `setEnemyDestinationNear()` so the enemy can path to a reachable node near a target point instead of only the closest exact node.
+- Wall-blocked sound response now checks line of sight from enemy to sound position:
+  - If blocked, enemy paths to a nearby reachable node around the sound source.
+  - Blocked sound investigation speed is raised and repath is kept alive for 8 seconds.
+- Added pounce logic:
+  - Tracks `lastSawPlayerAt` and `lastSeenPlayerPosition`.
+  - If player was visible within the last 5 seconds, alert is HUNTING/detection > 70, LoS is currently blocked, and distance is within 2m, enemy enters `POUNCING`.
+  - Pounce lasts 1 second, arcs toward the last seen player point, and captures if the player is still within near-contact range.
+- Existing direct capture logic remains in place for clear line-of-sight contact.
