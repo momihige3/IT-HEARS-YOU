@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -1066,28 +1067,56 @@ function ensureModelUv(geometry) {
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 }
 function loadExternalSonarModel() {
-  const loader = new OBJLoader();
-  loader.load('./models/sonar.obj', (model) => {
-    model.name = 'SONAR_EXTERNAL_OBJ';
-    model.traverse((child) => {
-      if (!child.isMesh) return;
-      const n = child.name.toLowerCase();
-      if (n.includes('ear')) child.material = sonarEarMat;
-      else if (n.includes('maw') || n.includes('mouth') || n.includes('rib') || n.includes('spine') || n.includes('tendon')) child.material = sonarMouthMat;
-      else if (n.includes('claw') || n.includes('tooth') || n.includes('toe')) child.material = paperMat;
-      else if (n.includes('face')) child.material = darkMat;
-      else child.material = sonarSkinMat;
-      child.castShadow = false;
-      child.receiveShadow = false;
-      ensureModelUv(child.geometry);
-      child.geometry.computeVertexNormals();
-    });
+  const finalizeLoadedModel = (model) => {
     enemy.add(model);
     externalSonarModel = model;
     proceduralSonarParts.forEach((part) => { part.visible = false; });
-  }, undefined, () => {
-    proceduralSonarParts.forEach((part) => { part.visible = true; });
-  });
+  };
+  const loadObjFallback = () => {
+    const loader = new OBJLoader();
+    loader.load('./models/sonar.obj', (model) => {
+      model.name = 'SONAR_EXTERNAL_OBJ';
+      model.traverse((child) => {
+        if (!child.isMesh) return;
+        const n = child.name.toLowerCase();
+        if (n.includes('ear')) child.material = sonarEarMat;
+        else if (n.includes('maw') || n.includes('mouth') || n.includes('rib') || n.includes('spine') || n.includes('tendon')) child.material = sonarMouthMat;
+        else if (n.includes('claw') || n.includes('tooth') || n.includes('toe')) child.material = paperMat;
+        else if (n.includes('face')) child.material = darkMat;
+        else child.material = sonarSkinMat;
+        child.castShadow = false;
+        child.receiveShadow = false;
+        ensureModelUv(child.geometry);
+        child.geometry.computeVertexNormals();
+      });
+      finalizeLoadedModel(model);
+    }, undefined, () => {
+      proceduralSonarParts.forEach((part) => { part.visible = true; });
+    });
+  };
+  const gltfLoader = new GLTFLoader();
+  gltfLoader.load('./models/sonar_blender_v1.glb', (gltf) => {
+    const model = gltf.scene;
+    model.name = 'SONAR_BLENDER_V1_GLB';
+    model.scale.setScalar(0.49);
+    model.position.y = 0.49;
+    model.traverse((child) => {
+      if (!child.isMesh) return;
+      child.castShadow = false;
+      child.receiveShadow = false;
+      child.frustumCulled = true;
+      if (child.geometry) child.geometry.computeVertexNormals();
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const matItem of materials) {
+          matItem.side = THREE.DoubleSide;
+          if ('roughness' in matItem) matItem.roughness = Math.min(matItem.roughness, 0.46);
+          if ('metalness' in matItem) matItem.metalness = 0.02;
+        }
+      }
+    });
+    finalizeLoadedModel(model);
+  }, undefined, loadObjFallback);
 }
 loadExternalSonarModel();
 

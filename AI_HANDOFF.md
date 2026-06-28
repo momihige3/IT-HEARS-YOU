@@ -227,3 +227,16 @@ Build:
 - Moving capture distance increased to `1.55`; running during HUNTING can trigger near-contact capture at `0.88` without requiring perfect overlap.
 - High-alert blocked chase no longer immediately clears alert/pass-by. It switches to SEARCHING, preserves detection, and routes to cover near the player.
 - SEARCHING look-around is now continuous 360-degree sweep instead of a narrow side-to-side oscillation.
+
+## 2026-06-28 Blender SONAR Model Implementation
+
+- Created a Blender-authored SONAR review model with `scripts/create-sonar-blender-model.py`.
+- Blender review outputs live under `model_review/sonar_blender_v1/`:
+  - `sonar_blender_v1.blend`
+  - `sonar_blender_v1.glb`
+  - `preview_front.png`, `preview_side.png`, `preview_back.png`
+- Copied the approved runtime GLB candidate to `public/models/sonar_blender_v1.glb`.
+- `src/main.js` now imports `GLTFLoader` and loads `./models/sonar_blender_v1.glb` first.
+- GLB runtime scale is set to `0.49` with `position.y = 0.49` so the existing enemy group scale keeps the visible height near the intended ~2.4m.
+- The previous OBJ loader remains as fallback if the GLB fails to load; procedural SONAR remains the final fallback.
+- Game behavior/collision is still driven by the existing enemy group/AI logic; only the visible model asset was replaced.
