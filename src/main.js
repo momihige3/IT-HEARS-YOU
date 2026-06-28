@@ -165,6 +165,7 @@ const state = {
   lockerExitGraceUntil: 0,
   lockerHideAt: -Infinity,
   lockerHideStartDetection: 0,
+  ghostLightSeconds: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -799,7 +800,7 @@ function buildMansionSecondFloor() {
     group.position.set(x, 0, z);
     group.rotation.y = yaw;
     scene.add(group);
-    lockers.push({ group, x, z, yaw });
+    lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
     colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
   }
 }
@@ -1419,12 +1420,31 @@ function createWomanEnemy() {
     target: null,
     nextPhaseAt: 30,
     phaseUntil: 0,
+    stunnedUntil: 0,
+    phasingVisual: false,
+    visualMaterials: [],
+    lastSightCheckAt: -Infinity,
+    cachedSeesPlayer: false,
     repathAt: 0,
     speed: 1.35,
   };
 }
 
 const womanEnemy = createWomanEnemy();
+womanEnemy.group.traverse((child) => {
+  if (!child.material) return;
+  const materials = Array.isArray(child.material) ? child.material : [child.material];
+  for (const matItem of materials) womanEnemy.visualMaterials.push(matItem);
+});
+
+function setWomanPhasingVisual(active) {
+  if (womanEnemy.phasingVisual === active) return;
+  womanEnemy.phasingVisual = active;
+  for (const matItem of womanEnemy.visualMaterials) {
+    matItem.transparent = active;
+    matItem.opacity = active ? 0.52 : 1;
+  }
+}
 
 const VISION_DISTANCE = 10.5;
 const VISION_HALF_ANGLE = Math.acos(0.84);
@@ -1509,6 +1529,11 @@ function visionRayDistance(originX, originZ, dx, dz, maxDistance = currentEnemyV
 
 function updateEnemyVision() {
   const visionSource = state.mapMode === 'mansion' ? womanEnemy.group : enemy;
+  if (state.mapMode === 'mansion' && clock.elapsedTime < womanEnemy.stunnedUntil) {
+    enemyVisionLines.visible = false;
+    return;
+  }
+  enemyVisionLines.visible = true;
   const visionDistance = currentEnemyVisionDistance();
   const visionHalfAngle = state.mapMode === 'mansion' ? Math.PI / 4.2 : currentEnemyVisionHalfAngle();
   for (let i = 0; i < VISION_RAYS; i += 1) {
@@ -2416,8 +2441,9 @@ function enterLocker(locker) {
   state.lockerHideAt = clock.elapsedTime;
   state.lockerHideStartDetection = state.detection;
   document.body.classList.add('hidden-in-locker');
-  const inside = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
-  const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, 0.12, 4));
+  const insideY = locker.insideLocalY ?? 0.12;
+  const inside = locker.group.localToWorld(new THREE.Vector3(0, insideY, 0.39));
+  const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, insideY, 4));
   camera.position.copy(inside);
   camera.lookAt(lookTarget);
   state.lockerFrontYaw = Math.atan2(Math.sin(locker.yaw + Math.PI), Math.cos(locker.yaw + Math.PI));
@@ -2431,8 +2457,9 @@ function enterLocker(locker) {
 
 function leaveLocker() {
   const locker = state.currentLocker;
-  const outside = locker.group.localToWorld(new THREE.Vector3(0, 0.43, 1.05));
-  const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, 0.43, 4));
+  const outsideY = locker.outsideLocalY ?? 0.43;
+  const outside = locker.group.localToWorld(new THREE.Vector3(0, outsideY, 1.05));
+  const lookTarget = locker.group.localToWorld(new THREE.Vector3(0, outsideY, 4));
   camera.position.copy(outside);
   camera.lookAt(lookTarget);
   state.hidden = false;
@@ -2535,6 +2562,7 @@ function respawnPlayer() {
   state.noiseMultiplier = savedUpgrades.noise ? 0.5 : 1;
   state.breakerDurationMultiplier = savedUpgrades.breaker ? 2 : 1;
   state.lightRangeMultiplier = savedUpgrades.light ? 2 : 1;
+  state.ghostLightSeconds = 0;
   state.screenFlashUntil = 0;
   state.nextHealAt = 0;
   state.detection = 0;
@@ -2570,7 +2598,9 @@ function respawnPlayer() {
   womanEnemy.target = null;
   womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
   womanEnemy.phaseUntil = 0;
+  womanEnemy.stunnedUntil = 0;
   womanEnemy.repathAt = 0;
+  setWomanPhasingVisual(false);
   for (const item of keyItems) {
     item.collected = false;
     item.group.visible = true;
@@ -2735,6 +2765,9 @@ function startGame(mode = 'school') {
     enemy.visible = false;
     womanEnemy.group.visible = true;
     womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
+    womanEnemy.stunnedUntil = 0;
+    state.ghostLightSeconds = 0;
+    setWomanPhasingVisual(false);
     womanEnemy.target = nearestMansionNode(mansionStartPoint.x, mansionStartPoint.z, 14);
   } else {
     camera.position.set(playerStart.x, 1.68, playerStart.z);
@@ -2965,6 +2998,7 @@ function updateScreenFlash(time) {
 const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true, opacity: 0.42, depthWrite: false });
 const trapTriggeredMat = new THREE.MeshBasicMaterial({ color: 0xff5a42, transparent: true, opacity: 0.62, depthWrite: false });
 const waterTrapMat = new THREE.MeshBasicMaterial({ color: 0x5aa7b8, transparent: true, opacity: 0.24, depthWrite: false });
+const MAX_MANSION_WATER_TRAPS = 10;
 function scheduleNextTrap(time) {
   state.nextTrapAt = time + 18 + Math.random() * 28;
 }
@@ -2984,6 +3018,27 @@ function canPlaceTrapAt(x, z) {
 }
 
 function dropNoiseTrap(time) {
+  if (state.mapMode === 'mansion') {
+    const activeWater = noiseTraps.filter((trap) => trap.water);
+    if (activeWater.length >= MAX_MANSION_WATER_TRAPS) {
+      const old = activeWater.sort((a, b) => a.createdAt - b.createdAt)[0];
+      const index = noiseTraps.indexOf(old);
+      if (index >= 0) {
+        scene.remove(old.mesh);
+        old.mesh.geometry.dispose();
+        noiseTraps.splice(index, 1);
+      }
+    }
+    const x = womanEnemy.group.position.x;
+    const z = womanEnemy.group.position.z;
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(10, 32), waterTrapMat.clone());
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(x, 0.025, z);
+    scene.add(mesh);
+    noiseTraps.push({ mesh, x, z, createdAt: time, triggered: true, water: true, waterRadius: 10, removeAt: time + 180 });
+    emitWorldSound(x, z, 70, 16, true);
+    return;
+  }
   const baseNode = state.mapMode === 'mansion'
     ? nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z)
     : nearestNode(enemy.position.x, enemy.position.z);
@@ -3411,7 +3466,8 @@ function updatePlayer(dt) {
 function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
   state.noise = 0;
-  const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, 0.12, 0.39));
+  const insideY = state.currentLocker.insideLocalY ?? 0.12;
+  const inside = state.currentLocker.group.localToWorld(new THREE.Vector3(0, insideY, 0.39));
   camera.position.copy(inside);
   camera.rotation.y = state.lockerFrontYaw + state.lockerLookOffset;
   camera.rotation.x = 0;
@@ -3835,17 +3891,26 @@ function nearestMansionNode(x, z, minDistance = 0) {
 }
 
 function isFlashlightHittingWoman() {
-  if (!state.flashlight || state.battery <= 0 || state.mapMode !== 'mansion') return false;
+  const now = clock.elapsedTime;
+  if (isFlashlightHittingWoman.cachedAt === now) return isFlashlightHittingWoman.cachedValue;
+  const finish = (value) => {
+    isFlashlightHittingWoman.cachedAt = now;
+    isFlashlightHittingWoman.cachedValue = value;
+    return value;
+  };
+  if (!state.flashlight || state.battery <= 0 || state.mapMode !== 'mansion') return finish(false);
+  if (now < womanEnemy.stunnedUntil) return finish(false);
   const toGhost = new THREE.Vector3().subVectors(womanEnemy.group.position, camera.position);
   const distance = toGhost.length();
-  if (distance > 16 || distance < 0.001) return false;
+  if (distance > 16 || distance < 0.001) return finish(false);
   camera.getWorldDirection(forward);
   const direction = toGhost.normalize();
-  return forward.dot(direction) > 0.9
-    && hasLineOfSight(camera.position.clone(), womanEnemy.group.position.clone().add(new THREE.Vector3(0, 1.3, 0)));
+  return finish(forward.dot(direction) > 0.9
+    && hasLineOfSight(camera.position.clone(), womanEnemy.group.position.clone().add(new THREE.Vector3(0, 1.3, 0))));
 }
 
 function reactWomanToSoundEvent(event, now) {
+  if (now < womanEnemy.stunnedUntil) return;
   const distance = Math.hypot(womanEnemy.group.position.x - event.x, womanEnemy.group.position.z - event.z);
   if (distance <= event.hearingRadius || event.forceTrapResponse) {
     womanEnemy.target = { x: event.x, z: event.z };
@@ -3865,30 +3930,49 @@ function updateWomanEnemy(dt, time) {
     return;
   }
   womanEnemy.group.visible = true;
+  const stunned = time < womanEnemy.stunnedUntil;
+  if (stunned) {
+    state.ghostLightSeconds = 0;
+    setWomanPhasingVisual(false);
+    womanEnemy.target = null;
+    womanEnemy.group.position.y = Math.sin(time * 2.2) * 0.015;
+    setDetection(state.detection - dt * 9);
+    state.alert = state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
+    return;
+  }
   if (time >= womanEnemy.nextPhaseAt) {
     womanEnemy.phaseUntil = time + 1.0;
     womanEnemy.nextPhaseAt = time + 30;
     playSonarRoar(0.34);
   }
   const phasing = time < womanEnemy.phaseUntil;
-  womanEnemy.group.traverse((child) => {
-    if (child.material && 'opacity' in child.material) {
-      child.material.transparent = phasing;
-      child.material.opacity = phasing ? 0.52 : 1;
-    }
-  });
+  setWomanPhasingVisual(phasing);
   const playerOnSecondFloor = state.mapMode === 'mansion';
   const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
   const flashlightHit = isFlashlightHittingWoman();
+  state.ghostLightSeconds = flashlightHit ? state.ghostLightSeconds + dt : Math.max(0, state.ghostLightSeconds - dt * 1.8);
+  if (state.ghostLightSeconds >= 5) {
+    womanEnemy.stunnedUntil = time + 10;
+    state.ghostLightSeconds = 0;
+    setWomanPhasingVisual(false);
+    enemyVisionLines.visible = false;
+    showToast('幽霊が怯んだ：10秒間スタン');
+    return;
+  }
   const ghostEye = womanEnemy.group.position.clone().add(new THREE.Vector3(0, 1.65, 0));
   const playerEye = camera.position.clone();
   const ghostForward = new THREE.Vector3(0, 0, 1).applyQuaternion(womanEnemy.group.quaternion);
   const toGhostPlayer = playerEye.clone().sub(ghostEye).setY(0).normalize();
-  const ghostSeesPlayer = playerOnSecondFloor
-    && !state.hidden
-    && distance < 14.5
-    && ghostForward.dot(toGhostPlayer) > 0.62
-    && hasLineOfSight(ghostEye, playerEye);
+  if (time - womanEnemy.lastSightCheckAt > 0.12) {
+    womanEnemy.cachedSeesPlayer = !stunned
+      && playerOnSecondFloor
+      && !state.hidden
+      && distance < 14.5
+      && ghostForward.dot(toGhostPlayer) > 0.62
+      && hasLineOfSight(ghostEye, playerEye);
+    womanEnemy.lastSightCheckAt = time;
+  }
+  const ghostSeesPlayer = womanEnemy.cachedSeesPlayer;
   if (ghostSeesPlayer) {
     setDetection(state.detection + dt * (distance < 6 ? 28 : 13));
   } else if (!state.hidden) {
@@ -4116,6 +4200,38 @@ function updateRadar(dt, time) {
     radar.stroke();
   }
 
+  const drawUtilityMarker = (target, label, color) => {
+    if (!target) return;
+    const dx = target.x - camera.position.x;
+    const dz = target.z - camera.position.z;
+    const distance = Math.hypot(dx, dz);
+    const clampedDistance = Math.min(distance, worldRadius);
+    const angle = Math.atan2(dz, dx);
+    const x = centerX + Math.cos(angle) * clampedDistance * scale;
+    const y = centerY + Math.sin(angle) * clampedDistance * scale;
+    const edge = distance > worldRadius;
+    radar.save();
+    radar.fillStyle = edge ? 'rgba(7,10,8,.78)' : color;
+    radar.strokeStyle = color;
+    radar.lineWidth = edge ? 2.2 : 1.2;
+    radar.beginPath();
+    radar.arc(x, y, edge ? 9 : 5.5, 0, Math.PI * 2);
+    radar.fill();
+    radar.stroke();
+    radar.fillStyle = edge ? color : '#071008';
+    radar.font = edge ? 'bold 13px sans-serif' : 'bold 9px sans-serif';
+    radar.textAlign = 'center';
+    radar.textBaseline = 'middle';
+    radar.fillText(label, x, y + 0.5);
+    radar.restore();
+  };
+  const breakerMarker = state.mapMode === 'mansion' && mansionBreakerPanel
+    ? { x: mansionBreakerPanel.position.x, z: mansionBreakerPanel.position.z }
+    : { x: breakerPanel.position.x, z: breakerPanel.position.z };
+  const shopMarker = state.mapMode === 'mansion' && mansionShop ? mansionShop : shop;
+  drawUtilityMarker(breakerMarker, 'ブ', '#8effa8');
+  drawUtilityMarker(shopMarker, 'シ', '#8fd8ff');
+
   const playerPoint = { x: centerX, y: centerY };
   radar.save();
   radar.translate(playerPoint.x, playerPoint.y);
@@ -4135,25 +4251,28 @@ function updateRadar(dt, time) {
   const visionDirection = Math.atan2(radarForward.z, radarForward.x);
   const visionHalfAngle = state.mapMode === 'mansion' ? Math.PI / 4.2 : currentEnemyVisionHalfAngle();
   const visionDistance = state.mapMode === 'mansion' ? 13.5 : currentEnemyVisionDistance();
-  radar.beginPath();
-  radar.moveTo(enemyPoint.x, enemyPoint.y);
-  for (let i = 0; i <= 14; i += 1) {
-    const angle = visionDirection - visionHalfAngle + (visionHalfAngle * 2 * i) / 14;
-    const point = radarPoint(
-      activeEnemy.position.x + Math.cos(angle) * visionDistance,
-      activeEnemy.position.z + Math.sin(angle) * visionDistance,
-      scale,
-    );
-    radar.lineTo(point.x, point.y);
+  const enemyStunnedOnRadar = state.mapMode === 'mansion' && time < womanEnemy.stunnedUntil;
+  if (!enemyStunnedOnRadar) {
+    radar.beginPath();
+    radar.moveTo(enemyPoint.x, enemyPoint.y);
+    for (let i = 0; i <= 14; i += 1) {
+      const angle = visionDirection - visionHalfAngle + (visionHalfAngle * 2 * i) / 14;
+      const point = radarPoint(
+        activeEnemy.position.x + Math.cos(angle) * visionDistance,
+        activeEnemy.position.z + Math.sin(angle) * visionDistance,
+        scale,
+      );
+      radar.lineTo(point.x, point.y);
+    }
+    radar.closePath();
+    radar.fillStyle = state.alert === 'HUNTING'
+      ? 'rgba(239,65,52,.24)'
+      : state.alert === 'SUPER_ALERT' ? 'rgba(239,132,52,.2)' : 'rgba(208,82,62,.12)';
+    radar.fill();
+    radar.strokeStyle = 'rgba(239,92,76,.38)';
+    radar.lineWidth = 1;
+    radar.stroke();
   }
-  radar.closePath();
-  radar.fillStyle = state.alert === 'HUNTING'
-    ? 'rgba(239,65,52,.24)'
-    : state.alert === 'SUPER_ALERT' ? 'rgba(239,132,52,.2)' : 'rgba(208,82,62,.12)';
-  radar.fill();
-  radar.strokeStyle = 'rgba(239,92,76,.38)';
-  radar.lineWidth = 1;
-  radar.stroke();
 
   radar.fillStyle = `rgba(239,65,52,${0.72 + Math.sin(time * 6) * 0.25})`;
   radar.shadowColor = '#ef4134';

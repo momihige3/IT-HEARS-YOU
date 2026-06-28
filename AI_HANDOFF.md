@@ -434,3 +434,25 @@ Build:
 - Notes:
   - Mansion is implemented as a separate far-away play area in the same Three.js scene, selected from the title screen.
   - Current mansion enemy navigation is direct/slide based, not a full graph pathfinder.
+
+## 2026-06-28 Mansion Performance / Ghost Stun / Radar Markers
+
+- Reduced ghost proximity performance spikes:
+  - Removed per-frame `group.traverse()` material opacity updates for the mansion ghost.
+  - Ghost phase opacity now updates only when the phase state changes.
+  - Ghost vision checks are cached for short intervals instead of running full line-of-sight every frame.
+  - Flashlight-hit checks are cached within a frame to avoid duplicate line-of-sight work.
+- Mansion water trap behavior changed:
+  - Ghost traps now deploy water immediately at the ghost position instead of waiting for the player to step on a trigger.
+  - Water puddles last 180 seconds.
+  - Mansion water traps are capped at 10 active puddles; oldest puddle is removed when over cap.
+  - Water still makes player footsteps louder and doubles emitted noise radius.
+- Added ghost flashlight stun:
+  - Holding flashlight on the ghost for 5 seconds stuns it for 10 seconds.
+  - During stun, ghost sight/hearing are disabled.
+  - 3D red vision lines and minimap vision cone are hidden while stunned.
+- Minimap utility markers:
+  - Breaker and shop are shown on the minimap.
+  - If outside minimap range, edge markers show `ブ` and `シ` to indicate direction.
+- Mansion locker view:
+  - Mansion wardrobes now define their own inside/outside eye height so hiding no longer drops the camera to floor level.
