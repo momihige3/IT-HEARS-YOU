@@ -1567,7 +1567,13 @@ function currentEnemyVisionFacingThreshold() {
 
 function visionRayDistance(originX, originZ, dx, dz, maxDistance = currentEnemyVisionDistance()) {
   let nearest = maxDistance;
+  const rayMinX = Math.min(originX, originX + dx * maxDistance) - 0.2;
+  const rayMaxX = Math.max(originX, originX + dx * maxDistance) + 0.2;
+  const rayMinZ = Math.min(originZ, originZ + dz * maxDistance) - 0.2;
+  const rayMaxZ = Math.max(originZ, originZ + dz * maxDistance) + 0.2;
   for (const collider of colliders) {
+    if (collider.x + collider.hw < rayMinX || collider.x - collider.hw > rayMaxX
+      || collider.z + collider.hz < rayMinZ || collider.z - collider.hz > rayMaxZ) continue;
     const entry = rayColliderEntry(originX, originZ, dx, dz, collider, nearest);
     if (entry < nearest) nearest = entry;
   }
@@ -2414,7 +2420,13 @@ function hasLineOfSight(from, to) {
   if (distance < 0.001) return true;
   const dx = (to.x - from.x) / distance;
   const dz = (to.z - from.z) / distance;
+  const minX = Math.min(from.x, to.x) - 0.25;
+  const maxX = Math.max(from.x, to.x) + 0.25;
+  const minZ = Math.min(from.z, to.z) - 0.25;
+  const maxZ = Math.max(from.z, to.z) + 0.25;
   for (const collider of colliders) {
+    if (collider.x + collider.hw < minX || collider.x - collider.hw > maxX
+      || collider.z + collider.hz < minZ || collider.z - collider.hz > maxZ) continue;
     if (rayColliderEntry(from.x, from.z, dx, dz, collider, distance, 0.04) < distance) return false;
   }
   return true;
@@ -3120,8 +3132,18 @@ function updateNoiseTraps(dt, time) {
   }
   for (let i = noiseTraps.length - 1; i >= 0; i -= 1) {
     const trap = noiseTraps[i];
+    const distanceToTrap = horizontalDistance(camera.position, trap);
+    if (trap.water && distanceToTrap > 34) {
+      trap.mesh.visible = false;
+      if (time >= trap.removeAt) {
+        scene.remove(trap.mesh);
+        trap.mesh.geometry.dispose();
+        noiseTraps.splice(i, 1);
+      }
+      continue;
+    }
+    trap.mesh.visible = state.mapMode === 'mansion' ? distanceToTrap < 34 : state.breakerOn;
     trap.mesh.rotation.z += dt * 0.8;
-    trap.mesh.visible = state.mapMode === 'mansion' ? true : state.breakerOn;
     trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
     if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
       trap.triggered = true;
@@ -3212,6 +3234,7 @@ function updateHealItems(dt, time) {
     item.group.rotation.y += dt * 1.25;
     item.group.position.y = item.baseY + Math.sin(time * 2.2 + item.phase) * 0.055;
     item.light.position.copy(item.group.position).add(new THREE.Vector3(0, 0.35, 0));
+    item.light.visible = item.group.position.distanceTo(camera.position) < 20;
     if (!state.hidden && state.hp < 100 && horizontalDistance(camera.position, item) < 1.45) {
       healPlayer(30);
       scene.remove(item.group);
@@ -3293,6 +3316,7 @@ function updateCoins(dt, time) {
     coin.group.rotation.y += dt * 2.7;
     coin.group.position.y = coin.baseY + Math.sin(time * 2.8 + coin.phase) * 0.05;
     coin.light.position.copy(coin.group.position).add(new THREE.Vector3(0, 0.28, 0));
+    coin.light.visible = coin.group.position.distanceTo(camera.position) < 18;
     if (!state.hidden && horizontalDistance(camera.position, coin) < 1.25) {
       coin.collected = true;
       state.coins += 1;
@@ -3941,25 +3965,34 @@ function updateEnemy(dt, time) {
 }
 
 function nearestMansionNode(x, z, minDistance = 0) {
-  const choices = mansionNodes
-    .filter((node) => Math.hypot(node.x - x, node.z - z) >= minDistance)
-    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
-  return choices[0] || mansionNodes[0] || null;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const node of mansionNodes) {
+    const distance = Math.hypot(node.x - x, node.z - z);
+    if (distance < minDistance || distance >= bestDistance) continue;
+    best = node;
+    bestDistance = distance;
+  }
+  return best || mansionNodes[0] || null;
 }
 
 function nearestSafeMansionNode(x, z, minDistance = 0) {
-  const choices = mansionNodes
-    .filter((node) => Math.hypot(node.x - x, node.z - z) >= minDistance)
-    .filter((node) => isSafeSpawnPoint(node.x, node.z, 0.78))
-    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
-  return choices[0] || nearestMansionNode(x, z, minDistance);
+  let best = null;
+  let bestDistance = Infinity;
+  for (const node of mansionNodes) {
+    const distance = Math.hypot(node.x - x, node.z - z);
+    if (distance < minDistance || distance >= bestDistance || !isSafeSpawnPoint(node.x, node.z, 0.78)) continue;
+    best = node;
+    bestDistance = distance;
+  }
+  return best || nearestMansionNode(x, z, minDistance);
 }
 
 function isFlashlightHittingWoman() {
   const now = clock.elapsedTime;
-  if (isFlashlightHittingWoman.cachedAt === now) return isFlashlightHittingWoman.cachedValue;
+  if (now < (isFlashlightHittingWoman.cachedUntil || 0)) return isFlashlightHittingWoman.cachedValue;
   const finish = (value) => {
-    isFlashlightHittingWoman.cachedAt = now;
+    isFlashlightHittingWoman.cachedUntil = now + 0.12;
     isFlashlightHittingWoman.cachedValue = value;
     return value;
   };
@@ -4164,6 +4197,12 @@ function updateHUD() {
 
 function updateLight(time) {
   updateSchoolLighting(time);
+  const activeLightDistance = state.mapMode === 'mansion' ? 30 : 24;
+  for (const light of schoolLights) {
+    light.visible = light.position.distanceTo(camera.position) < activeLightDistance;
+  }
+  if (breakerLight) breakerLight.visible = state.mapMode !== 'mansion' && breakerLight.position.distanceTo(camera.position) < 18;
+  if (mansionBreakerLight) mansionBreakerLight.visible = state.mapMode === 'mansion' && mansionBreakerLight.position.distanceTo(camera.position) < 18;
   flashlight.visible = state.flashlight && !state.hidden;
   fillLight.visible = flashlight.visible;
   lockerViewLight.visible = state.hidden;
@@ -4180,6 +4219,7 @@ function updateLight(time) {
   for (const item of keyItems) {
     item.group.rotation.y = time * 0.9 + item.phase;
     item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;
+    item.light.visible = !item.collected && item.group.position.distanceTo(camera.position) < 20;
   }
 }
 

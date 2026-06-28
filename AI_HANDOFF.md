@@ -487,3 +487,25 @@ Build:
   - Reduced ragged hem meshes from 9 to 5.
   - Reduced ghost point-light intensity and distance.
   - Added a simple LOD: if FPS is below 50 while the ghost is nearby, small hair/hem detail meshes are hidden temporarily.
+
+## 2026-06-29 Light / AI / Trap Performance Pass
+
+- Investigated likely sources of persistent frame drops:
+  - Point lights staying active even when far from the player.
+  - Line-of-sight ray checks iterating all colliders.
+  - Flashlight-vs-ghost checks running every frame.
+  - Water traps continuing animation/render work even when far away.
+- Added broad-phase skipping for line/ray checks:
+  - `hasLineOfSight()` now skips colliders outside the segment AABB.
+  - `visionRayDistance()` now skips colliders outside the ray AABB.
+- Reduced flashlight hit-check cost:
+  - Ghost flashlight hit result is cached for 0.12 seconds.
+- Added light culling:
+  - Distant school/mansion point lights are hidden based on player distance.
+  - Non-active-map breaker lights are hidden.
+  - Key/ofuda, heal, and coin point lights are hidden when far away.
+- Reduced trap cost:
+  - Far mansion water puddles are hidden and skip animation/material opacity updates.
+  - Expired far puddles are removed without doing per-frame visual work.
+- Reduced AI node overhead:
+  - Mansion nearest-node helpers now use linear best search instead of allocating/filtering/sorting arrays.
