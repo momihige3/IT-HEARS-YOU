@@ -197,6 +197,49 @@ const KEY_DETECTION_FLOOR_STEP = 10;
 const walkable = new Set();
 const navNodes = new Map();
 
+function inSchoolBounds(x, z) {
+  return x >= -32 && x <= 32 && z >= -42 && z <= 42;
+}
+
+function inMansionBounds(x, z) {
+  return x >= 32 && x <= 104 && z >= -70 && z <= 48;
+}
+
+function markSharedObject(object) {
+  if (!object) return object;
+  object.userData.preserveOnMapCleanup = true;
+  return object;
+}
+
+const cleanupPosition = new THREE.Vector3();
+function getWorldXZ(object) {
+  object.updateWorldMatrix?.(true, false);
+  object.getWorldPosition(cleanupPosition);
+  return { x: cleanupPosition.x, z: cleanupPosition.z };
+}
+
+function removeSceneObject(object) {
+  if (!object || object.userData?.preserveOnMapCleanup) return;
+  object.traverse?.((child) => {
+    if (child.geometry) child.geometry.dispose();
+  });
+  object.removeFromParent?.();
+}
+
+function removeArrayItemsByBounds(items, shouldRemove, removeObject) {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    const pos = item?.position
+      ? item.position
+      : item?.group
+        ? getWorldXZ(item.group)
+        : item;
+    if (!pos || !shouldRemove(pos.x, pos.z)) continue;
+    removeObject?.(item);
+    items.splice(i, 1);
+  }
+}
+
 const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map();
 function loadTexture(name, repeatX = 1, repeatY = 1) {
@@ -523,6 +566,8 @@ for (const room of schoolRooms) addRoomBoundaryWalls(room);
 
 const hemisphereLight = new THREE.HemisphereLight(0x78877a, 0x111511, 0.54);
 const ambientLight = new THREE.AmbientLight(0x354139, 0.38);
+markSharedObject(hemisphereLight);
+markSharedObject(ambientLight);
 scene.add(hemisphereLight);
 scene.add(ambientLight);
 
@@ -1131,6 +1176,7 @@ function createOfudaModel() {
 
 const keyItems = selectedKeySpawns.map((keySpawn, index) => {
   const group = new THREE.Group();
+  markSharedObject(group);
   const keyModel = new THREE.Group();
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), keyMat);
   ring.rotation.x = Math.PI / 2;
@@ -1146,6 +1192,7 @@ const keyItems = selectedKeySpawns.map((keySpawn, index) => {
   group.position.set(keySpawn.x, 1.05, keySpawn.z);
   scene.add(group);
   const light = new THREE.PointLight(0xe2c466, 1.25, 2.5);
+  markSharedObject(light);
   light.position.copy(group.position);
   scene.add(light);
   return {
@@ -1482,6 +1529,7 @@ function createWomanEnemy() {
 }
 
 const womanEnemy = createWomanEnemy();
+markSharedObject(womanEnemy.group);
 womanEnemy.group.traverse((child) => {
   if (!child.material) return;
   const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -1520,6 +1568,7 @@ const enemyVisionMaterial = new THREE.LineBasicMaterial({
 });
 const enemyVisionLines = new THREE.LineSegments(enemyVisionGeometry, enemyVisionMaterial);
 enemyVisionLines.frustumCulled = false;
+markSharedObject(enemyVisionLines);
 scene.add(enemyVisionLines);
 
 function rayColliderEntry(originX, originZ, dx, dz, collider, maxDistance, padding = 0.02) {
@@ -1922,12 +1971,17 @@ const BASE_FLASHLIGHT_ANGLE = Math.PI / 5.5;
 const flashlight = new THREE.SpotLight(0xf4f1dc, 117, BASE_FLASHLIGHT_DISTANCE, BASE_FLASHLIGHT_ANGLE, 0.86, 1.8);
 flashlight.castShadow = !touchDevice;
 flashlight.shadow.mapSize.set(256, 256);
+markSharedObject(flashlight);
+markSharedObject(flashlight.target);
 scene.add(flashlight);
 scene.add(flashlight.target);
 const fillLight = new THREE.PointLight(0xcbd5c1, 0.36, 4.4);
+markSharedObject(fillLight);
 scene.add(fillLight);
 const lockerViewLight = new THREE.SpotLight(0x9cac9f, 20, 11, Math.PI / 5, 0.65, 1.35);
 lockerViewLight.visible = false;
+markSharedObject(lockerViewLight);
+markSharedObject(lockerViewLight.target);
 scene.add(lockerViewLight);
 scene.add(lockerViewLight.target);
 
@@ -2832,6 +2886,56 @@ $('#settings-quit').addEventListener('click', () => {
 controls.addEventListener('unlock', () => {
   if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen) openSettings();
 });
+
+function clearSpawnedPickupRuntime() {
+  for (const item of healItems) {
+    scene.remove(item.group);
+    scene.remove(item.light);
+  }
+  healItems.length = 0;
+  for (const coin of coinItems) {
+    removeSceneObject(coin.group);
+    scene.remove(coin.light);
+  }
+  coinItems.length = 0;
+  for (const trap of noiseTraps) removeSceneObject(trap.mesh);
+  noiseTraps.length = 0;
+}
+
+function purgeUnselectedMapRuntime(mode) {
+  const removeSchool = mode === 'mansion';
+  const shouldRemoveSceneChild = removeSchool
+    ? (x, z) => inSchoolBounds(x, z)
+    : (x, z) => inMansionBounds(x, z);
+  const shouldRemoveRuntimeItem = removeSchool
+    ? (x, z) => !inMansionBounds(x, z)
+    : (x, z) => inMansionBounds(x, z);
+
+  for (const child of [...scene.children]) {
+    if (child.userData?.preserveOnMapCleanup) continue;
+    const pos = getWorldXZ(child);
+    if (shouldRemoveSceneChild(pos.x, pos.z)) removeSceneObject(child);
+  }
+
+  removeArrayItemsByBounds(colliders, shouldRemoveRuntimeItem);
+  removeArrayItemsByBounds(lockers, shouldRemoveRuntimeItem, (locker) => removeSceneObject(locker.group));
+  removeArrayItemsByBounds(schoolLights, shouldRemoveSceneChild, (light) => scene.remove(light));
+
+  clearSpawnedPickupRuntime();
+  soundEvents.length = 0;
+  sonarReveals.length = 0;
+
+  if (mode === 'mansion') {
+    if (enemy.parent) enemy.parent.remove(enemy);
+    enemy.visible = false;
+    womanEnemy.group.visible = true;
+  } else {
+    if (!enemy.parent) scene.add(enemy);
+    enemy.visible = true;
+    womanEnemy.group.visible = false;
+  }
+}
+
 async function startGame(mode = 'school') {
   if (state.loading || state.started) return;
   setLoading(true, mode === 'mansion' ? '屋敷マップを生成しています...' : '学校マップを準備しています...');
@@ -2841,11 +2945,13 @@ async function startGame(mode = 'school') {
   if (mode === 'mansion') {
     buildMansionSecondFloor();
     await nextFrame();
+    purgeUnselectedMapRuntime(mode);
     enemy.visible = false;
     womanEnemy.group.visible = true;
   } else {
     loadExternalSonarModel();
     await nextFrame();
+    purgeUnselectedMapRuntime(mode);
     enemy.visible = true;
     womanEnemy.group.visible = false;
   }
@@ -2870,11 +2976,11 @@ async function startGame(mode = 'school') {
   state.started = true;
   initAudio();
   scheduleNextRoar(clock.elapsedTime);
-  if (healItems.length === 0) {
+  if (mode === 'school' && healItems.length === 0) {
     spawnHealItem(clock.elapsedTime, true);
     scheduleNextHeal(clock.elapsedTime);
   }
-  if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
+  if (mode === 'school' && coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   setLoading(false);
@@ -3255,6 +3361,7 @@ function spawnHealItem(time, allowNearPlayer = false) {
 }
 
 function updateHealItems(dt, time) {
+  if (state.mapMode === 'mansion') return;
   if (!state.nextHealAt) scheduleNextHeal(time);
   if (state.started && time >= state.nextHealAt) {
     spawnHealItem(time);
@@ -3333,6 +3440,7 @@ function spawnCoin(time) {
 }
 
 function updateCoins(dt, time) {
+  if (state.mapMode === 'mansion') return;
   if (!state.nextCoinAt) scheduleNextCoin(time);
   if (state.started && time >= state.nextCoinAt) {
     spawnCoin(time);

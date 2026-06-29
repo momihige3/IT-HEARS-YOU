@@ -528,3 +528,18 @@ Build:
   - The school base map is still generated at module startup because school generation, exit, keys, enemy start, and several shared systems are currently top-level dependencies.
   - A full “only generate school after school selection” refactor requires splitting the school map factory and moving dependent item/enemy initialization under that factory.
   - Current patch removes the heavier mansion generation and SONAR external model loading from startup, and stops unselected/loading processing.
+## 2026-06-29 Selected Map Runtime Purge
+
+- Added a selected-map cleanup pass during `startGame(mode)`:
+  - Mansion selection now purges school scene objects inside school bounds after mansion generation.
+  - School selection purges mansion scene objects if mansion data exists.
+  - Unselected-map colliders, lockers, active pickup items, traps, sound ripples, sonar reveals, and map point lights are removed from runtime arrays.
+- Marked shared objects so they survive map cleanup:
+  - Global lights, key/ofuda item groups and lights, flashlight/fill/locker lights, enemy vision line renderer, and the mansion ghost group.
+- School-only pickup loops are now disabled in mansion mode:
+  - Coin and heal spawn/update no longer run while the mansion map is active.
+  - Initial school coin/heal scheduling is skipped for mansion starts.
+- Notes:
+  - This is a practical separation pass layered on top of the current top-level school construction.
+  - The mansion remains lazily generated only after mansion selection.
+  - Further memory reduction would require moving school creation itself into a factory, but the current patch prevents selected-map gameplay from processing leftover unselected-map colliders/pickups/lights.
