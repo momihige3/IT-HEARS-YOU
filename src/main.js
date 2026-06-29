@@ -476,6 +476,31 @@ function carvePath(gx0, gz0, gx1, gz1) {
   carve(gx1, gz1);
 }
 
+function ensureSchoolBackRoute() {
+  // Keep the layout maze-like, but never allow the start/front side to be sealed
+  // away from the far rooms. This route intentionally bends several times instead
+  // of restoring the old straight central hallway.
+  const route = [
+    [6, 18], [6, 17], [5, 17], [5, 14],
+    [3, 14], [3, 11], [7, 11], [7, 7],
+    [5, 7], [5, 4], [6, 4], [6, 2],
+  ];
+  for (let i = 0; i < route.length - 1; i += 1) {
+    carvePath(route[i][0], route[i][1], route[i + 1][0], route[i + 1][1]);
+  }
+  // Connect each room's doorway to the guaranteed route/maze so random room
+  // linking cannot leave a required room stranded behind walls.
+  for (const room of schoolRooms) {
+    const [doorGx, doorGz] = room.connector[room.connector.length - 1] || [Math.round((room.gx0 + room.gx1) / 2), Math.round((room.gz0 + room.gz1) / 2)];
+    const nearestRoute = route
+      .map(([gx, gz]) => ({ gx, gz, distance: Math.abs(gx - doorGx) + Math.abs(gz - doorGz) }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (nearestRoute) carvePath(doorGx, doorGz, nearestRoute.gx, nearestRoute.gz);
+  }
+}
+
+ensureSchoolBackRoute();
+
 // Extra room-to-room connectors make the map less dependent on the center spine,
 // while every branch still remains reachable from the main school route.
 const roomAnchors = schoolRooms.map((room) => ({
@@ -783,28 +808,93 @@ function buildMansionSecondFloor() {
   mansionBuilt = true;
   const offsetX = 68;
   const cells = [];
+  const mansionCellKeys = new Set();
+  const mansionCellKey = (ix, iz) => `${ix},${iz}`;
+  const addMansionCell = (ix, iz) => {
+    if (ix < -6 || ix > 6 || iz < -9 || iz > 10) return false;
+    const norm = Math.hypot(ix / 5.9, iz / 8.8);
+    const forced = (ix === 0 && iz === 10)
+      || (ix === 0 && iz === 0)
+      || (ix === 6 && iz === -9)
+      || (ix === -6 && iz === 9);
+    if (norm > 1.08 && !forced) return false;
+    mansionCellKeys.add(mansionCellKey(ix, iz));
+    return true;
+  };
+  const carveMansionLine = (ix0, iz0, ix1, iz1) => {
+    let ix = ix0;
+    let iz = iz0;
+    addMansionCell(ix, iz);
+    const horizontalFirst = Math.random() < 0.5;
+    const stepX = () => {
+      while (ix !== ix1) {
+        ix += Math.sign(ix1 - ix);
+        addMansionCell(ix, iz);
+      }
+    };
+    const stepZ = () => {
+      while (iz !== iz1) {
+        iz += Math.sign(iz1 - iz);
+        addMansionCell(ix, iz);
+      }
+    };
+    if (horizontalFirst) {
+      stepX();
+      stepZ();
+    } else {
+      stepZ();
+      stepX();
+    }
+    addMansionCell(ix1, iz1);
+  };
+  const growMansionBranch = (seedIx, seedIz, steps) => {
+    let ix = seedIx;
+    let iz = seedIz;
+    addMansionCell(ix, iz);
+    for (let i = 0; i < steps; i += 1) {
+      const [dx, dz] = shuffledDirections()[0];
+      const nextIx = ix + dx;
+      const nextIz = iz + dz;
+      if (!addMansionCell(nextIx, nextIz)) continue;
+      ix = nextIx;
+      iz = nextIz;
+      // Occasional one-cell side pockets create dead ends without opening the
+      // whole floor into a plaza.
+      if (Math.random() < 0.18) {
+        const [sideDx, sideDz] = shuffledDirections()[0];
+        addMansionCell(ix + sideDx, iz + sideDz);
+      }
+    }
+  };
+  // Small central plaza: only the center and three exits are guaranteed.
+  addMansionCell(0, 0);
+  addMansionCell(0, 1);
+  addMansionCell(1, 0);
+  addMansionCell(-1, 0);
+  // Required routes. They stay narrow and bend, so the mansion remains a maze.
+  carveMansionLine(0, 10, 0, 1);
+  carveMansionLine(0, 1, -6, 9);
+  carveMansionLine(1, 0, 6, -9);
+  carveMansionLine(-1, 0, -5, -6);
+  const branchSeeds = [...mansionCellKeys]
+    .map((key) => key.split(',').map(Number))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 18);
+  for (const [ix, iz] of branchSeeds) growMansionBranch(ix, iz, 5 + Math.floor(Math.random() * 7));
+  // A few short loops keep navigation from feeling like a single snake, while
+  // still leaving most grid cells as walls.
+  for (let i = 0; i < 10; i += 1) {
+    const from = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
+    const to = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
+    if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) <= 7) carveMansionLine(from[0], from[1], to[0], to[1]);
+  }
   const mansionProtectedSpot = (x, z) =>
-    Math.hypot(x - offsetX, z - 28) < 8.5
+    Math.hypot(x - offsetX, z - 28) < 5.2
     || Math.hypot(x - (offsetX - 26), z - 24) < 8.0
     || (z > 20 && x > offsetX - 30 && x < offsetX + 6);
   for (let ix = -6; ix <= 6; ix += 1) {
-    for (let iz = -9; iz <= 9; iz += 1) {
-      const norm = Math.hypot(ix / 5.8, iz / 8.2);
-      const centerPlaza = Math.hypot(ix, iz) <= 1.25;
-      const threeRoutes = ix === 0 || (iz === 0 && ix >= 0) || (ix + Math.round(iz * 0.65) === 0 && iz < 0);
-      const ring = Math.abs(norm - 0.68) < 0.13 || Math.abs(norm - 0.93) < 0.08;
-      const wing = centerPlaza || threeRoutes || ring || Math.abs(ix) === 3 || Math.abs(iz) === 5;
-      const breakerRoute = iz === 9 && ix >= -6 && ix <= 0;
-      const breakerRoom = ix >= -6 && ix <= -5 && iz >= 8 && iz <= 9;
-      const startRoute = ix === 0 && iz >= 7 && iz <= 9;
-      const exitRoute = iz === -9 && ix >= 0 && ix <= 6;
-      if (norm > 1.08 && !breakerRoute && !breakerRoom && !startRoute && !exitRoute) continue;
-      const roomCluster = (Math.abs(ix) <= 2 && Math.abs(iz) <= 8)
-        || (Math.abs(ix) <= 5 && Math.abs(iz) <= 2)
-        || (Math.abs(ix - 4) <= 1 && Math.abs(iz + 6) <= 1)
-        || (Math.abs(ix + 4) <= 1 && Math.abs(iz - 6) <= 1);
-      const keep = wing || breakerRoute || breakerRoom || startRoute || exitRoute || roomCluster || Math.random() > 0.86;
-      if (!keep) continue;
+    for (let iz = -9; iz <= 10; iz += 1) {
+      if (!mansionCellKeys.has(mansionCellKey(ix, iz))) continue;
       const x = offsetX + ix * CELL;
       const z = -12 + iz * CELL;
       cells.push({ x, z });

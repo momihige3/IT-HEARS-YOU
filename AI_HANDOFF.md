@@ -681,3 +681,16 @@ Build:
   - Added a floor sigil/ripple effect where the ghost emerges.
   - Fake ofuda now starts the visible effect immediately when triggered.
   - During the 3-second emergence, the effect expands/fades while the ghost rises from below the floor.
+
+## 2026-06-30 School Route / Mansion Labyrinth Correction
+
+- School random map reachability fixed:
+  - Added a guaranteed bent route from the front/start side to the far/back rooms.
+  - The guaranteed route bends through multiple grid positions instead of restoring the old straight central hallway.
+  - Every room doorway is connected back to this guaranteed route so random maze carving cannot isolate required rooms.
+- Mansion generation changed to be much more wall-heavy:
+  - Replaced the broad center/ring/room-cluster retention logic with a corridor-first maze set.
+  - Central plaza is now intentionally tiny, with only the center and three exits guaranteed.
+  - Breaker/start/exit routes are carved as narrow required paths.
+  - Random branches and short loops are grown from those required paths to make a labyrinth instead of one giant open plaza.
+  - Mansion start cell at z=28 is now included as a valid generated cell.
