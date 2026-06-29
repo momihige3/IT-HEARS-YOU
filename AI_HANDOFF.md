@@ -597,3 +597,25 @@ Build:
   - It now respawns the player on the current map after the cutscene.
   - Mansion capture camera now focuses the ghost instead of the school SONAR enemy.
 - School shop now has a collider so the player cannot walk through it.
+
+## 2026-06-29 Mansion Ghost / Shop / Ofuda / Exit Follow-up
+
+- School shop placement now prefers room interiors only:
+  - Shop candidates must be inside a school room.
+  - Candidates near room entrances are rejected so the shop should not block corridors.
+  - Fallback also prefers room cells over corridor cells.
+- Mansion/player trap separation:
+  - Player-triggered trap conversion to water is disabled in mansion mode.
+  - Mansion water traps are now only created by the ghost's own trap drop routine.
+- Ghost phasing behavior changed:
+  - Ghost now stops for a short charge motion before phasing.
+  - During charge/phasing, the ghost becomes semi-transparent.
+  - A small pulsing motion is applied during the charge.
+- Locker hiding AI follow-up:
+  - While the player is hidden, the ghost periodically redirects to a random mansion node away from the player.
+  - This prevents the ghost from continuing to run into the last chase target or nearby objects.
+- Ofuda model improved:
+  - Added paper edging, seal core, more ink strokes, and paper fiber strips.
+- Mansion exit visibility improved:
+  - Added door/glass pieces and an exit sign object.
+  - Wall text helper now supports north/south facing signs.

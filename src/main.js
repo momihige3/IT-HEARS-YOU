@@ -839,6 +839,10 @@ function buildMansionSecondFloor() {
     x: offsetX + 22,
     z: -48,
   };
+  addBox(mansionExit.x, 2.85, mansionExit.z + 0.08, 1.65, 0.34, 0.08, material(0x123f2a, 0.32, 0.02), false, false, false);
+  addBox(mansionExit.x, 1.48, mansionExit.z + 0.14, 1.2, 1.7, 0.05, material(0x1f1712, 0.72, 0.08), false, false, false);
+  addBox(mansionExit.x, 1.48, mansionExit.z + 0.18, 0.82, 1.2, 0.04, material(0x0b0d0c, 0.5, 0.08), false, false, false);
+  makeWallTextPlate('出口', mansionExit.x, 3.08, mansionExit.z + 0.22, 'south', 1.35, 0.34, 'rgba(18,70,46,.96)', '#d9ffe8');
   const exitGlow = new THREE.PointLight(0xa6d7ff, 2.8, 6);
   exitGlow.position.set(mansionExit.x, 2.6, mansionExit.z);
   scene.add(exitGlow);
@@ -1103,9 +1107,15 @@ function makeWallTextPlate(text, x, y, z, side, width = 1.35, height = 0.38, bg 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-  const offset = side === 'west' ? 0.108 : -0.108;
-  mesh.position.set(x + offset, y, z);
-  mesh.rotation.y = side === 'west' ? Math.PI / 2 : -Math.PI / 2;
+  if (side === 'north' || side === 'south') {
+    const offset = side === 'south' ? 0.108 : -0.108;
+    mesh.position.set(x, y, z + offset);
+    mesh.rotation.y = side === 'south' ? 0 : Math.PI;
+  } else {
+    const offset = side === 'west' ? 0.108 : -0.108;
+    mesh.position.set(x + offset, y, z);
+    mesh.rotation.y = side === 'west' ? Math.PI / 2 : -Math.PI / 2;
+  }
   scene.add(mesh);
   return mesh;
 }
@@ -1173,22 +1183,46 @@ const ofudaSealMat = new THREE.MeshBasicMaterial({ color: 0x8f1e18 });
 
 function createOfudaModel() {
   const group = new THREE.Group();
-  const paper = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.015, 0.72), ofudaMat);
+  const paper = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.012, 0.78), ofudaMat);
   group.add(paper);
-  const topSeal = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.018, 0.12), ofudaSealMat);
-  topSeal.position.z = -0.22;
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xb69b6f });
+  for (const [x, z, w, d] of [
+    [0, -0.395, 0.36, 0.018],
+    [0, 0.395, 0.34, 0.018],
+    [-0.195, 0, 0.016, 0.74],
+    [0.195, 0, 0.016, 0.72],
+  ]) {
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(w, 0.018, d), edgeMat);
+    edge.position.set(x, 0.004, z);
+    group.add(edge);
+  }
+  const topSeal = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.02, 0.14), ofudaSealMat);
+  topSeal.position.z = -0.25;
+  topSeal.position.y = 0.012;
   group.add(topSeal);
-  for (let i = 0; i < 4; i += 1) {
-    const line = new THREE.Mesh(new THREE.BoxGeometry(0.19 - i * 0.015, 0.02, 0.026), ofudaInkMat);
-    line.position.z = -0.02 + i * 0.105;
+  const sealCore = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.021, 0.08), ofudaInkMat);
+  sealCore.position.set(0, 0.016, -0.25);
+  group.add(sealCore);
+  for (let i = 0; i < 7; i += 1) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.2 - (i % 3) * 0.025, 0.02, 0.018), ofudaInkMat);
+    line.position.z = -0.08 + i * 0.075;
+    line.position.x = (i % 2 ? -0.025 : 0.025);
+    line.position.y = 0.015;
     group.add(line);
   }
-  const sideA = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.02, 0.5), ofudaInkMat);
-  sideA.position.x = -0.12;
+  const sideA = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.02, 0.58), ofudaInkMat);
+  sideA.position.x = -0.13;
   sideA.position.z = 0.06;
+  sideA.position.y = 0.015;
   const sideB = sideA.clone();
-  sideB.position.x = 0.12;
+  sideB.position.x = 0.13;
   group.add(sideA, sideB);
+  for (let i = 0; i < 6; i += 1) {
+    const fiber = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.019, 0.16 + Math.random() * 0.14), edgeMat);
+    fiber.position.set(-0.15 + i * 0.06, 0.018, -0.22 + Math.random() * 0.58);
+    fiber.rotation.y = (Math.random() - 0.5) * 0.7;
+    group.add(fiber);
+  }
   group.rotation.x = -Math.PI / 2;
   group.visible = false;
   return group;
@@ -1538,6 +1572,7 @@ function createWomanEnemy() {
     z: start.z,
     target: null,
     nextPhaseAt: 30,
+    phaseChargeUntil: 0,
     phaseUntil: 0,
     stunnedUntil: 0,
     phasingVisual: false,
@@ -1546,6 +1581,7 @@ function createWomanEnemy() {
     lastSightCheckAt: -Infinity,
     cachedSeesPlayer: false,
     repathAt: 0,
+    hiddenRedirectAt: 0,
     speed: 1.35,
   };
 }
@@ -2776,9 +2812,11 @@ function respawnPlayer() {
   womanEnemy.group.position.set(womanStart.x, 0, womanStart.z);
   womanEnemy.target = null;
   womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
+  womanEnemy.phaseChargeUntil = 0;
   womanEnemy.phaseUntil = 0;
   womanEnemy.stunnedUntil = 0;
   womanEnemy.repathAt = 0;
+  womanEnemy.hiddenRedirectAt = 0;
   setWomanPhasingVisual(false);
   placeKeyItemsForMode(respawnMode);
   updateExitCounter();
@@ -3023,8 +3061,10 @@ async function startGame(mode = 'school') {
     camera.position.set(safeStart.x, 1.68, safeStart.z);
     camera.rotation.set(0, 0, 0);
     womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
+    womanEnemy.phaseChargeUntil = 0;
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
+    womanEnemy.hiddenRedirectAt = 0;
     setWomanPhasingVisual(false);
     womanEnemy.target = nearestMansionNode(safeStart.x, safeStart.z, 14);
   } else {
@@ -3359,7 +3399,7 @@ function updateNoiseTraps(dt, time) {
     trap.mesh.rotation.z += dt * 0.8;
     trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
     if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
-      if (state.mapMode === 'mansion' && !canPlaceWaterTrapAt(camera.position.x, camera.position.z)) {
+      if (state.mapMode === 'mansion') {
         scene.remove(trap.mesh);
         trap.mesh.geometry.dispose();
         noiseTraps.splice(i, 1);
@@ -3554,6 +3594,13 @@ function updateCoins(dt, time) {
 }
 
 function canPlaceShopAt(x, z) {
+  const node = nearestNode(x, z);
+  const room = node ? getRoomAt(node.gx, node.gz) : null;
+  if (!room) return false;
+  const roomCenterPoint = roomCenter(room);
+  const doorPoint = worldFromGrid(room.sign.gx, room.sign.gz);
+  if (horizontalDistance({ x, z }, doorPoint) < 4.8) return false;
+  if (horizontalDistance({ x, z }, roomCenterPoint) > 4.4) return false;
   if (!isSafeSpawnPoint(x, z, 0.86)) return false;
   if (horizontalDistance({ x, z }, camera.position) < 5.5) return false;
   if (horizontalDistance({ x, z }, enemyStart) < 4.5) return false;
@@ -3567,7 +3614,8 @@ function createShop() {
   const candidates = walkableNodes
     .filter((node) => canPlaceShopAt(node.x, node.z))
     .sort(() => Math.random() - 0.5);
-  const node = candidates[0] || walkableNodes[Math.floor(walkableNodes.length / 2)];
+  const roomFallbacks = walkableNodes.filter((node) => getRoomAt(node.gx, node.gz));
+  const node = candidates[0] || roomFallbacks[Math.floor(roomFallbacks.length / 2)] || walkableNodes[Math.floor(walkableNodes.length / 2)];
   const group = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 0.42), shopMat);
   body.position.y = 0.86;
@@ -4281,11 +4329,13 @@ function updateWomanEnemy(dt, time) {
     return;
   }
   if (time >= womanEnemy.nextPhaseAt) {
-    womanEnemy.phaseUntil = time + 1.0;
+    womanEnemy.phaseChargeUntil = time + 1.0;
+    womanEnemy.phaseUntil = time + 2.0;
     womanEnemy.nextPhaseAt = time + 30;
     playSonarRoar(0.34);
   }
-  let phasing = time < womanEnemy.phaseUntil;
+  const phaseCharging = time < womanEnemy.phaseChargeUntil;
+  let phasing = !phaseCharging && time < womanEnemy.phaseUntil;
   if (!phasing && !canEnemyMoveTo(womanEnemy.group.position.x, womanEnemy.group.position.z, 0.18)) {
     womanEnemy.exitingWallPhase = true;
   }
@@ -4293,7 +4343,16 @@ function updateWomanEnemy(dt, time) {
     phasing = true;
     if (canEnemyMoveTo(womanEnemy.group.position.x, womanEnemy.group.position.z, 0.18)) womanEnemy.exitingWallPhase = false;
   }
-  setWomanPhasingVisual(phasing);
+  setWomanPhasingVisual(phaseCharging || phasing);
+  if (phaseCharging) {
+    womanEnemy.target = null;
+    womanEnemy.group.scale.setScalar(1 + Math.sin(time * 28) * 0.035);
+    womanEnemy.group.position.y = Math.sin(time * 34) * 0.055;
+    enemyVisionLines.visible = false;
+    updateGhostStunReticle(false);
+    return;
+  }
+  womanEnemy.group.scale.setScalar(1);
   const playerOnSecondFloor = state.mapMode === 'mansion';
   const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
   if (distance > MANSION_RENDER_RADIUS) {
@@ -4306,8 +4365,16 @@ function updateWomanEnemy(dt, time) {
   }
   if (state.hidden) {
     womanEnemy.cachedSeesPlayer = false;
-    womanEnemy.target = null;
-    womanEnemy.repathAt = time + 0.6;
+    if (time >= (womanEnemy.hiddenRedirectAt || 0)) {
+      const roamChoices = mansionNodes
+        .filter((node) => Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 12)
+        .filter((node) => Math.hypot(node.x - womanEnemy.group.position.x, node.z - womanEnemy.group.position.z) > 7)
+        .sort(() => Math.random() - 0.5);
+      const roamNode = roamChoices.find((node) => canEnemyMoveTo(node.x, node.z, 0.28)) || nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 10);
+      if (roamNode) womanEnemy.target = { x: roamNode.x, z: roamNode.z };
+      womanEnemy.hiddenRedirectAt = time + 2.4;
+      womanEnemy.repathAt = time + 2.4;
+    }
     state.ghostLightSeconds = 0;
     updateGhostStunReticle(false);
     setDetection(state.detection - dt * 24);
