@@ -1230,6 +1230,7 @@ const keyItems = selectedKeySpawns.map((keySpawn, index) => {
 updateExitCounter();
 
 function placeKeyItemsForMode(mode) {
+  const respawnMode = mode;
   const used = [];
   for (const item of keyItems) {
     let pos = item.schoolPosition;
@@ -1255,6 +1256,7 @@ function placeKeyItemsForMode(mode) {
   }
   state.keyCount = 0;
   updateExitCounter();
+  if (respawnMode === 'mansion') $('#objective-text').textContent = `お札を集める 0 / ${REQUIRED_KEYS}`;
   $('#objective-text').textContent = mode === 'mansion'
     ? `お札を集める 0 / ${REQUIRED_KEYS}`
     : `鍵を探す 0 / ${REQUIRED_KEYS}`;
@@ -2574,6 +2576,8 @@ function updateMansionDistanceCulling() {
     return;
   }
   const radiusSq = MANSION_RENDER_RADIUS * MANSION_RENDER_RADIUS;
+  scene.background.set(0x000000);
+  scene.fog.density = state.breakerOn ? 0.065 : 0.105;
   for (const object of mansionRuntimeObjects) {
     if (!object) continue;
     const pos = getWorldXZ(object);
@@ -2589,6 +2593,7 @@ function updateMansionDistanceCulling() {
 
 function updateSchoolLighting(time) {
   if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
+  if (state.mapMode === 'mansion') return;
   const power = state.breakerOn ? 1 : 0;
   hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 3.8, power);
   ambientLight.intensity = THREE.MathUtils.lerp(0.38, 3.25, power);
@@ -2715,6 +2720,7 @@ function stopMobileGameplayInput() {
 }
 
 function respawnPlayer() {
+  const respawnMode = state.mapMode;
   state.caught = false;
   state.ended = false;
   state.hidden = false;
@@ -2738,7 +2744,7 @@ function respawnPlayer() {
   state.noise = 0;
   state.nearLocker = null;
   state.nearBreaker = false;
-  state.floorLevel = 1;
+  state.floorLevel = respawnMode === 'mansion' ? 2 : 1;
   state.nearShop = false;
   state.currentLocker = null;
   state.lockerHideAt = -Infinity;
@@ -2758,8 +2764,14 @@ function respawnPlayer() {
   $('#mobile-run-toggle').classList.remove('running');
   $('#mobile-run-toggle').textContent = '歩行中';
   document.body.classList.remove('caught-cutscene', 'hidden-in-locker');
-  camera.position.set(playerStart.x, 1.68, playerStart.z);
-  camera.rotation.set(0, 0, 0);
+  if (respawnMode === 'mansion' && mansionStartPoint) {
+    const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
+    camera.position.set(safeStart.x, 1.68, safeStart.z);
+    camera.rotation.set(0, 0, 0);
+  } else {
+    camera.position.set(playerStart.x, 1.68, playerStart.z);
+    camera.rotation.set(0, 0, 0);
+  }
   const womanStart = mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
   womanEnemy.group.position.set(womanStart.x, 0, womanStart.z);
   womanEnemy.target = null;
@@ -2768,13 +2780,10 @@ function respawnPlayer() {
   womanEnemy.stunnedUntil = 0;
   womanEnemy.repathAt = 0;
   setWomanPhasingVisual(false);
-  for (const item of keyItems) {
-    item.collected = false;
-    item.group.visible = true;
-    item.light.visible = true;
-  }
+  placeKeyItemsForMode(respawnMode);
   updateExitCounter();
   $('#objective-text').textContent = `鍵を探す 0 / ${REQUIRED_KEYS}`;
+  if (respawnMode === 'mansion') $('#objective-text').textContent = `お札を集める 0 / ${REQUIRED_KEYS}`;
   enemy.position.set(enemyStart.x, 0, enemyStart.z);
   Object.assign(enemyData, {
     speed: 1.25,
@@ -2826,11 +2835,13 @@ function respawnPlayer() {
   healItems.length = 0;
   for (const coin of coinItems) { scene.remove(coin.group); scene.remove(coin.light); }
   coinItems.length = 0;
-  if (shop) shop.group.visible = true;
-  spawnHealItem(clock.elapsedTime, true);
-  scheduleNextCoin(clock.elapsedTime);
-  scheduleNextHeal(clock.elapsedTime);
-  chooseRandomEnemyRoute();
+  if (shop) shop.group.visible = respawnMode !== 'mansion';
+  if (respawnMode === 'school') {
+    spawnHealItem(clock.elapsedTime, true);
+    scheduleNextCoin(clock.elapsedTime);
+    scheduleNextHeal(clock.elapsedTime);
+    chooseRandomEnemyRoute();
+  }
   savePersistentCoins();
   updateHUD();
   showToast('意識を取り戻した');
@@ -2839,7 +2850,8 @@ function respawnPlayer() {
 
 function updateCaughtCutscene(time) {
   const progress = THREE.MathUtils.clamp((time - state.caughtAt) / 1.75, 0, 1);
-  const enemyFace = enemy.position.clone().add(new THREE.Vector3(0, 1.78, 0));
+  const activeEnemy = state.mapMode === 'mansion' ? womanEnemy.group : enemy;
+  const enemyFace = activeEnemy.position.clone().add(new THREE.Vector3(0, state.mapMode === 'mansion' ? 1.45 : 1.78, 0));
   const away = camera.position.clone().sub(enemyFace).setY(0).normalize();
   const targetPosition = enemyFace.clone().addScaledVector(away.lengthSq() ? away : new THREE.Vector3(0, 0, 1), 0.52);
   targetPosition.y = 1.58;
@@ -2847,8 +2859,8 @@ function updateCaughtCutscene(time) {
   camera.lookAt(enemyFace);
   $('#danger-flash').style.opacity = String(0.45 + Math.sin(time * 18) * 0.2);
   if (progress >= 1) {
-    state.allowExit = true;
-    location.reload();
+    $('#danger-flash').style.opacity = '0';
+    respawnPlayer();
   }
 }
 
@@ -3570,6 +3582,7 @@ function createShop() {
   group.position.set(node.x, 0, node.z);
   scene.add(group);
   shop = { group, x: node.x, z: node.z };
+  colliders.push({ x: shop.x, z: shop.z, hw: 0.72, hz: 0.34 });
 }
 
 function setShopMessage(text) {
@@ -4291,10 +4304,19 @@ function updateWomanEnemy(dt, time) {
     setDetection(state.detection - dt * 5.8);
     return;
   }
+  if (state.hidden) {
+    womanEnemy.cachedSeesPlayer = false;
+    womanEnemy.target = null;
+    womanEnemy.repathAt = time + 0.6;
+    state.ghostLightSeconds = 0;
+    updateGhostStunReticle(false);
+    setDetection(state.detection - dt * 24);
+    state.alert = state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
+  }
   womanEnemy.group.visible = true;
   const hideGhostDetails = distance < 8 || (perfFps > 0 && perfFps < 58 && distance < 22);
   for (const part of womanEnemy.detailParts) part.visible = !hideGhostDetails;
-  const flashlightHit = isFlashlightHittingWoman();
+  const flashlightHit = !state.hidden && isFlashlightHittingWoman();
   state.ghostLightSeconds = flashlightHit ? state.ghostLightSeconds + dt : Math.max(0, state.ghostLightSeconds - dt * 1.8);
   updateGhostStunReticle(flashlightHit);
   if (state.ghostLightSeconds >= 5) {
@@ -4329,7 +4351,7 @@ function updateWomanEnemy(dt, time) {
     setDetection(state.detection - dt * 5.8);
   }
   state.alert = state.detection > 70 ? 'HUNTING' : state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
-  if (playerOnSecondFloor && (ghostSeesPlayer || state.detection > 70 || distance < 6.5)) {
+  if (!state.hidden && playerOnSecondFloor && (ghostSeesPlayer || state.detection > 70 || distance < 6.5)) {
     womanEnemy.target = { x: camera.position.x, z: camera.position.z };
     womanEnemy.speed = phasing ? 3.2 : 2.05;
   } else if (!womanEnemy.target || time >= womanEnemy.repathAt || Math.hypot(womanEnemy.group.position.x - womanEnemy.target.x, womanEnemy.group.position.z - womanEnemy.target.z) < 0.7) {

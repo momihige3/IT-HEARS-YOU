@@ -581,3 +581,19 @@ Build:
   - Trap water uses a shared 10m radius constant.
   - New mansion water traps search nearby nodes and skip spawning if every valid spot overlaps existing water.
   - Triggered trap water also cancels if it would overlap an existing water area.
+
+## 2026-06-29 Locker / Capture / Darkness Follow-up
+
+- Ghost now loses the player when the player hides in a locker:
+  - Cached sight is cleared.
+  - Current ghost target is cleared.
+  - Ghost stun charge UI is hidden while hiding.
+  - Detection drops faster while hidden.
+- Flashlight stun reticle color changed from blue to red for readability.
+- Mansion visibility beyond the 30m render range is now made much darker:
+  - Mansion mode forces black background.
+  - Mansion mode uses dense black fog while skipping the school lighting override.
+- Capture cutscene no longer reloads the page:
+  - It now respawns the player on the current map after the cutscene.
+  - Mansion capture camera now focuses the ghost instead of the school SONAR enemy.
+- School shop now has a collider so the player cannot walk through it.
