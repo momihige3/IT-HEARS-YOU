@@ -563,3 +563,21 @@ Build:
   - Mansion shop now has a collider so the player cannot walk through it.
 - Ghost phasing fix:
   - If the ghost is still inside a wall when wall-phasing ends, it keeps phasing until it exits into a valid position.
+
+## 2026-06-29 Mansion Start / Ghost Stun Reticle / Trap Spacing
+
+- Mansion start camera now faces the opposite direction so the player no longer starts looking into a wall.
+- Ghost flashlight stun logic was narrowed for performance and clarity:
+  - Stun charge now requires the ghost to be within 10m.
+  - Stun charge now requires the ghost to be near the screen center, not merely visible somewhere on screen.
+  - Line-of-sight checks run only after the distance and center checks pass.
+  - Flashlight hit cache interval increased slightly to reduce repeated checks.
+- Added a center stun reticle:
+  - A blue circular marker appears only while the flashlight stun condition is active.
+  - The inner blue fill grows from the center and triggers stun when it reaches the ring.
+- Reduced ghost view cost:
+  - Close-range or low-FPS ghost detail parts are hidden more aggressively.
+- Mansion water traps now avoid overlap:
+  - Trap water uses a shared 10m radius constant.
+  - New mansion water traps search nearby nodes and skip spawning if every valid spot overlaps existing water.
+  - Triggered trap water also cancels if it would overlap an existing water area.

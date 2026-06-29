@@ -3009,7 +3009,7 @@ async function startGame(mode = 'school') {
   if (mode === 'mansion' && mansionStartPoint) {
     const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
     camera.position.set(safeStart.x, 1.68, safeStart.z);
-    camera.rotation.set(0, Math.PI, 0);
+    camera.rotation.set(0, 0, 0);
     womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
@@ -3246,6 +3246,7 @@ const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true
 const trapTriggeredMat = new THREE.MeshBasicMaterial({ color: 0xff5a42, transparent: true, opacity: 0.62, depthWrite: false });
 const waterTrapMat = new THREE.MeshBasicMaterial({ color: 0x5aa7b8, transparent: true, opacity: 0.24, depthWrite: false });
 const MAX_MANSION_WATER_TRAPS = 10;
+const WATER_TRAP_RADIUS = 10;
 function scheduleNextTrap(time) {
   state.nextTrapAt = time + 18 + Math.random() * 28;
 }
@@ -3264,6 +3265,20 @@ function canPlaceTrapAt(x, z) {
   return true;
 }
 
+function canPlaceWaterTrapAt(x, z) {
+  if (state.mapMode === 'mansion' && !nearestMansionNode(x, z)) return false;
+  return !noiseTraps.some((trap) => trap.water
+    && Math.hypot(trap.x - x, trap.z - z) < WATER_TRAP_RADIUS + trap.waterRadius + 0.8);
+}
+
+function createWaterTrap(x, z, time, duration = 180) {
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(WATER_TRAP_RADIUS, 24), waterTrapMat.clone());
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, 0.025, z);
+  scene.add(mesh);
+  noiseTraps.push({ mesh, x, z, createdAt: time, triggered: true, water: true, waterRadius: WATER_TRAP_RADIUS, removeAt: time + duration });
+}
+
 function dropNoiseTrap(time) {
   if (state.mapMode === 'mansion') {
     const activeWater = noiseTraps.filter((trap) => trap.water);
@@ -3276,14 +3291,15 @@ function dropNoiseTrap(time) {
         noiseTraps.splice(index, 1);
       }
     }
-    const x = womanEnemy.group.position.x;
-    const z = womanEnemy.group.position.z;
-    const mesh = new THREE.Mesh(new THREE.CircleGeometry(10, 32), waterTrapMat.clone());
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(x, 0.025, z);
-    scene.add(mesh);
-    noiseTraps.push({ mesh, x, z, createdAt: time, triggered: true, water: true, waterRadius: 10, removeAt: time + 180 });
-    emitWorldSound(x, z, 70, 16, true);
+    const origin = womanEnemy.group.position;
+    const candidates = [nearestMansionNode(origin.x, origin.z), ...mansionNodes]
+      .filter(Boolean)
+      .filter((node) => Math.hypot(node.x - origin.x, node.z - origin.z) < 18)
+      .sort((a, b) => Math.hypot(a.x - origin.x, a.z - origin.z) - Math.hypot(b.x - origin.x, b.z - origin.z));
+    const node = candidates.find((candidate) => canPlaceWaterTrapAt(candidate.x, candidate.z));
+    if (!node) return;
+    createWaterTrap(node.x, node.z, time, 180);
+    emitWorldSound(node.x, node.z, 70, 16, true);
     return;
   }
   const baseNode = state.mapMode === 'mansion'
@@ -3331,13 +3347,19 @@ function updateNoiseTraps(dt, time) {
     trap.mesh.rotation.z += dt * 0.8;
     trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
     if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
+      if (state.mapMode === 'mansion' && !canPlaceWaterTrapAt(camera.position.x, camera.position.z)) {
+        scene.remove(trap.mesh);
+        trap.mesh.geometry.dispose();
+        noiseTraps.splice(i, 1);
+        continue;
+      }
       trap.triggered = true;
       trap.water = true;
-      trap.waterRadius = 10;
+      trap.waterRadius = WATER_TRAP_RADIUS;
       trap.removeAt = time + 55;
       scene.remove(trap.mesh);
       trap.mesh.geometry.dispose();
-      trap.mesh = new THREE.Mesh(new THREE.CircleGeometry(10, 48), waterTrapMat.clone());
+      trap.mesh = new THREE.Mesh(new THREE.CircleGeometry(WATER_TRAP_RADIUS, 24), waterTrapMat.clone());
       trap.mesh.rotation.x = -Math.PI / 2;
       trap.mesh.position.set(camera.position.x, 0.025, camera.position.z);
       trap.x = camera.position.x;
@@ -4179,19 +4201,34 @@ function isFlashlightHittingWoman() {
   const now = clock.elapsedTime;
   if (now < (isFlashlightHittingWoman.cachedUntil || 0)) return isFlashlightHittingWoman.cachedValue;
   const finish = (value) => {
-    isFlashlightHittingWoman.cachedUntil = now + 0.12;
+    isFlashlightHittingWoman.cachedUntil = now + 0.18;
     isFlashlightHittingWoman.cachedValue = value;
     return value;
   };
   if (!state.flashlight || state.battery <= 0 || state.mapMode !== 'mansion') return finish(false);
   if (now < womanEnemy.stunnedUntil) return finish(false);
-  const toGhost = new THREE.Vector3().subVectors(womanEnemy.group.position, camera.position);
-  const distance = toGhost.length();
-  if (distance > 16 || distance < 0.001) return finish(false);
+  const targetX = womanEnemy.group.position.x;
+  const targetY = womanEnemy.group.position.y + 1.35;
+  const targetZ = womanEnemy.group.position.z;
+  const dx = targetX - camera.position.x;
+  const dy = targetY - camera.position.y;
+  const dz = targetZ - camera.position.z;
+  const distanceSq = dx * dx + dy * dy + dz * dz;
+  if (distanceSq > 100 || distanceSq < 0.001) return finish(false);
+  const invDistance = 1 / Math.sqrt(distanceSq);
   camera.getWorldDirection(forward);
-  const direction = toGhost.normalize();
-  return finish(forward.dot(direction) > 0.9
-    && hasLineOfSight(camera.position.clone(), womanEnemy.group.position.clone().add(new THREE.Vector3(0, 1.3, 0))));
+  const centered = forward.x * dx * invDistance + forward.y * dy * invDistance + forward.z * dz * invDistance;
+  if (centered < 0.982) return finish(false);
+  const target = cleanupPosition.set(targetX, targetY, targetZ);
+  return finish(hasLineOfSight(camera.position, target));
+}
+
+function updateGhostStunReticle(active) {
+  const reticle = $('#ghost-stun-reticle');
+  if (!reticle) return;
+  const progress = active ? THREE.MathUtils.clamp(state.ghostLightSeconds / 5, 0, 1) : 0;
+  reticle.style.setProperty('--stun-progress', progress.toFixed(3));
+  reticle.classList.toggle('visible', active);
 }
 
 function reactWomanToSoundEvent(event, now) {
@@ -4209,15 +4246,20 @@ function reactWomanToSoundEvent(event, now) {
 }
 
 function updateWomanEnemy(dt, time) {
-  if (!womanEnemy || state.ended) return;
+  if (!womanEnemy || state.ended) {
+    updateGhostStunReticle(false);
+    return;
+  }
   if (state.mapMode !== 'mansion') {
     womanEnemy.group.visible = false;
+    updateGhostStunReticle(false);
     return;
   }
   womanEnemy.group.visible = true;
   const stunned = time < womanEnemy.stunnedUntil;
   if (stunned) {
     state.ghostLightSeconds = 0;
+    updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     womanEnemy.target = null;
     womanEnemy.group.position.y = Math.sin(time * 2.2) * 0.015;
@@ -4245,17 +4287,20 @@ function updateWomanEnemy(dt, time) {
     womanEnemy.group.visible = false;
     for (const part of womanEnemy.detailParts) part.visible = false;
     enemyVisionLines.visible = false;
+    updateGhostStunReticle(false);
     setDetection(state.detection - dt * 5.8);
     return;
   }
   womanEnemy.group.visible = true;
-  const hideGhostDetails = perfFps > 0 && perfFps < 50 && distance < 18;
+  const hideGhostDetails = distance < 8 || (perfFps > 0 && perfFps < 58 && distance < 22);
   for (const part of womanEnemy.detailParts) part.visible = !hideGhostDetails;
   const flashlightHit = isFlashlightHittingWoman();
   state.ghostLightSeconds = flashlightHit ? state.ghostLightSeconds + dt : Math.max(0, state.ghostLightSeconds - dt * 1.8);
+  updateGhostStunReticle(flashlightHit);
   if (state.ghostLightSeconds >= 5) {
     womanEnemy.stunnedUntil = time + 10;
     state.ghostLightSeconds = 0;
+    updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     enemyVisionLines.visible = false;
     showToast('幽霊が怯んだ：10秒間スタン');

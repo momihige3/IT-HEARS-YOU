@@ -44,6 +44,10 @@ body.hidden-in-locker #crosshair { opacity:0; }
 
 #crosshair { position: fixed; z-index: 7; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); opacity: .62; }
 #crosshair i { position:absolute; background:#d8e0db; } #crosshair i:nth-child(1){width:5px;height:1px;left:0;top:10px} #crosshair i:nth-child(2){width:5px;height:1px;right:0;top:10px} #crosshair i:nth-child(3){height:5px;width:1px;top:0;left:10px} #crosshair i:nth-child(4){height:5px;width:1px;bottom:0;left:10px}
+#ghost-stun-reticle { --stun-progress:0; position:fixed; z-index:7; left:50%; top:50%; width:76px; height:76px; transform:translate(-50%,-50%); border:2px solid rgba(130,210,255,.82); border-radius:50%; pointer-events:none; opacity:0; transition:opacity .12s; box-shadow:0 0 18px rgba(72,174,255,.22), inset 0 0 16px rgba(72,174,255,.14); }
+#ghost-stun-reticle.visible { opacity:.92; }
+#ghost-stun-reticle i { position:absolute; left:50%; top:50%; width:calc(100% * var(--stun-progress)); height:calc(100% * var(--stun-progress)); transform:translate(-50%,-50%); border-radius:50%; background:rgba(74,174,255,.38); box-shadow:0 0 24px rgba(74,174,255,.3); }
+#ghost-stun-reticle span { position:absolute; left:50%; top:100%; transform:translate(-50%,8px); color:#aee4ff; font:10px 'Share Tech Mono'; letter-spacing:.18em; text-shadow:0 2px 8px #00131d; }
 #prompt { position: fixed; z-index: 9; left: 50%; top: calc(50% + 42px); transform: translateX(-50%); padding:8px 13px; background:rgba(3,7,5,.55); font: 16px 'Share Tech Mono'; letter-spacing: .08em; text-shadow: 0 1px 8px #000; }
 #prompt:empty { display:none; }
 #prompt:not(:empty)::first-letter { color: #b9c4bd; }
