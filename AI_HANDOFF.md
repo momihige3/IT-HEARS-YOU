@@ -636,3 +636,30 @@ Build:
 - Ghost stun pose:
   - While stunned, the ghost rotates down into a fallen pose.
   - On recovery/respawn/map start, rotation and scale are reset.
+
+## 2026-06-29 Mansion Maze / Ghost Audio / Fake Ofuda / Coins
+
+- Mansion map generation adjusted toward a circular maze:
+  - Cells outside an ellipse are skipped.
+  - A small central plaza and three route spokes are favored.
+  - Ring-like corridor bands are favored to make the mansion less rectangular.
+- Mansion breaker initial color is forced to OFF after the mansion breaker is generated.
+- Ghost phasing visuals strengthened:
+  - Phasing materials now disable depth write and force material updates while transparent.
+  - Phasing still starts with a short stop/charge window before movement.
+- Mansion detection performance reduced:
+  - Ghost line-of-sight cache interval increased.
+  - Mansion vision-line update interval increased to 0.5 seconds.
+  - Mid-distance ghost detection gain reduced.
+- Mansion ghost audio changed:
+  - Heartbeat/near-enemy gain no longer uses ghost proximity.
+  - Ghost remains silent; school SONAR enemy footsteps are unchanged.
+  - Ghost hover height/amplitude increased for floating movement.
+- Fake ofuda added to mansion:
+  - Fake ofuda use the same visual model as real ofuda.
+  - Picking one sets detection to 100 for 13 seconds.
+  - Ghost teleports to a floor node about 15m in front of the player and spends 3 seconds emerging from the floor.
+- Mansion coins enabled:
+  - Coin spawning now uses mansion nodes while in mansion mode.
+  - Mansion respawns also schedule coin spawning.
+- Out-of-detection running alert gain doubled.

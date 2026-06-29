@@ -167,6 +167,7 @@ const state = {
   lockerHideAt: -Infinity,
   lockerHideStartDetection: 0,
   ghostLightSeconds: 0,
+  fakeOfudaAlertUntil: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -186,6 +187,7 @@ const sonarReveals = [];
 const noiseTraps = [];
 const healItems = [];
 const coinItems = [];
+const fakeOfudaItems = [];
 let shop = null;
 const CELL = 4;
 const GRID_W = 13;
@@ -792,7 +794,12 @@ function buildMansionSecondFloor() {
     || (z > 20 && x > offsetX - 30 && x < offsetX + 6);
   for (let ix = -6; ix <= 6; ix += 1) {
     for (let iz = -9; iz <= 9; iz += 1) {
-      const wing = ix === 0 || iz === 0 || Math.abs(ix) === 3 || Math.abs(iz) === 5;
+      const norm = Math.hypot(ix / 5.8, iz / 8.2);
+      if (norm > 1.08) continue;
+      const centerPlaza = Math.hypot(ix, iz) <= 1.25;
+      const threeRoutes = ix === 0 || (iz === 0 && ix >= 0) || (ix + Math.round(iz * 0.65) === 0 && iz < 0);
+      const ring = Math.abs(norm - 0.68) < 0.13 || Math.abs(norm - 0.93) < 0.08;
+      const wing = centerPlaza || threeRoutes || ring || Math.abs(ix) === 3 || Math.abs(iz) === 5;
       const breakerRoute = iz === 9 && ix >= -6 && ix <= 0;
       const breakerRoom = ix >= -6 && ix <= -5 && iz >= 8 && iz <= 9;
       const startRoute = ix === 0 && iz >= 7 && iz <= 9;
@@ -800,7 +807,7 @@ function buildMansionSecondFloor() {
         || (Math.abs(ix) <= 5 && Math.abs(iz) <= 2)
         || (Math.abs(ix - 4) <= 1 && Math.abs(iz + 6) <= 1)
         || (Math.abs(ix + 4) <= 1 && Math.abs(iz - 6) <= 1);
-      const keep = wing || breakerRoute || breakerRoom || startRoute || roomCluster || Math.random() > 0.72;
+      const keep = wing || breakerRoute || breakerRoom || startRoute || roomCluster || Math.random() > 0.82;
       if (!keep) continue;
       const x = offsetX + ix * CELL;
       const z = -12 + iz * CELL;
@@ -854,6 +861,7 @@ function buildMansionSecondFloor() {
   mansionBreakerLight.position.set(offsetX - 25.55, 2.2, 24);
   scene.add(mansionBreakerLight);
   registerMansionObject(mansionBreakerLight);
+  applyBreakerVisual(false);
   const shopGroup = new THREE.Group();
   localBox(shopGroup, 0, 0.86, 0, 1.45, 1.35, 0.55, material(0x2a2032, 0.72, 0.08));
   localBox(shopGroup, 0, 1.68, 0.31, 1.1, 0.24, 0.05, material(0x8ac8ff, 0.36, 0.02));
@@ -1284,6 +1292,21 @@ const keyItems = selectedKeySpawns.map((keySpawn, index) => {
 });
 updateExitCounter();
 
+for (let i = 0; i < 4; i += 1) {
+  const group = new THREE.Group();
+  markSharedObject(group);
+  const model = createOfudaModel();
+  model.visible = true;
+  group.add(model);
+  group.visible = false;
+  scene.add(group);
+  const light = new THREE.PointLight(0xff6655, 0.75, 2.2);
+  markSharedObject(light);
+  light.visible = false;
+  scene.add(light);
+  fakeOfudaItems.push({ group, light, collected: false, baseY: 1.05, phase: i * 1.7, mansionPosition: null });
+}
+
 function placeKeyItemsForMode(mode) {
   const respawnMode = mode;
   const used = [];
@@ -1315,6 +1338,24 @@ function placeKeyItemsForMode(mode) {
   $('#objective-text').textContent = mode === 'mansion'
     ? `お札を集める 0 / ${REQUIRED_KEYS}`
     : `鍵を探す 0 / ${REQUIRED_KEYS}`;
+  placeFakeOfudaItems(mode);
+}
+
+function placeFakeOfudaItems(mode) {
+  for (const fake of fakeOfudaItems) {
+    fake.collected = false;
+    fake.group.visible = mode === 'mansion';
+    fake.light.visible = mode === 'mansion';
+    if (mode !== 'mansion') continue;
+    const choices = mansionNodes
+      .filter((node) => keyItems.every((item) => Math.hypot(item.group.position.x - node.x, item.group.position.z - node.z) > 4.5))
+      .filter((node) => fakeOfudaItems.every((item) => !item.mansionPosition || Math.hypot(item.mansionPosition.x - node.x, item.mansionPosition.z - node.z) > 5))
+      .sort(() => Math.random() - 0.5);
+    const node = choices[0] || mansionNodes[Math.floor(Math.random() * mansionNodes.length)] || { x: 68, z: -12 };
+    fake.mansionPosition = { x: node.x, z: node.z };
+    fake.group.position.set(node.x, fake.baseY, node.z);
+    fake.light.position.copy(fake.group.position);
+  }
 }
 
 // Enemy silhouette.
@@ -1603,6 +1644,8 @@ function createWomanEnemy() {
     cachedSeesPlayer: false,
     repathAt: 0,
     hiddenRedirectAt: 0,
+    emergeStartedAt: 0,
+    emergeUntil: 0,
     speed: 1.35,
   };
 }
@@ -1621,6 +1664,8 @@ function setWomanPhasingVisual(active) {
   for (const matItem of womanEnemy.visualMaterials) {
     matItem.transparent = active;
     matItem.opacity = active ? 0.52 : 1;
+    matItem.depthWrite = !active;
+    matItem.needsUpdate = true;
   }
 }
 
@@ -2506,7 +2551,7 @@ function updateAudio(time) {
   const proximity = distanceAttenuation(enemyDistance, 22, 1.05);
   audio.caveGain.gain.setTargetAtTime(0.06 + Math.sin(time * 0.17) * 0.012, audio.ctx.currentTime, 0.8);
   audio.caveLowpass.frequency.setTargetAtTime(145 + Math.sin(time * 0.09) * 32, audio.ctx.currentTime, 1.1);
-  audio.nearGain.gain.setTargetAtTime(proximity * 0.095, audio.ctx.currentTime, 0.14);
+  audio.nearGain.gain.setTargetAtTime((state.mapMode === 'mansion' ? 0 : proximity) * 0.095, audio.ctx.currentTime, 0.14);
 
   const moving = state.noise > 0 && !state.hidden;
   if (moving && time > audio.nextStep) {
@@ -2531,7 +2576,7 @@ function updateAudio(time) {
     audio.nextEnemyStep = time + (enemyData.speed > 2 ? 0.34 : 0.56);
   }
 
-  if (proximity > 0.02 && time > audio.nextBeat) {
+  if (state.mapMode !== 'mansion' && proximity > 0.02 && time > audio.nextBeat) {
     const beatVolume = 0.12 + proximity * 0.92;
     thump(beatVolume, 86 + proximity * 17);
     setTimeout(() => thump(beatVolume * 0.74, 73 + proximity * 11), 110);
@@ -2658,6 +2703,12 @@ function updateMansionDistanceCulling() {
     item.group.visible = near;
     item.light.visible = near && item.light.position.distanceTo(camera.position) < 18;
   }
+  for (const item of fakeOfudaItems) {
+    if (item.collected) continue;
+    const near = state.mapMode === 'mansion' && item.group.position.distanceToSquared(camera.position) <= radiusSq;
+    item.group.visible = near;
+    item.light.visible = near && item.light.position.distanceTo(camera.position) < 18;
+  }
 }
 
 function updateSchoolLighting(time) {
@@ -2729,6 +2780,13 @@ function interact() {
   }
   if (state.nearShop) {
     openShop();
+    return;
+  }
+  const nearbyFakeOfuda = state.mapMode === 'mansion'
+    ? fakeOfudaItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15)
+    : null;
+  if (nearbyFakeOfuda) {
+    triggerFakeOfudaTrap(nearbyFakeOfuda);
     return;
   }
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
@@ -2805,6 +2863,7 @@ function respawnPlayer() {
   state.breakerDurationMultiplier = savedUpgrades.breaker ? 2 : 1;
   state.lightRangeMultiplier = savedUpgrades.light ? 2 : 1;
   state.ghostLightSeconds = 0;
+  state.fakeOfudaAlertUntil = 0;
   state.screenFlashUntil = 0;
   state.nextHealAt = 0;
   state.detection = 0;
@@ -2850,6 +2909,8 @@ function respawnPlayer() {
   womanEnemy.stunnedUntil = 0;
   womanEnemy.repathAt = 0;
   womanEnemy.hiddenRedirectAt = 0;
+  womanEnemy.emergeStartedAt = 0;
+  womanEnemy.emergeUntil = 0;
   womanEnemy.group.rotation.x = 0;
   womanEnemy.group.rotation.z = 0;
   womanEnemy.group.scale.setScalar(1);
@@ -2912,10 +2973,10 @@ function respawnPlayer() {
   if (shop) shop.group.visible = respawnMode !== 'mansion';
   if (respawnMode === 'school') {
     spawnHealItem(clock.elapsedTime, true);
-    scheduleNextCoin(clock.elapsedTime);
     scheduleNextHeal(clock.elapsedTime);
     chooseRandomEnemyRoute();
   }
+  scheduleNextCoin(clock.elapsedTime);
   savePersistentCoins();
   updateHUD();
   showToast('意識を取り戻した');
@@ -3101,6 +3162,8 @@ async function startGame(mode = 'school') {
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
     womanEnemy.hiddenRedirectAt = 0;
+    womanEnemy.emergeStartedAt = 0;
+    womanEnemy.emergeUntil = 0;
     womanEnemy.group.rotation.x = 0;
     womanEnemy.group.rotation.z = 0;
     womanEnemy.group.scale.setScalar(1);
@@ -3119,7 +3182,7 @@ async function startGame(mode = 'school') {
     spawnHealItem(clock.elapsedTime, true);
     scheduleNextHeal(clock.elapsedTime);
   }
-  if (mode === 'school' && coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
+  if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
   setLoading(false);
@@ -3571,9 +3634,12 @@ function removeCoinAt(index) {
 function canPlaceCoinAt(x, z) {
   if (!isSafeSpawnPoint(x, z, 0.55)) return false;
   if (horizontalDistance({ x, z }, camera.position) < 3.2) return false;
-  if (horizontalDistance({ x, z }, exitDoor.position) < 2.6) return false;
-  if (horizontalDistance({ x, z }, breakerPanel.position) < 2.0) return false;
-  if (shop && horizontalDistance({ x, z }, shop) < 3.2) return false;
+  const activeExit = state.mapMode === 'mansion' && mansionExit ? mansionExit : exitDoor.position;
+  const activeBreaker = state.mapMode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel.position : breakerPanel.position;
+  const activeShop = state.mapMode === 'mansion' && mansionShop ? mansionShop : shop;
+  if (activeExit && horizontalDistance({ x, z }, activeExit) < 2.6) return false;
+  if (activeBreaker && horizontalDistance({ x, z }, activeBreaker) < 2.0) return false;
+  if (activeShop && horizontalDistance({ x, z }, activeShop) < 3.2) return false;
   if (keyItems.some((item) => !item.collected && horizontalDistance({ x, z }, item.group.position) < 1.7)) return false;
   if (healItems.some((item) => horizontalDistance({ x, z }, item) < 1.7)) return false;
   if (noiseTraps.some((trap) => !trap.triggered && horizontalDistance({ x, z }, trap) < 1.6)) return false;
@@ -3583,7 +3649,8 @@ function canPlaceCoinAt(x, z) {
 
 function spawnCoin(time) {
   if (coinItems.filter((coin) => !coin.collected).length >= MAX_ACTIVE_COINS) return;
-  const candidates = walkableNodes
+  const sourceNodes = state.mapMode === 'mansion' ? mansionNodes : walkableNodes;
+  const candidates = sourceNodes
     .filter((node) => canPlaceCoinAt(node.x, node.z))
     .sort(() => Math.random() - 0.5);
   const node = candidates[0];
@@ -3601,7 +3668,6 @@ function spawnCoin(time) {
 }
 
 function updateCoins(dt, time) {
-  if (state.mapMode === 'mansion') return;
   if (!state.nextCoinAt) scheduleNextCoin(time);
   if (state.started && time >= state.nextCoinAt) {
     spawnCoin(time);
@@ -3845,7 +3911,7 @@ function updatePlayer(dt) {
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   if (active && !state.hidden) {
     const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    const movementAlertGain = running ? 1.75 : 0.7;
+    const movementAlertGain = running ? 3.5 : 0.7;
     setDetection(state.detection + dt * movementAlertGain * memoryBoost);
     enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
   }
@@ -4352,6 +4418,32 @@ function updateGhostStunReticle(active) {
   reticle.classList.toggle('visible', active);
 }
 
+function triggerFakeOfudaTrap(item) {
+  item.collected = true;
+  item.group.visible = false;
+  item.light.visible = false;
+  state.fakeOfudaAlertUntil = clock.elapsedTime + 13;
+  setDetection(100);
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+  const targetX = camera.position.x + forward.x * 15;
+  const targetZ = camera.position.z + forward.z * 15;
+  const node = nearestSafeMansionNode(targetX, targetZ, 0) || nearestMansionNode(targetX, targetZ) || { x: targetX, z: targetZ };
+  womanEnemy.group.position.set(node.x, -1.8, node.z);
+  womanEnemy.group.rotation.set(0, Math.atan2(camera.position.x - node.x, camera.position.z - node.z), 0);
+  womanEnemy.group.scale.setScalar(1);
+  womanEnemy.target = null;
+  womanEnemy.emergeStartedAt = clock.elapsedTime;
+  womanEnemy.emergeUntil = clock.elapsedTime + 3;
+  womanEnemy.stunnedUntil = 0;
+  womanEnemy.phaseChargeUntil = 0;
+  womanEnemy.phaseUntil = 0;
+  setWomanPhasingVisual(true);
+  playSonarRoar(0.42);
+  showToast('偽のお札だった');
+}
+
 function reactWomanToSoundEvent(event, now) {
   if (now < womanEnemy.stunnedUntil) return;
   const distance = Math.hypot(womanEnemy.group.position.x - event.x, womanEnemy.group.position.z - event.z);
@@ -4377,6 +4469,20 @@ function updateWomanEnemy(dt, time) {
     return;
   }
   womanEnemy.group.visible = true;
+  if (time < (womanEnemy.emergeUntil || 0)) {
+    const progress = THREE.MathUtils.clamp((time - (womanEnemy.emergeStartedAt || time)) / 3, 0, 1);
+    womanEnemy.group.position.y = THREE.MathUtils.lerp(-1.8, 0.28, progress);
+    womanEnemy.group.rotation.x = THREE.MathUtils.lerp(-0.45, 0, progress);
+    womanEnemy.group.scale.setScalar(THREE.MathUtils.lerp(0.65, 1, progress));
+    setWomanPhasingVisual(true);
+    enemyVisionLines.visible = false;
+    setDetection(100);
+    return;
+  } else if (womanEnemy.emergeUntil) {
+    womanEnemy.emergeUntil = 0;
+    setWomanPhasingVisual(false);
+  }
+  if (time < state.fakeOfudaAlertUntil) setDetection(100);
   const stunned = time < womanEnemy.stunnedUntil;
   if (stunned) {
     state.ghostLightSeconds = 0;
@@ -4463,7 +4569,7 @@ function updateWomanEnemy(dt, time) {
   const playerEye = camera.position.clone();
   const ghostForward = new THREE.Vector3(0, 0, 1).applyQuaternion(womanEnemy.group.quaternion);
   const toGhostPlayer = playerEye.clone().sub(ghostEye).setY(0).normalize();
-  if (time - womanEnemy.lastSightCheckAt > 0.28) {
+  if (time - womanEnemy.lastSightCheckAt > 0.65) {
     const lowAlertScale = state.detection <= 40 ? 0.5 : 1;
     const ghostVisionDistance = 14.5 * THREE.MathUtils.lerp(0.55, 1.15, enemyVisionAlertRatio()) * lowAlertScale;
     const ghostVisionHalfAngle = (Math.PI / 4.2) * THREE.MathUtils.lerp(0.55, 1.15, enemyVisionAlertRatio()) * lowAlertScale;
@@ -4477,7 +4583,7 @@ function updateWomanEnemy(dt, time) {
   }
   const ghostSeesPlayer = womanEnemy.cachedSeesPlayer;
   if (ghostSeesPlayer) {
-    setDetection(state.detection + dt * (distance < 6 ? 28 : 13));
+    setDetection(state.detection + dt * (distance < 6 ? 22 : 7));
   } else if (!state.hidden) {
     setDetection(state.detection - dt * 5.8);
   }
@@ -4521,7 +4627,7 @@ function updateWomanEnemy(dt, time) {
       womanEnemy.group.rotation.y = Math.atan2(dx, dz);
     }
   }
-  womanEnemy.group.position.y = Math.sin(time * 3.1) * 0.035;
+  womanEnemy.group.position.y = 0.28 + Math.sin(time * 2.2) * 0.11;
   if (!state.hidden && playerOnSecondFloor && ghostSeesPlayer && distance < (phasing ? 1.35 : 0.78)) startCaughtCutscene();
 }
 
@@ -4538,6 +4644,9 @@ function updateInteraction() {
   }
   let prompt = '';
   const nearbyKey = keyItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15);
+  const nearbyFakeOfuda = state.mapMode === 'mansion'
+    ? fakeOfudaItems.find((item) => !item.collected && camera.position.distanceTo(item.group.position) < 2.15)
+    : null;
   const activeBreaker = state.mapMode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel : breakerPanel;
   const activeShop = state.mapMode === 'mansion' && mansionShop ? mansionShop : shop;
   state.nearBreaker = horizontalDistance(camera.position, activeBreaker.position) < 2.35;
@@ -4547,6 +4656,7 @@ function updateInteraction() {
   else if (state.nearLocker) prompt = `${actionPrefix}ロッカーの中に隠れる`;
   else if (state.nearBreaker) prompt = state.breakerOn ? `${actionPrefix}ブレーカーをOFFにする` : `${actionPrefix}ブレーカーをONにする`;
   else if (state.nearShop) prompt = `${actionPrefix}ショップを開く`;
+  else if (nearbyFakeOfuda) prompt = `${actionPrefix}お札を拾う`;
   else if (nearbyKey) prompt = state.mapMode === 'mansion'
     ? `${actionPrefix}お札を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`
     : `${actionPrefix}鍵を拾う（${state.keyCount} / ${REQUIRED_KEYS}）`;
@@ -4623,6 +4733,11 @@ function updateLight(time) {
     item.group.rotation.y = time * 0.9 + item.phase;
     item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;
     item.light.visible = !item.collected && item.group.position.distanceTo(camera.position) < 20;
+  }
+  for (const item of fakeOfudaItems) {
+    item.group.rotation.y = time * 0.9 + item.phase;
+    item.group.position.y = item.baseY + Math.sin(time * 2.1 + item.phase) * 0.06;
+    item.light.visible = state.mapMode === 'mansion' && !item.collected && item.group.position.distanceTo(camera.position) < 18;
   }
 }
 
@@ -4868,7 +4983,7 @@ function animate() {
     updateSonarModel(dt, time);
     if (time >= nextVisionUpdate) {
       updateEnemyVision();
-      nextVisionUpdate = time + (state.mapMode === 'mansion' ? 1 / 5 : 1 / 12);
+      nextVisionUpdate = time + (state.mapMode === 'mansion' ? 0.5 : 1 / 12);
     }
     interactionAccumulator += dt;
     if (interactionAccumulator >= 0.12) {
