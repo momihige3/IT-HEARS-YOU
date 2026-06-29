@@ -543,3 +543,23 @@ Build:
   - This is a practical separation pass layered on top of the current top-level school construction.
   - The mansion remains lazily generated only after mansion selection.
   - Further memory reduction would require moving school creation itself into a factory, but the current patch prevents selected-map gameplay from processing leftover unselected-map colliders/pickups/lights.
+
+## 2026-06-29 Mansion Scale / Culling / Vision Optimization
+
+- Reduced mansion map scale:
+  - Mansion generation grid changed from roughly 17x27 cells to roughly 13x19 cells.
+  - Mansion start, exit, breaker route, and protected spawn/breaker areas were moved to match the smaller layout.
+- Reduced vision rendering cost:
+  - Enemy vision debug/radar line count changed from 13 rays to 5 rays.
+  - Vision ray distance now uses collider clipping for mansion mode too.
+  - Detection at 40% or lower halves vision distance and width.
+- Added mansion distance culling:
+  - Mansion meshes/lights registered during generation are hidden when farther than 30m from the player.
+  - Mansion key/ofuda item groups and lights are also hidden outside 30m.
+  - Mansion ghost skips expensive vision/flashlight/chase processing outside 30m.
+- Mansion interaction/placement fixes:
+  - Mansion breaker panel moved onto a wall.
+  - Mansion lockers increased from 5 to 10.
+  - Mansion shop now has a collider so the player cannot walk through it.
+- Ghost phasing fix:
+  - If the ghost is still inside a wall when wall-phasing ends, it keeps phasing until it exits into a valid position.

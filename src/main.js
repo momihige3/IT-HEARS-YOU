@@ -500,6 +500,7 @@ function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   scene.add(mesh);
+  if (mansionBuilt && inMansionBounds(x, z)) registerMansionObject(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
   return mesh;
 }
@@ -731,14 +732,22 @@ const mansionTrimMat = material(0x2b1d17, 0.82, 0.04, loadTexture('old_door_wood
 const clothWhiteMat = new THREE.MeshStandardMaterial({ color: 0xdad5c8, roughness: 0.94, metalness: 0.0, emissive: 0x181714, emissiveIntensity: 0.08 });
 const hairMat = new THREE.MeshStandardMaterial({ color: 0x050403, roughness: 0.96, metalness: 0.0 });
 const mansionNodes = [];
+const mansionRuntimeObjects = [];
 let mansionStartPoint = null;
 let mansionExit = null;
 let mansionBreakerPanel = null;
 let mansionBreakerSwitch = null;
 let mansionBreakerLight = null;
 let mansionShop = null;
-let mansionBuilt = false;
+var mansionBuilt = false;
 let sonarExternalLoadStarted = false;
+
+const MANSION_RENDER_RADIUS = 30;
+
+function registerMansionObject(object) {
+  if (object) mansionRuntimeObjects.push(object);
+  return object;
+}
 
 function addStairMarker(x, z, label = '2F') {
   const group = new THREE.Group();
@@ -778,19 +787,19 @@ function buildMansionSecondFloor() {
   const offsetX = 68;
   const cells = [];
   const mansionProtectedSpot = (x, z) =>
-    Math.hypot(x - offsetX, z - 40) < 8.5
-    || Math.hypot(x - (offsetX - 30), z - 32) < 8.0
-    || (z > 28 && x > offsetX - 34 && x < offsetX + 6);
-  for (let ix = -8; ix <= 8; ix += 1) {
-    for (let iz = -13; iz <= 13; iz += 1) {
-      const wing = ix === 0 || iz === 0 || Math.abs(ix) === 4 || Math.abs(iz) === 6;
-      const breakerRoute = iz === 11 && ix >= -8 && ix <= 0;
-      const breakerRoom = ix >= -8 && ix <= -6 && iz >= 10 && iz <= 12;
-      const startRoute = ix === 0 && iz >= 10 && iz <= 13;
-      const roomCluster = (Math.abs(ix) <= 2 && Math.abs(iz) <= 12)
-        || (Math.abs(ix) <= 7 && Math.abs(iz) <= 2)
-        || (Math.abs(ix - 5) <= 2 && Math.abs(iz + 8) <= 2)
-        || (Math.abs(ix + 5) <= 2 && Math.abs(iz - 8) <= 2);
+    Math.hypot(x - offsetX, z - 28) < 8.5
+    || Math.hypot(x - (offsetX - 26), z - 24) < 8.0
+    || (z > 20 && x > offsetX - 30 && x < offsetX + 6);
+  for (let ix = -6; ix <= 6; ix += 1) {
+    for (let iz = -9; iz <= 9; iz += 1) {
+      const wing = ix === 0 || iz === 0 || Math.abs(ix) === 3 || Math.abs(iz) === 5;
+      const breakerRoute = iz === 9 && ix >= -6 && ix <= 0;
+      const breakerRoom = ix >= -6 && ix <= -5 && iz >= 8 && iz <= 9;
+      const startRoute = ix === 0 && iz >= 7 && iz <= 9;
+      const roomCluster = (Math.abs(ix) <= 2 && Math.abs(iz) <= 8)
+        || (Math.abs(ix) <= 5 && Math.abs(iz) <= 2)
+        || (Math.abs(ix - 4) <= 1 && Math.abs(iz + 6) <= 1)
+        || (Math.abs(ix + 4) <= 1 && Math.abs(iz - 6) <= 1);
       const keep = wing || breakerRoute || breakerRoom || startRoute || roomCluster || Math.random() > 0.72;
       if (!keep) continue;
       const x = offsetX + ix * CELL;
@@ -804,6 +813,7 @@ function buildMansionSecondFloor() {
         lamp.position.set(x, 3.2, z);
         scene.add(lamp);
         schoolLights.push(lamp);
+        registerMansionObject(lamp);
       }
     }
   }
@@ -823,33 +833,42 @@ function buildMansionSecondFloor() {
       addDeskSet(cell.x + (Math.random() - 0.5) * 1.4, cell.z + (Math.random() - 0.5) * 1.4, Math.random() < 0.5 ? 0 : Math.PI / 2);
     }
   }
-  mansionStartPoint = { x: offsetX, z: 40 };
+  mansionStartPoint = { x: offsetX, z: 28 };
   mansionExit = {
-    mesh: addBox(offsetX + 30, 1.45, -60, 1.55, 2.35, 0.16, doorMat, false, false, false),
-    x: offsetX + 30,
-    z: -60,
+    mesh: addBox(offsetX + 22, 1.45, -48, 1.55, 2.35, 0.16, doorMat, false, false, false),
+    x: offsetX + 22,
+    z: -48,
   };
   const exitGlow = new THREE.PointLight(0xa6d7ff, 2.8, 6);
   exitGlow.position.set(mansionExit.x, 2.6, mansionExit.z);
   scene.add(exitGlow);
   schoolLights.push(exitGlow);
-  mansionBreakerPanel = addBox(offsetX - 30, 1.45, 32, 1.1, 1.35, 0.2, material(0x241915, 0.62, 0.32), true, false, false);
-  mansionBreakerSwitch = addBox(offsetX - 30, 1.78, 31.84, 0.55, 0.2, 0.05, material(0xff6d4d, 0.32), false, false, false);
+  registerMansionObject(exitGlow);
+  mansionBreakerPanel = addBox(offsetX - 25.86, 1.45, 24, 0.18, 1.35, 1.1, material(0x241915, 0.62, 0.32), true, false, false);
+  mansionBreakerSwitch = addBox(offsetX - 25.74, 1.78, 24, 0.05, 0.2, 0.55, material(0xff6d4d, 0.32), false, false, false);
   mansionBreakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
-  mansionBreakerLight.position.set(offsetX - 30, 2.2, 31.2);
+  mansionBreakerLight.position.set(offsetX - 25.55, 2.2, 24);
   scene.add(mansionBreakerLight);
+  registerMansionObject(mansionBreakerLight);
   const shopGroup = new THREE.Group();
   localBox(shopGroup, 0, 0.86, 0, 1.45, 1.35, 0.55, material(0x2a2032, 0.72, 0.08));
   localBox(shopGroup, 0, 1.68, 0.31, 1.1, 0.24, 0.05, material(0x8ac8ff, 0.36, 0.02));
   shopGroup.position.set(offsetX + 24, 0, 28);
   scene.add(shopGroup);
+  registerMansionObject(shopGroup);
   mansionShop = { group: shopGroup, x: offsetX + 24, z: 28 };
+  colliders.push({ x: mansionShop.x, z: mansionShop.z, hw: 0.86, hz: 0.5 });
   for (const [x, z, yaw] of [
     [offsetX - 20, 18, Math.PI / 2],
     [offsetX + 16, 2, -Math.PI / 2],
-    [offsetX - 12, -24, Math.PI],
-    [offsetX + 28, -34, 0],
-    [offsetX - 28, -48, Math.PI / 2],
+    [offsetX - 12, -20, Math.PI],
+    [offsetX + 20, -28, 0],
+    [offsetX - 20, -36, Math.PI / 2],
+    [offsetX + 8, 20, 0],
+    [offsetX - 8, 8, Math.PI],
+    [offsetX + 22, -8, -Math.PI / 2],
+    [offsetX - 22, -8, Math.PI / 2],
+    [offsetX + 4, -40, 0],
   ]) {
     const group = new THREE.Group();
     localBox(group, 0, 1.2, -0.34, 1.15, 2.4, 0.14, mansionTrimMat);
@@ -859,6 +878,7 @@ function buildMansionSecondFloor() {
     group.position.set(x, 0, z);
     group.rotation.y = yaw;
     scene.add(group);
+    registerMansionObject(group);
     lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
     colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
   }
@@ -1547,7 +1567,7 @@ function setWomanPhasingVisual(active) {
 
 const VISION_DISTANCE = 10.5;
 const VISION_HALF_ANGLE = Math.acos(0.84);
-const VISION_RAYS = 13;
+const VISION_RAYS = 5;
 const CAPTURE_DISTANCE = 0.55;
 const MOVING_CAPTURE_DISTANCE = 1.55;
 const MOVING_CLOSE_CAPTURE_DISTANCE = 1.25;
@@ -1606,12 +1626,14 @@ function enemyVisionAlertRatio() {
 function currentEnemyVisionDistance() {
   const ratio = enemyVisionAlertRatio();
   const huntBonus = state.alert === 'HUNTING' ? 1.6 : state.alert === 'SUPER_ALERT' ? 0.9 : 0;
-  return 8.2 + ratio * 6.2 + huntBonus;
+  const lowAlertScale = state.detection <= 40 ? 0.5 : 1;
+  return (8.2 + ratio * 6.2 + huntBonus) * lowAlertScale;
 }
 
 function currentEnemyVisionHalfAngle() {
   const ratio = enemyVisionAlertRatio();
-  return THREE.MathUtils.lerp(Math.PI / 13, Math.PI / 5.2, ratio);
+  const lowAlertScale = state.detection <= 40 ? 0.5 : 1;
+  return THREE.MathUtils.lerp(Math.PI / 13, Math.PI / 5.2, ratio) * lowAlertScale;
 }
 
 function currentEnemyVisionFacingThreshold() {
@@ -1639,17 +1661,22 @@ function updateEnemyVision() {
     enemyVisionLines.visible = false;
     return;
   }
+  if (state.mapMode === 'mansion'
+    && horizontalDistance(visionSource.position, camera.position) > MANSION_RENDER_RADIUS) {
+    enemyVisionLines.visible = false;
+    return;
+  }
   enemyVisionLines.visible = true;
-  const visionDistance = state.mapMode === 'mansion' ? 13.5 : currentEnemyVisionDistance();
-  const visionHalfAngle = state.mapMode === 'mansion' ? Math.PI / 4.2 : currentEnemyVisionHalfAngle();
+  const lowAlertScale = state.detection <= 40 ? 0.5 : 1;
+  const mansionAlertScale = THREE.MathUtils.lerp(0.55, 1.15, enemyVisionAlertRatio()) * lowAlertScale;
+  const visionDistance = state.mapMode === 'mansion' ? 13.5 * mansionAlertScale : currentEnemyVisionDistance();
+  const visionHalfAngle = state.mapMode === 'mansion' ? (Math.PI / 4.2) * mansionAlertScale : currentEnemyVisionHalfAngle();
   for (let i = 0; i < VISION_RAYS; i += 1) {
     const offset = -visionHalfAngle + (visionHalfAngle * 2 * i) / (VISION_RAYS - 1);
     const angle = visionSource.rotation.y + offset;
     const dx = Math.sin(angle);
     const dz = Math.cos(angle);
-    const distance = state.mapMode === 'mansion'
-      ? visionDistance
-      : visionRayDistance(visionSource.position.x, visionSource.position.z, dx, dz, visionDistance);
+    const distance = visionRayDistance(visionSource.position.x, visionSource.position.z, dx, dz, visionDistance);
     const cursor = i * 6;
     visionPositions[cursor] = visionSource.position.x;
     visionPositions[cursor + 1] = 0.08;
@@ -2538,6 +2565,27 @@ function setBreaker(on, notify = true) {
   if (!on) showToast('ブレーカーをOFFにした');
 }
 applyBreakerVisual(false);
+
+function updateMansionDistanceCulling() {
+  if (state.mapMode !== 'mansion') {
+    for (const object of mansionRuntimeObjects) {
+      if (object) object.visible = false;
+    }
+    return;
+  }
+  const radiusSq = MANSION_RENDER_RADIUS * MANSION_RENDER_RADIUS;
+  for (const object of mansionRuntimeObjects) {
+    if (!object) continue;
+    const pos = getWorldXZ(object);
+    object.visible = ((pos.x - camera.position.x) ** 2 + (pos.z - camera.position.z) ** 2) <= radiusSq;
+  }
+  for (const item of keyItems) {
+    if (item.collected) continue;
+    const near = item.group.position.distanceToSquared(camera.position) <= radiusSq;
+    item.group.visible = near;
+    item.light.visible = near && item.light.position.distanceTo(camera.position) < 18;
+  }
+}
 
 function updateSchoolLighting(time) {
   if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
@@ -4182,10 +4230,25 @@ function updateWomanEnemy(dt, time) {
     womanEnemy.nextPhaseAt = time + 30;
     playSonarRoar(0.34);
   }
-  const phasing = time < womanEnemy.phaseUntil;
+  let phasing = time < womanEnemy.phaseUntil;
+  if (!phasing && !canEnemyMoveTo(womanEnemy.group.position.x, womanEnemy.group.position.z, 0.18)) {
+    womanEnemy.exitingWallPhase = true;
+  }
+  if (womanEnemy.exitingWallPhase) {
+    phasing = true;
+    if (canEnemyMoveTo(womanEnemy.group.position.x, womanEnemy.group.position.z, 0.18)) womanEnemy.exitingWallPhase = false;
+  }
   setWomanPhasingVisual(phasing);
   const playerOnSecondFloor = state.mapMode === 'mansion';
   const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
+  if (distance > MANSION_RENDER_RADIUS) {
+    womanEnemy.group.visible = false;
+    for (const part of womanEnemy.detailParts) part.visible = false;
+    enemyVisionLines.visible = false;
+    setDetection(state.detection - dt * 5.8);
+    return;
+  }
+  womanEnemy.group.visible = true;
   const hideGhostDetails = perfFps > 0 && perfFps < 50 && distance < 18;
   for (const part of womanEnemy.detailParts) part.visible = !hideGhostDetails;
   const flashlightHit = isFlashlightHittingWoman();
@@ -4203,11 +4266,14 @@ function updateWomanEnemy(dt, time) {
   const ghostForward = new THREE.Vector3(0, 0, 1).applyQuaternion(womanEnemy.group.quaternion);
   const toGhostPlayer = playerEye.clone().sub(ghostEye).setY(0).normalize();
   if (time - womanEnemy.lastSightCheckAt > 0.28) {
+    const lowAlertScale = state.detection <= 40 ? 0.5 : 1;
+    const ghostVisionDistance = 14.5 * THREE.MathUtils.lerp(0.55, 1.15, enemyVisionAlertRatio()) * lowAlertScale;
+    const ghostVisionHalfAngle = (Math.PI / 4.2) * THREE.MathUtils.lerp(0.55, 1.15, enemyVisionAlertRatio()) * lowAlertScale;
     womanEnemy.cachedSeesPlayer = !stunned
       && playerOnSecondFloor
       && !state.hidden
-      && distance < 14.5
-      && ghostForward.dot(toGhostPlayer) > 0.62
+      && distance < ghostVisionDistance
+      && ghostForward.dot(toGhostPlayer) > Math.cos(ghostVisionHalfAngle)
       && hasLineOfSight(ghostEye, playerEye);
     womanEnemy.lastSightCheckAt = time;
   }
@@ -4617,6 +4683,7 @@ function animate() {
       hudAccumulator = 0;
     }
     updateLight(time);
+    updateMansionDistanceCulling();
     updateAudio(time);
   }
   radarAccumulator += dt;
