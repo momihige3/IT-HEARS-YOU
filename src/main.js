@@ -599,16 +599,16 @@ function makeLocker(gx, gz, wallSide) {
   let x = cell.x;
   let z = cell.z;
   if (wallSide === 'west') {
-    x -= 1.42;
+    x -= 1.22;
     yaw = Math.PI / 2;
   } else if (wallSide === 'east') {
-    x += 1.42;
+    x += 1.22;
     yaw = -Math.PI / 2;
   } else if (wallSide === 'north') {
-    z -= 1.42;
+    z -= 1.22;
     yaw = 0;
   } else {
-    z += 1.42;
+    z += 1.22;
     yaw = Math.PI;
   }
   group.position.set(x, 1.25, z);
@@ -857,23 +857,44 @@ function buildMansionSecondFloor() {
   const shopGroup = new THREE.Group();
   localBox(shopGroup, 0, 0.86, 0, 1.45, 1.35, 0.55, material(0x2a2032, 0.72, 0.08));
   localBox(shopGroup, 0, 1.68, 0.31, 1.1, 0.24, 0.05, material(0x8ac8ff, 0.36, 0.02));
-  shopGroup.position.set(offsetX + 24, 0, 28);
+  const mansionShopNode = mansionNodes
+    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 9)
+    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 9)
+    .sort(() => Math.random() - 0.5)[0] || nearestMansionNode(offsetX + 12, 12) || { x: offsetX + 12, z: 12 };
+  const mansionShopSide = [
+    { x: -1.18, z: 0, yaw: Math.PI / 2 },
+    { x: 1.18, z: 0, yaw: -Math.PI / 2 },
+    { x: 0, z: -1.18, yaw: 0 },
+    { x: 0, z: 1.18, yaw: Math.PI },
+  ].find((side) => canEnemyMoveTo(mansionShopNode.x - side.x * 0.75, mansionShopNode.z - side.z * 0.75, 0.24)) || { x: 0, z: 0, yaw: 0 };
+  shopGroup.position.set(mansionShopNode.x + mansionShopSide.x, 0, mansionShopNode.z + mansionShopSide.z);
+  shopGroup.rotation.y = mansionShopSide.yaw;
   scene.add(shopGroup);
   registerMansionObject(shopGroup);
-  mansionShop = { group: shopGroup, x: offsetX + 24, z: 28 };
-  colliders.push({ x: mansionShop.x, z: mansionShop.z, hw: 0.86, hz: 0.5 });
-  for (const [x, z, yaw] of [
-    [offsetX - 20, 18, Math.PI / 2],
-    [offsetX + 16, 2, -Math.PI / 2],
-    [offsetX - 12, -20, Math.PI],
-    [offsetX + 20, -28, 0],
-    [offsetX - 20, -36, Math.PI / 2],
-    [offsetX + 8, 20, 0],
-    [offsetX - 8, 8, Math.PI],
-    [offsetX + 22, -8, -Math.PI / 2],
-    [offsetX - 22, -8, Math.PI / 2],
-    [offsetX + 4, -40, 0],
-  ]) {
+  mansionShop = { group: shopGroup, x: shopGroup.position.x, z: shopGroup.position.z };
+  colliders.push({
+    x: mansionShop.x,
+    z: mansionShop.z,
+    hw: Math.abs(Math.sin(shopGroup.rotation.y)) > 0.5 ? 0.34 : 0.72,
+    hz: Math.abs(Math.sin(shopGroup.rotation.y)) > 0.5 ? 0.72 : 0.34,
+  });
+  const mansionLockerNodes = mansionNodes
+    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 7)
+    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 7)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 10);
+  for (const node of mansionLockerNodes) {
+    const sideOptions = [
+      { x: -1.22, z: 0, yaw: Math.PI / 2 },
+      { x: 1.22, z: 0, yaw: -Math.PI / 2 },
+      { x: 0, z: -1.22, yaw: 0 },
+      { x: 0, z: 1.22, yaw: Math.PI },
+    ].filter((side) => canEnemyMoveTo(node.x - side.x * 0.65, node.z - side.z * 0.65, 0.24));
+    const side = sideOptions[0] || { x: 0, z: 0, yaw: 0 };
+    const x = node.x + side.x;
+    const z = node.z + side.z;
+    const yaw = side.yaw;
+    if (hasColliderOverlap(x, z, 0.28)) continue;
     const group = new THREE.Group();
     localBox(group, 0, 1.2, -0.34, 1.15, 2.4, 0.14, mansionTrimMat);
     localBox(group, -0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
@@ -2612,12 +2633,24 @@ function updateMansionDistanceCulling() {
     return;
   }
   const radiusSq = MANSION_RENDER_RADIUS * MANSION_RENDER_RADIUS;
+  const power = state.breakerOn ? 1 : 0;
   scene.background.set(0x000000);
   scene.fog.density = state.breakerOn ? 0.065 : 0.105;
+  hemisphereLight.intensity = THREE.MathUtils.lerp(0.16, 2.4, power);
+  ambientLight.intensity = THREE.MathUtils.lerp(0.08, 1.85, power);
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(0.86, 1.72, power);
   for (const object of mansionRuntimeObjects) {
     if (!object) continue;
     const pos = getWorldXZ(object);
     object.visible = ((pos.x - camera.position.x) ** 2 + (pos.z - camera.position.z) ** 2) <= radiusSq;
+    if (object.isLight) {
+      object.intensity = object === mansionBreakerLight
+        ? THREE.MathUtils.lerp(1.25, 2.6, power)
+        : THREE.MathUtils.lerp(0.55, 8.5, power);
+      object.distance = object === mansionBreakerLight
+        ? 3.6
+        : THREE.MathUtils.lerp(7, 18, power);
+    }
   }
   for (const item of keyItems) {
     if (item.collected) continue;
@@ -2817,6 +2850,9 @@ function respawnPlayer() {
   womanEnemy.stunnedUntil = 0;
   womanEnemy.repathAt = 0;
   womanEnemy.hiddenRedirectAt = 0;
+  womanEnemy.group.rotation.x = 0;
+  womanEnemy.group.rotation.z = 0;
+  womanEnemy.group.scale.setScalar(1);
   setWomanPhasingVisual(false);
   placeKeyItemsForMode(respawnMode);
   updateExitCounter();
@@ -3065,6 +3101,9 @@ async function startGame(mode = 'school') {
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
     womanEnemy.hiddenRedirectAt = 0;
+    womanEnemy.group.rotation.x = 0;
+    womanEnemy.group.rotation.z = 0;
+    womanEnemy.group.scale.setScalar(1);
     setWomanPhasingVisual(false);
     womanEnemy.target = nearestMansionNode(safeStart.x, safeStart.z, 14);
   } else {
@@ -3610,12 +3649,27 @@ function canPlaceShopAt(x, z) {
   return true;
 }
 
+function shopWallPositionForRoom(room) {
+  const center = roomCenter(room);
+  const preferWest = room.sign.side === 'east';
+  const wallX = preferWest
+    ? worldFromGrid(room.gx0, room.gz0).x - CELL / 2 + 0.72
+    : worldFromGrid(room.gx1, room.gz1).x + CELL / 2 - 0.72;
+  return {
+    x: wallX,
+    z: center.z,
+    yaw: preferWest ? Math.PI / 2 : -Math.PI / 2,
+  };
+}
+
 function createShop() {
-  const candidates = walkableNodes
-    .filter((node) => canPlaceShopAt(node.x, node.z))
+  const candidates = schoolRooms
+    .filter((room) => room.id !== 'breaker')
+    .map((room) => ({ room, ...shopWallPositionForRoom(room) }))
+    .filter((candidate) => canPlaceShopAt(candidate.x, candidate.z))
     .sort(() => Math.random() - 0.5);
-  const roomFallbacks = walkableNodes.filter((node) => getRoomAt(node.gx, node.gz));
-  const node = candidates[0] || roomFallbacks[Math.floor(roomFallbacks.length / 2)] || walkableNodes[Math.floor(walkableNodes.length / 2)];
+  const fallbackRoom = schoolRooms.find((room) => room.id !== 'breaker') || schoolRooms[0];
+  const node = candidates[0] || shopWallPositionForRoom(fallbackRoom);
   const group = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 0.42), shopMat);
   body.position.y = 0.86;
@@ -3628,9 +3682,15 @@ function createShop() {
   coinMark.rotation.x = Math.PI / 2;
   group.add(coinMark);
   group.position.set(node.x, 0, node.z);
+  group.rotation.y = node.yaw || 0;
   scene.add(group);
   shop = { group, x: node.x, z: node.z };
-  colliders.push({ x: shop.x, z: shop.z, hw: 0.72, hz: 0.34 });
+  colliders.push({
+    x: shop.x,
+    z: shop.z,
+    hw: Math.abs(Math.sin(group.rotation.y)) > 0.5 ? 0.34 : 0.72,
+    hz: Math.abs(Math.sin(group.rotation.y)) > 0.5 ? 0.72 : 0.34,
+  });
 }
 
 function setShopMessage(text) {
@@ -4323,11 +4383,15 @@ function updateWomanEnemy(dt, time) {
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     womanEnemy.target = null;
-    womanEnemy.group.position.y = Math.sin(time * 2.2) * 0.015;
+    womanEnemy.group.rotation.x = THREE.MathUtils.lerp(womanEnemy.group.rotation.x, -Math.PI / 2.2, 0.14);
+    womanEnemy.group.rotation.z = THREE.MathUtils.lerp(womanEnemy.group.rotation.z, 0.18, 0.12);
+    womanEnemy.group.position.y = 0.24 + Math.sin(time * 2.2) * 0.012;
     setDetection(state.detection - dt * 9);
     state.alert = state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
     return;
   }
+  womanEnemy.group.rotation.x = THREE.MathUtils.lerp(womanEnemy.group.rotation.x, 0, 0.09);
+  womanEnemy.group.rotation.z = THREE.MathUtils.lerp(womanEnemy.group.rotation.z, 0, 0.09);
   if (time >= womanEnemy.nextPhaseAt) {
     womanEnemy.phaseChargeUntil = time + 1.0;
     womanEnemy.phaseUntil = time + 2.0;

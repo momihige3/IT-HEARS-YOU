@@ -619,3 +619,20 @@ Build:
 - Mansion exit visibility improved:
   - Added door/glass pieces and an exit sign object.
   - Wall text helper now supports north/south facing signs.
+
+## 2026-06-29 Shop / Locker / Breaker / Stun Follow-up
+
+- Shop placement/collision fixes:
+  - School shop now uses room wall-side placement instead of room center placement.
+  - Mansion shop is now selected from mansion floor nodes and offset toward a side, instead of being fixed near the start route.
+  - Shop colliders now rotate with the shop so they block the object shape without sealing passages.
+- Locker placement fixes:
+  - School locker wall offset reduced so lockers are less likely to sink into walls.
+  - Mansion lockers are now generated from valid mansion floor nodes instead of fixed coordinates.
+  - Mansion lockers are skipped if their chosen wall-side position overlaps an existing collider.
+- Mansion breaker lighting fix:
+  - Mansion mode now updates ambient/hemisphere light, exposure, and mansion point lights when the breaker is ON.
+  - This replaces the school-lighting path that is intentionally skipped in mansion mode.
+- Ghost stun pose:
+  - While stunned, the ghost rotates down into a fallen pose.
+  - On recovery/respawn/map start, rotation and scale are reset.
