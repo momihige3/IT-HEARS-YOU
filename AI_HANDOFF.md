@@ -509,3 +509,22 @@ Build:
   - Expired far puddles are removed without doing per-frame visual work.
 - Reduced AI node overhead:
   - Mansion nearest-node helpers now use linear best search instead of allocating/filtering/sorting arrays.
+
+## 2026-06-29 Map Select Loading / Deferred Heavy Assets
+
+- Added a loading overlay:
+  - `#loading-screen` displays map loading status after selecting `学校` or `屋敷`.
+  - `startGame()` is now async and yields frames between loading phases.
+- Deferred selected-map initialization:
+  - Mansion generation no longer runs at title startup.
+  - `buildMansionSecondFloor()` is called only when `屋敷` is selected.
+  - SONAR external GLB/OBJ loading no longer runs at title startup.
+  - `loadExternalSonarModel()` is called only when `学校` is selected.
+  - The loader guard prevents duplicate mansion generation or duplicate SONAR model loads.
+- Reduced title/loading processing:
+  - Radar/minimap update now returns before doing work if the game has not started or loading is active.
+  - During loading, the main animation loop renders only the loading frame and skips gameplay/AI/radar/audio updates.
+- Remaining technical note:
+  - The school base map is still generated at module startup because school generation, exit, keys, enemy start, and several shared systems are currently top-level dependencies.
+  - A full “only generate school after school selection” refactor requires splitting the school map factory and moving dependent item/enemy initialization under that factory.
+  - Current patch removes the heavier mansion generation and SONAR external model loading from startup, and stops unselected/loading processing.

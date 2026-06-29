@@ -105,6 +105,23 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
 .danger-button:disabled { display:none; }
 #toast { position:fixed; z-index:12; left:50%; top:23%; transform:translate(-50%,-10px); opacity:0; padding:13px 24px; border-left:3px solid #9caaa1; background:rgba(5,8,6,.78); font:16px 'Share Tech Mono'; letter-spacing:.12em; transition:.3s; }
 #toast.show { opacity:1; transform:translate(-50%,0); }
+#loading-screen {
+  position:fixed;
+  inset:0;
+  z-index:35;
+  display:grid;
+  place-items:center;
+  background:radial-gradient(circle,rgba(28,34,29,.82),rgba(2,4,3,.98));
+  color:#dbe4dd;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:opacity .18s;
+}
+#loading-screen.visible { opacity:1; visibility:visible; pointer-events:auto; }
+#loading-screen div { display:grid; gap:12px; text-align:center; letter-spacing:.14em; }
+#loading-screen strong { font-size:38px; }
+#loading-screen span { color:#91a096; font:14px 'Share Tech Mono'; }
 @media(max-width:650px){ #hud{inset:18px 16px auto}.status-cluster{width:250px}.status-row{grid-template-columns:70px 1fr 30px;font-size:11px}.objective strong{font-size:17px}#bottom-hud{inset:auto 16px 18px}.controls{width:100%;grid-template-columns:1fr 1fr}.title-block{width:88vw}#radar-panel{right:12px;top:130px;transform:scale(.72);transform-origin:top right} }
 @media (hover:none) and (pointer:coarse) and (orientation:landscape) {
   body.game-running #mobile-controls { display:block; }

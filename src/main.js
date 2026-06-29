@@ -124,6 +124,7 @@ const savedShopUpgrades = loadPersistentShopUpgrades();
 
 const state = {
   started: false,
+  loading: false,
   ended: false,
   caught: false,
   caughtAt: 0,
@@ -691,6 +692,8 @@ let mansionBreakerPanel = null;
 let mansionBreakerSwitch = null;
 let mansionBreakerLight = null;
 let mansionShop = null;
+let mansionBuilt = false;
+let sonarExternalLoadStarted = false;
 
 function addStairMarker(x, z, label = '2F') {
   const group = new THREE.Group();
@@ -725,6 +728,8 @@ function addStairMarker(x, z, label = '2F') {
 }
 
 function buildMansionSecondFloor() {
+  if (mansionBuilt) return;
+  mansionBuilt = true;
   const offsetX = 68;
   const cells = [];
   const mansionProtectedSpot = (x, z) =>
@@ -1000,8 +1005,6 @@ for (const room of schoolRooms) {
   addWallPlate(room.name, room.sign);
 }
 addCorridorDetails();
-buildMansionSecondFloor();
-
 const exitCounterCanvas = document.createElement('canvas');
 exitCounterCanvas.width = 512;
 exitCounterCanvas.height = 128;
@@ -1353,6 +1356,8 @@ function ensureModelUv(geometry) {
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 }
 function loadExternalSonarModel() {
+  if (sonarExternalLoadStarted || externalSonarModel) return;
+  sonarExternalLoadStarted = true;
   const finalizeLoadedModel = (model) => {
     enemy.add(model);
     externalSonarModel = model;
@@ -1404,7 +1409,6 @@ function loadExternalSonarModel() {
     finalizeLoadedModel(model);
   }, undefined, loadObjFallback);
 }
-loadExternalSonarModel();
 
 function createWomanEnemy() {
   const group = new THREE.Group();
@@ -2783,6 +2787,18 @@ function lockPointer() {
   }
 }
 
+function setLoading(visible, detail = 'マップを準備しています...') {
+  state.loading = visible;
+  const loading = $('#loading-screen');
+  const detailNode = $('#loading-detail');
+  if (detailNode) detailNode.textContent = detail;
+  loading?.classList.toggle('visible', visible);
+}
+
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
 const sensitivitySlider = $('#sensitivity-slider');
 sensitivitySlider.addEventListener('input', () => {
   const value = Number(sensitivitySlider.value);
@@ -2816,16 +2832,30 @@ $('#settings-quit').addEventListener('click', () => {
 controls.addEventListener('unlock', () => {
   if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen) openSettings();
 });
-function startGame(mode = 'school') {
+async function startGame(mode = 'school') {
+  if (state.loading || state.started) return;
+  setLoading(true, mode === 'mansion' ? '屋敷マップを生成しています...' : '学校マップを準備しています...');
+  await nextFrame();
   state.mapMode = mode;
   state.floorLevel = mode === 'mansion' ? 2 : 1;
+  if (mode === 'mansion') {
+    buildMansionSecondFloor();
+    await nextFrame();
+    enemy.visible = false;
+    womanEnemy.group.visible = true;
+  } else {
+    loadExternalSonarModel();
+    await nextFrame();
+    enemy.visible = true;
+    womanEnemy.group.visible = false;
+  }
+  setLoading(true, 'アイテムと敵を配置しています...');
+  await nextFrame();
   placeKeyItemsForMode(mode);
   if (mode === 'mansion' && mansionStartPoint) {
     const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
     camera.position.set(safeStart.x, 1.68, safeStart.z);
     camera.rotation.set(0, Math.PI, 0);
-    enemy.visible = false;
-    womanEnemy.group.visible = true;
     womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
@@ -2834,9 +2864,9 @@ function startGame(mode = 'school') {
   } else {
     camera.position.set(playerStart.x, 1.68, playerStart.z);
     camera.rotation.set(0, 0, 0);
-    enemy.visible = true;
-    womanEnemy.group.visible = false;
   }
+  setLoading(true, 'ゲームを開始しています...');
+  await nextFrame();
   state.started = true;
   initAudio();
   scheduleNextRoar(clock.elapsedTime);
@@ -2847,6 +2877,7 @@ function startGame(mode = 'school') {
   if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
   document.body.classList.add('game-running');
   $('#start-screen').classList.remove('visible');
+  setLoading(false);
   lockPointer();
 }
 
@@ -4237,6 +4268,7 @@ function angleDelta(a, b) {
 }
 
 function updateRadar(dt, time) {
+  if (!state.started || state.loading) return;
   radar.clearRect(0, 0, minimap.width, minimap.height);
   radar.fillStyle = 'rgba(3,9,6,.92)';
   radar.fillRect(0, 0, minimap.width, minimap.height);
@@ -4446,6 +4478,10 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
   const time = clock.elapsedTime;
+  if (state.loading) {
+    renderer.render(scene, camera);
+    return;
+  }
   if (state.caught) {
     updateCaughtCutscene(time);
   } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen) {
