@@ -404,49 +404,44 @@ function getRoomAt(gx, gz) {
   return schoolRooms.find((room) => gx >= room.gx0 && gx <= room.gx1 && gz >= room.gz0 && gz <= room.gz1) || null;
 }
 
-// Randomized school layout: a connected spine, classrooms, dead ends, and uneven loops.
-for (let gz = 0; gz < GRID_H; gz += 1) carve(6, gz);
-for (const gz of [2, 5, 8, 11, 14, 17]) {
-  const leftEnd = 1 + Math.floor(Math.random() * 2);
-  const rightEnd = 10 + Math.floor(Math.random() * 2);
-  for (let gx = leftEnd; gx <= rightEnd; gx += 1) carve(gx, gz);
+function shuffledDirections() {
+  return [...directions].sort(() => Math.random() - 0.5);
 }
-for (const gx of [1, 3, 9, 11]) {
-  let z = 2 + Math.floor(Math.random() * 2);
-  while (z < GRID_H - 1) {
-    const length = 3 + Math.floor(Math.random() * 5);
-    for (let step = 0; step < length && z < GRID_H - 1; step += 1, z += 1) carve(gx, z);
-    z += 1 + Math.floor(Math.random() * 2);
+
+// Randomized school layout: carve a true maze first, then attach rooms to it.
+function carveSchoolMaze() {
+  const visited = new Set();
+  const stack = [{ gx: 1, gz: 1 }];
+  visited.add(gridKey(1, 1));
+  carve(1, 1);
+  while (stack.length) {
+    const current = stack[stack.length - 1];
+    const choices = shuffledDirections()
+      .map(([dx, dz]) => ({ gx: current.gx + dx * 2, gz: current.gz + dz * 2, dx, dz }))
+      .filter((next) => next.gx > 0 && next.gx < GRID_W - 1 && next.gz > 0 && next.gz < GRID_H - 1 && !visited.has(gridKey(next.gx, next.gz)));
+    if (!choices.length) {
+      stack.pop();
+      continue;
+    }
+    const next = choices[0];
+    carve(current.gx + next.dx, current.gz + next.dz);
+    carve(next.gx, next.gz);
+    visited.add(gridKey(next.gx, next.gz));
+    stack.push({ gx: next.gx, gz: next.gz });
   }
-}
-for (let i = 0; i < 16; i += 1) {
-  const gx = 1 + Math.floor(Math.random() * (GRID_W - 2));
-  const gz = 1 + Math.floor(Math.random() * (GRID_H - 2));
-  if (walkable.has(gridKey(gx, gz))) {
+  // Add a few loops and dead-end side branches so runs do not feel identical.
+  for (let i = 0; i < 14; i += 1) {
+    const gx = 1 + Math.floor(Math.random() * (GRID_W - 2));
+    const gz = 1 + Math.floor(Math.random() * (GRID_H - 2));
     const [dx, dz] = directions[Math.floor(Math.random() * directions.length)];
+    carve(gx, gz);
     carve(gx + dx, gz + dz);
   }
 }
-for (let i = 0; i < 26; i += 1) {
-  const seeds = [...walkable];
-  const [startGx, startGz] = seeds[Math.floor(Math.random() * seeds.length)].split(',').map(Number);
-  const [dx, dz] = directions[Math.floor(Math.random() * directions.length)];
-  const length = 2 + Math.floor(Math.random() * 5);
-  for (let step = 1; step <= length; step += 1) {
-    const gx = startGx + dx * step;
-    const gz = startGz + dz * step;
-    if (gx <= 0 || gx >= GRID_W - 1 || gz <= 0 || gz >= GRID_H - 1) break;
-    carve(gx, gz);
-    if (Math.random() < 0.22) {
-      const [branchDx, branchDz] = directions[Math.floor(Math.random() * directions.length)];
-      carve(gx + branchDx, gz + branchDz);
-    }
-  }
-}
-carve(1, 17);
-carve(2, 17);
-carve(10, 1);
-carve(11, 1);
+
+carveSchoolMaze();
+carve(6, 18);
+carve(6, 17);
 
 for (const room of schoolRooms) {
   for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
@@ -795,7 +790,6 @@ function buildMansionSecondFloor() {
   for (let ix = -6; ix <= 6; ix += 1) {
     for (let iz = -9; iz <= 9; iz += 1) {
       const norm = Math.hypot(ix / 5.8, iz / 8.2);
-      if (norm > 1.08) continue;
       const centerPlaza = Math.hypot(ix, iz) <= 1.25;
       const threeRoutes = ix === 0 || (iz === 0 && ix >= 0) || (ix + Math.round(iz * 0.65) === 0 && iz < 0);
       const ring = Math.abs(norm - 0.68) < 0.13 || Math.abs(norm - 0.93) < 0.08;
@@ -803,11 +797,13 @@ function buildMansionSecondFloor() {
       const breakerRoute = iz === 9 && ix >= -6 && ix <= 0;
       const breakerRoom = ix >= -6 && ix <= -5 && iz >= 8 && iz <= 9;
       const startRoute = ix === 0 && iz >= 7 && iz <= 9;
+      const exitRoute = iz === -9 && ix >= 0 && ix <= 6;
+      if (norm > 1.08 && !breakerRoute && !breakerRoom && !startRoute && !exitRoute) continue;
       const roomCluster = (Math.abs(ix) <= 2 && Math.abs(iz) <= 8)
         || (Math.abs(ix) <= 5 && Math.abs(iz) <= 2)
         || (Math.abs(ix - 4) <= 1 && Math.abs(iz + 6) <= 1)
         || (Math.abs(ix + 4) <= 1 && Math.abs(iz - 6) <= 1);
-      const keep = wing || breakerRoute || breakerRoom || startRoute || roomCluster || Math.random() > 0.82;
+      const keep = wing || breakerRoute || breakerRoom || startRoute || exitRoute || roomCluster || Math.random() > 0.86;
       if (!keep) continue;
       const x = offsetX + ix * CELL;
       const z = -12 + iz * CELL;
@@ -855,10 +851,11 @@ function buildMansionSecondFloor() {
   scene.add(exitGlow);
   schoolLights.push(exitGlow);
   registerMansionObject(exitGlow);
-  mansionBreakerPanel = addBox(offsetX - 25.86, 1.45, 24, 0.18, 1.35, 1.1, material(0x241915, 0.62, 0.32), true, false, false);
-  mansionBreakerSwitch = addBox(offsetX - 25.74, 1.78, 24, 0.05, 0.2, 0.55, material(0xff6d4d, 0.32), false, false, false);
+  const breakerAnchor = nearestMansionNode(offsetX - 24, 24) || { x: offsetX - 24, z: 24 };
+  mansionBreakerPanel = addBox(breakerAnchor.x - 1.86, 1.45, breakerAnchor.z, 0.18, 1.35, 1.1, material(0x241915, 0.62, 0.32), true, false, false);
+  mansionBreakerSwitch = addBox(breakerAnchor.x - 1.74, 1.78, breakerAnchor.z, 0.05, 0.2, 0.55, material(0xff6d4d, 0.32), false, false, false);
   mansionBreakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
-  mansionBreakerLight.position.set(offsetX - 25.55, 2.2, 24);
+  mansionBreakerLight.position.set(breakerAnchor.x - 1.55, 2.2, breakerAnchor.z);
   scene.add(mansionBreakerLight);
   registerMansionObject(mansionBreakerLight);
   applyBreakerVisual(false);
@@ -1652,6 +1649,14 @@ function createWomanEnemy() {
 
 const womanEnemy = createWomanEnemy();
 markSharedObject(womanEnemy.group);
+const ghostEmergeEffect = new THREE.Mesh(
+  new THREE.CircleGeometry(1.45, 28),
+  new THREE.MeshBasicMaterial({ color: 0x5a0606, transparent: true, opacity: 0, depthWrite: false }),
+);
+ghostEmergeEffect.rotation.x = -Math.PI / 2;
+ghostEmergeEffect.visible = false;
+markSharedObject(ghostEmergeEffect);
+scene.add(ghostEmergeEffect);
 womanEnemy.group.traverse((child) => {
   if (!child.material) return;
   const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -2911,6 +2916,7 @@ function respawnPlayer() {
   womanEnemy.hiddenRedirectAt = 0;
   womanEnemy.emergeStartedAt = 0;
   womanEnemy.emergeUntil = 0;
+  ghostEmergeEffect.visible = false;
   womanEnemy.group.rotation.x = 0;
   womanEnemy.group.rotation.z = 0;
   womanEnemy.group.scale.setScalar(1);
@@ -3164,6 +3170,7 @@ async function startGame(mode = 'school') {
     womanEnemy.hiddenRedirectAt = 0;
     womanEnemy.emergeStartedAt = 0;
     womanEnemy.emergeUntil = 0;
+    ghostEmergeEffect.visible = false;
     womanEnemy.group.rotation.x = 0;
     womanEnemy.group.rotation.z = 0;
     womanEnemy.group.scale.setScalar(1);
@@ -4436,6 +4443,10 @@ function triggerFakeOfudaTrap(item) {
   womanEnemy.target = null;
   womanEnemy.emergeStartedAt = clock.elapsedTime;
   womanEnemy.emergeUntil = clock.elapsedTime + 3;
+  ghostEmergeEffect.position.set(node.x, 0.035, node.z);
+  ghostEmergeEffect.scale.setScalar(0.25);
+  ghostEmergeEffect.material.opacity = 0.78;
+  ghostEmergeEffect.visible = true;
   womanEnemy.stunnedUntil = 0;
   womanEnemy.phaseChargeUntil = 0;
   womanEnemy.phaseUntil = 0;
@@ -4474,12 +4485,16 @@ function updateWomanEnemy(dt, time) {
     womanEnemy.group.position.y = THREE.MathUtils.lerp(-1.8, 0.28, progress);
     womanEnemy.group.rotation.x = THREE.MathUtils.lerp(-0.45, 0, progress);
     womanEnemy.group.scale.setScalar(THREE.MathUtils.lerp(0.65, 1, progress));
+    ghostEmergeEffect.visible = true;
+    ghostEmergeEffect.scale.setScalar(0.35 + progress * 1.15);
+    ghostEmergeEffect.material.opacity = 0.72 * (1 - progress * 0.55);
     setWomanPhasingVisual(true);
     enemyVisionLines.visible = false;
     setDetection(100);
     return;
   } else if (womanEnemy.emergeUntil) {
     womanEnemy.emergeUntil = 0;
+    ghostEmergeEffect.visible = false;
     setWomanPhasingVisual(false);
   }
   if (time < state.fakeOfudaAlertUntil) setDetection(100);

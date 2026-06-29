@@ -663,3 +663,21 @@ Build:
   - Coin spawning now uses mansion nodes while in mansion mode.
   - Mansion respawns also schedule coin spawning.
 - Out-of-detection running alert gain doubled.
+
+## 2026-06-30 Random Map / Breaker / Fake Ofuda Emerge Fix
+
+- School map generation changed from a fixed central hallway with room branches to a randomized maze-first layout:
+  - A DFS-style corridor maze is carved before attaching school rooms.
+  - Extra loop branches are added so the route is not just a straight central corridor.
+  - Start-side cells are explicitly carved so the player spawn remains connected.
+- Mansion maze generation fixed:
+  - Breaker route, breaker room, start route, and exit route are protected from the ellipse/outside-cell skip.
+  - This prevents the breaker route from being removed and keeps the breaker reachable inside the generated map.
+  - Maze retention is slightly stricter to keep the mansion closer to a small central plaza plus surrounding labyrinth.
+- Mansion breaker placement fixed:
+  - Breaker panel/switch/light are now anchored to the nearest valid mansion floor node instead of fixed world coordinates.
+  - Breaker visual is reset to OFF after generation.
+- Fake ofuda trap presentation improved:
+  - Added a floor sigil/ripple effect where the ghost emerges.
+  - Fake ofuda now starts the visible effect immediately when triggered.
+  - During the 3-second emergence, the effect expands/fades while the ghost rises from below the floor.
