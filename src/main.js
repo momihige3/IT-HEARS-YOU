@@ -1851,6 +1851,7 @@ function createWomanEnemy() {
 
 const womanEnemy = createWomanEnemy();
 markSharedObject(womanEnemy.group);
+const WOMAN_MODEL_FORWARD_YAW = Math.PI / 2;
 const ghostDouble = createWomanEnemy();
 markSharedObject(ghostDouble.group);
 ghostDouble.group.visible = false;
@@ -1890,7 +1891,7 @@ function loadExternalWomanModel() {
   loader.load('./models/yurei_woman_v1.glb', (gltf) => {
     const model = gltf.scene;
     model.name = 'YUREI_WOMAN_V1_GLB';
-    model.rotation.y = Math.PI;
+    model.rotation.y = WOMAN_MODEL_FORWARD_YAW;
     model.position.set(0, -0.03, 0);
     model.scale.setScalar(1.02);
     model.traverse((child) => {
@@ -1932,6 +1933,7 @@ function applyExternalWomanModelToGhostDouble(sourceModel) {
   if (!sourceModel || ghostDouble.externalModel) return;
   const clone = sourceModel.clone(true);
   clone.name = 'YUREI_WOMAN_V1_DOUBLE_GLB';
+  clone.rotation.y = WOMAN_MODEL_FORWARD_YAW;
   ghostDouble.visualMaterials = [];
   clone.traverse((child) => {
     child.frustumCulled = true;
@@ -5216,9 +5218,9 @@ function updateWomanEnemy(dt, time) {
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     womanEnemy.target = null;
-    womanEnemy.group.rotation.x = THREE.MathUtils.lerp(womanEnemy.group.rotation.x, -Math.PI / 2.2, 0.14);
-    womanEnemy.group.rotation.z = THREE.MathUtils.lerp(womanEnemy.group.rotation.z, 0.18, 0.12);
-    womanEnemy.group.position.y = 0.24 + Math.sin(time * 2.2) * 0.012;
+    womanEnemy.group.rotation.x = -Math.PI / 2.15;
+    womanEnemy.group.rotation.z = 0.18;
+    womanEnemy.group.position.y = 0.12 + Math.sin(time * 1.6) * 0.006;
     setDetection(state.detection - dt * 9);
     state.alert = state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
     return;
@@ -5285,6 +5287,9 @@ function updateWomanEnemy(dt, time) {
   updateGhostStunReticle(flashlightHit);
   if (state.ghostLightSeconds >= 3 * state.ghostStunTimeMultiplier) {
     womanEnemy.stunnedUntil = time + 10;
+    womanEnemy.group.rotation.x = -Math.PI / 2.15;
+    womanEnemy.group.rotation.z = 0.18;
+    womanEnemy.group.position.y = 0.12;
     state.ghostLightSeconds = 0;
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
@@ -5362,10 +5367,7 @@ function updateWomanEnemy(dt, time) {
       const moveZ = womanEnemy.group.position.z - prevZ;
       if (Math.hypot(moveX, moveZ) > 0.001) {
         const moveYaw = Math.atan2(moveX, moveZ);
-        womanEnemy.group.rotation.y = Math.atan2(
-          Math.sin(moveYaw) * 0.35 + Math.sin(womanEnemy.group.rotation.y) * 0.65,
-          Math.cos(moveYaw) * 0.35 + Math.cos(womanEnemy.group.rotation.y) * 0.65,
-        );
+        womanEnemy.group.rotation.y = moveYaw;
       }
     }
   }

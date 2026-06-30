@@ -845,3 +845,14 @@ Build:
 - Eye scare voice volume reduced to one third of the normal SE volume.
 - Eye scare voice playback is triggered immediately at the scare start frame before the overlay timer is set.
 - `doko_ni_iruno.mp3` is now treated as a calm-only eye scare voice and will not play when detection is 50 or higher.
+
+## 2026-06-30 Mansion Ghost Facing / Stun Pose Fix
+
+- Mansion ghost GLB local forward axis adjusted:
+  - The external yurei model now uses a 90-degree local yaw offset so the visible model faces the same direction as the AI movement vector.
+  - The ghost doppelganger clone receives the same local yaw correction.
+- Mansion ghost rotation during movement is now set directly from actual movement delta instead of smoothed toward it.
+  - This reduces visible sideways sliding at corners and wall-correction movement.
+- Stun pose hardened:
+  - On stun trigger, the ghost immediately snaps to a fallen pose.
+  - While stunned, X/Z rotation and low position are forced every frame instead of lerped, preventing the ghost from standing upright during stun.
