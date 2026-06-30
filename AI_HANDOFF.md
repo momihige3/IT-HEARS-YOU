@@ -810,3 +810,16 @@ Build:
   - Turning the breaker ON now opens a 3x3 sequence minigame.
   - The player must press 5 lit cells in order, similar to the Among Us breaker/memory task.
   - Gameplay pauses while the breaker minigame is open.
+
+## 2026-06-30 Breaker Minigame / Pickup Placement / Ghost Facing Fix
+
+- Breaker minigame timing adjusted:
+  - The sequence now starts after a 3-second countdown once the minigame screen is visible.
+  - The 5-cell sequence now uses unique grid positions and does not repeat the same cell in one round.
+- Pickup placement tightened:
+  - School keys avoid breaker and lockers within 3m.
+  - School shop placement already rejects positions within 3m of keys, preserving the same separation.
+  - Mansion real ofuda and fake ofuda now avoid breaker, shop, and lockers within 3m.
+- Enemy movement visual fix:
+  - Mansion ghost and ghost doppelganger now face their actual movement vector.
+  - This prevents visible sideways sliding when sliding along walls or correcting around obstacles.

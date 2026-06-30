@@ -1333,15 +1333,26 @@ const keyOffsets = [
   [0, 0], [0.72, 0], [-0.72, 0], [0, 0.72], [0, -0.72],
   [0.62, 0.62], [-0.62, 0.62], [0.62, -0.62], [-0.62, -0.62],
 ];
+function pickupNearRestrictedUtility(x, z, mode = state.mapMode) {
+  const point = { x, z };
+  const activeBreaker = mode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel.position : breakerPanel.position;
+  const activeShop = mode === 'mansion' && mansionShop ? mansionShop : shop;
+  if (activeBreaker && horizontalDistance(point, activeBreaker) < 3) return true;
+  if (activeShop && horizontalDistance(point, activeShop) < 3) return true;
+  return lockers.some((locker) => {
+    const isMansionLocker = inMansionBounds(locker.x, locker.z);
+    if ((mode === 'mansion') !== isMansionLocker) return false;
+    return Math.hypot(locker.x - x, locker.z - z) < 3;
+  });
+}
 function findSafePickupPosition(node, used = []) {
   const base = worldFromGrid(node.gx, node.gz);
   for (const [ox, oz] of keyOffsets.slice().sort(() => Math.random() - 0.5)) {
     const x = base.x + ox;
     const z = base.z + oz;
     if (horizontalDistance({ x, z }, exitDoor.position) < 3.2) continue;
-    if (horizontalDistance({ x, z }, breakerPanel.position) < 2.2) continue;
+    if (pickupNearRestrictedUtility(x, z, 'school')) continue;
     if (used.some((p) => Math.hypot(p.x - x, p.z - z) < 2.25)) continue;
-    if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 1.65)) continue;
     if (!isSafeSpawnPoint(x, z, 1.05)) continue;
     if (coverPoints.some((cover) => Math.hypot(cover.x - x, cover.z - z) < 1.65)) continue;
     return { x, z };
@@ -1492,10 +1503,14 @@ function placeKeyItemsForMode(mode) {
       if (!item.mansionPosition) {
         const choices = mansionNodes
           .filter((node) => isSafeSpawnPoint(node.x, node.z, 0.95))
+          .filter((node) => !pickupNearRestrictedUtility(node.x, node.z, 'mansion'))
           .filter((node) => !used.some((p) => Math.hypot(p.x - node.x, p.z - node.z) < 9))
           .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 10)
           .sort(() => Math.random() - 0.5);
-        item.mansionPosition = choices[0] || mansionNodes[Math.floor(Math.random() * mansionNodes.length)] || { x: 68, z: -12 };
+        item.mansionPosition = choices[0]
+          || mansionNodes.find((node) => !pickupNearRestrictedUtility(node.x, node.z, 'mansion'))
+          || mansionNodes[Math.floor(Math.random() * mansionNodes.length)]
+          || { x: 68, z: -12 };
       }
       pos = item.mansionPosition;
     }
@@ -1524,10 +1539,14 @@ function placeFakeOfudaItems(mode) {
     fake.light.visible = mode === 'mansion';
     if (mode !== 'mansion') continue;
     const choices = mansionNodes
+      .filter((node) => !pickupNearRestrictedUtility(node.x, node.z, 'mansion'))
       .filter((node) => keyItems.every((item) => Math.hypot(item.group.position.x - node.x, item.group.position.z - node.z) > 4.5))
       .filter((node) => fakeOfudaItems.every((item) => !item.mansionPosition || Math.hypot(item.mansionPosition.x - node.x, item.mansionPosition.z - node.z) > 5))
       .sort(() => Math.random() - 0.5);
-    const node = choices[0] || mansionNodes[Math.floor(Math.random() * mansionNodes.length)] || { x: 68, z: -12 };
+    const node = choices[0]
+      || mansionNodes.find((candidate) => !pickupNearRestrictedUtility(candidate.x, candidate.z, 'mansion'))
+      || mansionNodes[Math.floor(Math.random() * mansionNodes.length)]
+      || { x: 68, z: -12 };
     fake.mansionPosition = { x: node.x, z: node.z };
     fake.group.position.set(node.x, fake.baseY, node.z);
     fake.light.position.copy(fake.group.position);
@@ -2970,9 +2989,20 @@ function clearBreakerGridClasses() {
   });
 }
 
+function makeBreakerSequence() {
+  const cells = Array.from({ length: 9 }, (_, index) => index).sort(() => Math.random() - 0.5);
+  return cells.slice(0, 5);
+}
+
 async function showBreakerSequence() {
   breakerGame.showing = true;
   clearBreakerGridClasses();
+  for (let count = 3; count >= 1; count -= 1) {
+    if (!state.breakerGameOpen) return;
+    setBreakerGameMessage(`${count}秒後に開始`);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (!state.breakerGameOpen) return;
   setBreakerGameMessage('光った順番を覚えてください');
   await nextFrame();
   for (const index of breakerGame.sequence) {
@@ -2994,7 +3024,7 @@ function openBreakerGame() {
     return;
   }
   state.breakerGameOpen = true;
-  breakerGame.sequence = Array.from({ length: 5 }, () => Math.floor(Math.random() * 9));
+  breakerGame.sequence = makeBreakerSequence();
   breakerGame.inputIndex = 0;
   $('#breaker-game-screen')?.classList.add('visible');
   if (controls.isLocked) controls.unlock();
@@ -5104,6 +5134,8 @@ function updateGhostDouble(dt, time) {
     if (len > 0.05) {
       const speed = 2.5;
       const step = speed * dt;
+      const prevX = ghostDouble.group.position.x;
+      const prevZ = ghostDouble.group.position.z;
       const nx = ghostDouble.group.position.x + (dx / len) * step;
       const nz = ghostDouble.group.position.z + (dz / len) * step;
       if (canEnemyMoveTo(nx, nz, 0.22)) {
@@ -5113,7 +5145,9 @@ function updateGhostDouble(dt, time) {
         ghostDouble.target = nearestMansionNode(ghostDouble.group.position.x, ghostDouble.group.position.z, 5);
         ghostDouble.repathAt = time + 0.5;
       }
-      ghostDouble.group.rotation.y = Math.atan2(dx, dz);
+      const moveX = ghostDouble.group.position.x - prevX;
+      const moveZ = ghostDouble.group.position.z - prevZ;
+      if (Math.hypot(moveX, moveZ) > 0.001) ghostDouble.group.rotation.y = Math.atan2(moveX, moveZ);
     }
   }
   ghostDouble.group.position.y = 0.28 + Math.sin(time * 2.4 + 1.7) * 0.1;
@@ -5288,6 +5322,8 @@ function updateWomanEnemy(dt, time) {
     const len = Math.hypot(dx, dz);
     if (len > 0.05) {
       const step = womanEnemy.speed * dt;
+      const prevX = womanEnemy.group.position.x;
+      const prevZ = womanEnemy.group.position.z;
       const nx = womanEnemy.group.position.x + (dx / len) * step;
       const nz = womanEnemy.group.position.z + (dz / len) * step;
       if (phasing || canEnemyMoveTo(nx, nz, 0.28)) {
@@ -5305,7 +5341,15 @@ function updateWomanEnemy(dt, time) {
           womanEnemy.repathAt = time + 0.35;
         }
       }
-      womanEnemy.group.rotation.y = Math.atan2(dx, dz);
+      const moveX = womanEnemy.group.position.x - prevX;
+      const moveZ = womanEnemy.group.position.z - prevZ;
+      if (Math.hypot(moveX, moveZ) > 0.001) {
+        const moveYaw = Math.atan2(moveX, moveZ);
+        womanEnemy.group.rotation.y = Math.atan2(
+          Math.sin(moveYaw) * 0.35 + Math.sin(womanEnemy.group.rotation.y) * 0.65,
+          Math.cos(moveYaw) * 0.35 + Math.cos(womanEnemy.group.rotation.y) * 0.65,
+        );
+      }
     }
   }
   womanEnemy.group.position.y = 0.28 + Math.sin(time * 2.2) * 0.11;
