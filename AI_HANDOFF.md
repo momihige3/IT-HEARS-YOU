@@ -839,3 +839,9 @@ Build:
   - Full map now draws thick wall edges around walkable cells so school/classroom walls are easier to read.
 - School wall visibility improved:
   - School room/corridor wall thickness increased from 0.18 to 0.36 world units.
+
+## 2026-06-30 Eye Scare Volume Tweak
+
+- Eye scare voice volume reduced to one third of the normal SE volume.
+- Eye scare voice playback is triggered immediately at the scare start frame before the overlay timer is set.
+- `doko_ni_iruno.mp3` is now treated as a calm-only eye scare voice and will not play when detection is 50 or higher.

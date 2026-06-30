@@ -5058,16 +5058,18 @@ function scheduleNextEyeScare(time) {
 }
 
 const eyeScareSounds = [
-  './audio/mitsuketa.mp3',
-  './audio/doko_ni_iruno.mp3',
-  './audio/kocchi_ni_kinasai.mp3',
+  { src: './audio/mitsuketa.mp3', calmOnly: false },
+  { src: './audio/doko_ni_iruno.mp3', calmOnly: true },
+  { src: './audio/kocchi_ni_kinasai.mp3', calmOnly: false },
 ];
 
 function playEyeScareSound() {
   if (seVolume <= 0) return;
-  const source = eyeScareSounds[Math.floor(Math.random() * eyeScareSounds.length)];
+  const candidates = eyeScareSounds.filter((item) => !item.calmOnly || state.detection < 50);
+  const source = candidates[Math.floor(Math.random() * candidates.length)]?.src;
+  if (!source) return;
   const sound = new Audio(source);
-  sound.volume = Math.min(1, Math.max(0, seVolume / 100));
+  sound.volume = Math.min(1, Math.max(0, seVolume / 300));
   sound.play().catch(() => {});
 }
 
@@ -5080,8 +5082,8 @@ function updateEyeScare(time) {
   }
   if (!Number.isFinite(state.nextEyeScareAt)) scheduleNextEyeScare(time);
   if (time >= state.nextEyeScareAt) {
-    state.eyeScareUntil = time + 1;
     playEyeScareSound();
+    state.eyeScareUntil = time + 1;
     scheduleNextEyeScare(time + 1);
   }
   const active = time < state.eyeScareUntil;
