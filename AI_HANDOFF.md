@@ -694,3 +694,14 @@ Build:
   - Breaker/start/exit routes are carved as narrow required paths.
   - Random branches and short loops are grown from those required paths to make a labyrinth instead of one giant open plaza.
   - Mansion start cell at z=28 is now included as a valid generated cell.
+
+## 2026-06-30 Mansion Breaker / Exit Reachability Tightening
+
+- Mansion required routes are now force-carved so the ellipse boundary cannot remove intermediate route cells.
+- Breaker route, start route, and exit route are split into bent forced segments to keep them reachable without becoming a wide open plaza.
+- Mansion exit is now anchored to a guaranteed valid floor node, with the visible door placed on the edge wall of that node.
+- Mansion random branches were reduced significantly:
+  - Branch seeds reduced from 18 to 7.
+  - Branch length reduced.
+  - Extra loop connectors reduced from 10 to 3.
+  - This should make the mansion much more wall-heavy and labyrinth-like.

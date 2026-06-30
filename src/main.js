@@ -810,32 +810,32 @@ function buildMansionSecondFloor() {
   const cells = [];
   const mansionCellKeys = new Set();
   const mansionCellKey = (ix, iz) => `${ix},${iz}`;
-  const addMansionCell = (ix, iz) => {
+  const addMansionCell = (ix, iz, force = false) => {
     if (ix < -6 || ix > 6 || iz < -9 || iz > 10) return false;
     const norm = Math.hypot(ix / 5.9, iz / 8.8);
     const forced = (ix === 0 && iz === 10)
       || (ix === 0 && iz === 0)
       || (ix === 6 && iz === -9)
       || (ix === -6 && iz === 9);
-    if (norm > 1.08 && !forced) return false;
+    if (norm > 1.08 && !forced && !force) return false;
     mansionCellKeys.add(mansionCellKey(ix, iz));
     return true;
   };
-  const carveMansionLine = (ix0, iz0, ix1, iz1) => {
+  const carveMansionLine = (ix0, iz0, ix1, iz1, force = false, horizontalFirstOverride = null) => {
     let ix = ix0;
     let iz = iz0;
-    addMansionCell(ix, iz);
-    const horizontalFirst = Math.random() < 0.5;
+    addMansionCell(ix, iz, force);
+    const horizontalFirst = horizontalFirstOverride ?? (Math.random() < 0.5);
     const stepX = () => {
       while (ix !== ix1) {
         ix += Math.sign(ix1 - ix);
-        addMansionCell(ix, iz);
+        addMansionCell(ix, iz, force);
       }
     };
     const stepZ = () => {
       while (iz !== iz1) {
         iz += Math.sign(iz1 - iz);
-        addMansionCell(ix, iz);
+        addMansionCell(ix, iz, force);
       }
     };
     if (horizontalFirst) {
@@ -845,7 +845,7 @@ function buildMansionSecondFloor() {
       stepZ();
       stepX();
     }
-    addMansionCell(ix1, iz1);
+    addMansionCell(ix1, iz1, force);
   };
   const growMansionBranch = (seedIx, seedIz, steps) => {
     let ix = seedIx;
@@ -872,21 +872,27 @@ function buildMansionSecondFloor() {
   addMansionCell(1, 0);
   addMansionCell(-1, 0);
   // Required routes. They stay narrow and bend, so the mansion remains a maze.
-  carveMansionLine(0, 10, 0, 1);
-  carveMansionLine(0, 1, -6, 9);
-  carveMansionLine(1, 0, 6, -9);
-  carveMansionLine(-1, 0, -5, -6);
+  carveMansionLine(0, 10, 0, 4, true, false);
+  carveMansionLine(0, 4, -3, 4, true, true);
+  carveMansionLine(-3, 4, -3, 1, true, false);
+  carveMansionLine(-3, 1, 0, 1, true, true);
+  carveMansionLine(0, 1, -2, 6, true, false);
+  carveMansionLine(-2, 6, -6, 9, true, true);
+  carveMansionLine(1, 0, 3, -3, true, false);
+  carveMansionLine(3, -3, 6, -9, true, true);
+  carveMansionLine(-1, 0, -4, -2, true, true);
+  carveMansionLine(-4, -2, -5, -6, true, false);
   const branchSeeds = [...mansionCellKeys]
     .map((key) => key.split(',').map(Number))
     .sort(() => Math.random() - 0.5)
-    .slice(0, 18);
-  for (const [ix, iz] of branchSeeds) growMansionBranch(ix, iz, 5 + Math.floor(Math.random() * 7));
-  // A few short loops keep navigation from feeling like a single snake, while
+    .slice(0, 7);
+  for (const [ix, iz] of branchSeeds) growMansionBranch(ix, iz, 3 + Math.floor(Math.random() * 4));
+  // A few tiny loops keep navigation from feeling like a single snake, while
   // still leaving most grid cells as walls.
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 3; i += 1) {
     const from = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
     const to = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
-    if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) <= 7) carveMansionLine(from[0], from[1], to[0], to[1]);
+    if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) <= 4) carveMansionLine(from[0], from[1], to[0], to[1]);
   }
   const mansionProtectedSpot = (x, z) =>
     Math.hypot(x - offsetX, z - 28) < 5.2
@@ -927,15 +933,16 @@ function buildMansionSecondFloor() {
     }
   }
   mansionStartPoint = { x: offsetX, z: 28 };
+  const mansionExitNode = { x: offsetX + 6 * CELL, z: -12 - 9 * CELL };
   mansionExit = {
-    mesh: addBox(offsetX + 22, 1.45, -48, 1.55, 2.35, 0.16, doorMat, false, false, false),
-    x: offsetX + 22,
-    z: -48,
+    mesh: addBox(mansionExitNode.x, 1.45, mansionExitNode.z - 1.92, 1.55, 2.35, 0.16, doorMat, false, false, false),
+    x: mansionExitNode.x,
+    z: mansionExitNode.z,
   };
-  addBox(mansionExit.x, 2.85, mansionExit.z + 0.08, 1.65, 0.34, 0.08, material(0x123f2a, 0.32, 0.02), false, false, false);
-  addBox(mansionExit.x, 1.48, mansionExit.z + 0.14, 1.2, 1.7, 0.05, material(0x1f1712, 0.72, 0.08), false, false, false);
-  addBox(mansionExit.x, 1.48, mansionExit.z + 0.18, 0.82, 1.2, 0.04, material(0x0b0d0c, 0.5, 0.08), false, false, false);
-  makeWallTextPlate('出口', mansionExit.x, 3.08, mansionExit.z + 0.22, 'south', 1.35, 0.34, 'rgba(18,70,46,.96)', '#d9ffe8');
+  addBox(mansionExit.x, 2.85, mansionExit.z - 1.84, 1.65, 0.34, 0.08, material(0x123f2a, 0.32, 0.02), false, false, false);
+  addBox(mansionExit.x, 1.48, mansionExit.z - 1.78, 1.2, 1.7, 0.05, material(0x1f1712, 0.72, 0.08), false, false, false);
+  addBox(mansionExit.x, 1.48, mansionExit.z - 1.74, 0.82, 1.2, 0.04, material(0x0b0d0c, 0.5, 0.08), false, false, false);
+  makeWallTextPlate('出口', mansionExit.x, 3.08, mansionExit.z - 1.68, 'south', 1.35, 0.34, 'rgba(18,70,46,.96)', '#d9ffe8');
   const exitGlow = new THREE.PointLight(0xa6d7ff, 2.8, 6);
   exitGlow.position.set(mansionExit.x, 2.6, mansionExit.z);
   scene.add(exitGlow);
