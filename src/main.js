@@ -104,9 +104,10 @@ function loadPersistentShopUpgrades() {
       noise: parsed.noise === true,
       breaker: parsed.breaker === true,
       light: parsed.light === true,
+      stun: parsed.stun === true,
     };
   } catch {
-    return { noise: false, breaker: false, light: false };
+    return { noise: false, breaker: false, light: false, stun: false };
   }
 }
 function savePersistentShopUpgrades() {
@@ -115,6 +116,7 @@ function savePersistentShopUpgrades() {
       noise: state.noiseMultiplier <= 0.5,
       breaker: state.breakerDurationMultiplier >= 2,
       light: state.lightRangeMultiplier >= 2,
+      stun: state.ghostStunTimeMultiplier <= 0.5,
     }));
   } catch {
     // Storage can be unavailable in private/browser-restricted modes; gameplay still works in-memory.
@@ -140,6 +142,7 @@ const state = {
   noiseMultiplier: savedShopUpgrades.noise ? 0.5 : 1,
   breakerDurationMultiplier: savedShopUpgrades.breaker ? 2 : 1,
   lightRangeMultiplier: savedShopUpgrades.light ? 2 : 1,
+  ghostStunTimeMultiplier: savedShopUpgrades.stun ? 0.5 : 1,
   mapMode: 'school',
   screenFlashUntil: 0,
   screenFlashColor: 'red',
@@ -169,6 +172,7 @@ const state = {
   ghostLightSeconds: 0,
   fakeOfudaAlertUntil: 0,
   fullMapOpen: false,
+  breakerGameOpen: false,
   nextEyeScareAt: Infinity,
   eyeScareUntil: 0,
   settingsOpen: false,
@@ -2949,6 +2953,87 @@ function setBreaker(on, notify = true) {
 }
 applyBreakerVisual(false);
 
+const breakerGame = {
+  sequence: [],
+  inputIndex: 0,
+  showing: false,
+};
+
+function setBreakerGameMessage(text) {
+  const message = $('#breaker-game-message');
+  if (message) message.textContent = text;
+}
+
+function clearBreakerGridClasses() {
+  document.querySelectorAll('[data-breaker-cell]').forEach((button) => {
+    button.classList.remove('lit', 'correct', 'wrong');
+  });
+}
+
+async function showBreakerSequence() {
+  breakerGame.showing = true;
+  clearBreakerGridClasses();
+  setBreakerGameMessage('光った順番を覚えてください');
+  await nextFrame();
+  for (const index of breakerGame.sequence) {
+    if (!state.breakerGameOpen) return;
+    const button = document.querySelector(`[data-breaker-cell="${index}"]`);
+    button?.classList.add('lit');
+    await new Promise((resolve) => setTimeout(resolve, 310));
+    button?.classList.remove('lit');
+    await new Promise((resolve) => setTimeout(resolve, 145));
+  }
+  breakerGame.inputIndex = 0;
+  breakerGame.showing = false;
+  setBreakerGameMessage('光った順に5回押してください');
+}
+
+function openBreakerGame() {
+  if (state.breakerOn) {
+    setBreaker(false);
+    return;
+  }
+  state.breakerGameOpen = true;
+  breakerGame.sequence = Array.from({ length: 5 }, () => Math.floor(Math.random() * 9));
+  breakerGame.inputIndex = 0;
+  $('#breaker-game-screen')?.classList.add('visible');
+  if (controls.isLocked) controls.unlock();
+  showBreakerSequence();
+}
+
+function closeBreakerGame() {
+  state.breakerGameOpen = false;
+  breakerGame.showing = false;
+  $('#breaker-game-screen')?.classList.remove('visible');
+  clearBreakerGridClasses();
+  if (state.started && !state.ended && !state.caught && !mobileInput.active) lockPointer();
+}
+
+function handleBreakerCell(index) {
+  if (!state.breakerGameOpen || breakerGame.showing) return;
+  const button = document.querySelector(`[data-breaker-cell="${index}"]`);
+  const expected = breakerGame.sequence[breakerGame.inputIndex];
+  if (index !== expected) {
+    button?.classList.add('wrong');
+    setBreakerGameMessage('失敗。もう一度順番を表示します');
+    breakerGame.inputIndex = 0;
+    setTimeout(() => {
+      button?.classList.remove('wrong');
+      if (state.breakerGameOpen) showBreakerSequence();
+    }, 420);
+    return;
+  }
+  button?.classList.add('correct');
+  setTimeout(() => button?.classList.remove('correct'), 240);
+  breakerGame.inputIndex += 1;
+  setBreakerGameMessage(`成功 ${breakerGame.inputIndex} / 5`);
+  if (breakerGame.inputIndex >= breakerGame.sequence.length) {
+    setBreaker(true, false);
+    showToast('ブレーカーをONにした');
+    closeBreakerGame();
+  }
+}
+
 function updateMansionDistanceCulling() {
   if (state.mapMode !== 'mansion') {
     for (const object of mansionRuntimeObjects) {
@@ -3055,7 +3140,8 @@ function interact() {
     return;
   }
   if (state.nearBreaker) {
-    setBreaker(!state.breakerOn);
+    if (state.breakerOn) setBreaker(false);
+    else openBreakerGame();
     return;
   }
   if (state.nearShop) {
@@ -3142,6 +3228,7 @@ function respawnPlayer() {
   state.noiseMultiplier = savedUpgrades.noise ? 0.5 : 1;
   state.breakerDurationMultiplier = savedUpgrades.breaker ? 2 : 1;
   state.lightRangeMultiplier = savedUpgrades.light ? 2 : 1;
+  state.ghostStunTimeMultiplier = savedUpgrades.stun ? 0.5 : 1;
   state.ghostLightSeconds = 0;
   state.fakeOfudaAlertUntil = 0;
   state.screenFlashUntil = 0;
@@ -3168,7 +3255,9 @@ function respawnPlayer() {
   state.lockerExitGraceUntil = clock.elapsedTime + 1;
   state.settingsOpen = false;
   state.fullMapOpen = false;
+  state.breakerGameOpen = false;
   $('#full-map-screen')?.classList.remove('visible');
+  $('#breaker-game-screen')?.classList.remove('visible');
   mobileInput.moveX = mobileInput.moveY = 0;
   mobileInput.running = false;
   $('#mobile-run-toggle').classList.remove('running');
@@ -3294,6 +3383,7 @@ function endGame(win) {
   state.ended = true;
   state.allowExit = true;
   state.fullMapOpen = false;
+  state.breakerGameOpen = false;
   ghostDouble.group.visible = false;
   ghostDouble.active = false;
   $('#eye-scare')?.classList.remove('visible');
@@ -3311,6 +3401,7 @@ function endGame(win) {
     : '速すぎた。うるさすぎた。もう一度、静かに。';
   $('#message-screen').classList.add('visible');
   $('#full-map-screen')?.classList.remove('visible');
+  $('#breaker-game-screen')?.classList.remove('visible');
 }
 
 function openSettings() {
@@ -3379,7 +3470,7 @@ $('#settings-quit').addEventListener('click', () => {
   location.reload();
 });
 controls.addEventListener('unlock', () => {
-  if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen) openSettings();
+  if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen && !state.breakerGameOpen) openSettings();
 });
 
 function clearSpawnedPickupRuntime() {
@@ -3484,6 +3575,7 @@ async function startGame(mode = 'school') {
   await nextFrame();
   state.started = true;
   state.fullMapOpen = false;
+  state.breakerGameOpen = false;
   initAudio();
   scheduleNextRoar(clock.elapsedTime);
   if (mode === 'school' && healItems.length === 0) {
@@ -3495,6 +3587,7 @@ async function startGame(mode = 'school') {
   $('#mobile-controls')?.classList.remove('disabled');
   $('#start-screen').classList.remove('visible');
   $('#full-map-screen')?.classList.remove('visible');
+  $('#breaker-game-screen')?.classList.remove('visible');
   setLoading(false);
   lockPointer();
 }
@@ -3505,6 +3598,10 @@ document.querySelectorAll('[data-map-start]').forEach((button) => {
 $('#shop-close')?.addEventListener('click', closeShop);
 document.querySelectorAll('[data-shop-buy]').forEach((button) => {
   button.addEventListener('click', () => buyShopItem(button.dataset.shopBuy));
+});
+$('#breaker-game-close')?.addEventListener('click', closeBreakerGame);
+document.querySelectorAll('[data-breaker-cell]').forEach((button) => {
+  button.addEventListener('click', () => handleBreakerCell(Number(button.dataset.breakerCell)));
 });
 $('#restart-button').addEventListener('click', () => {
   state.allowExit = true;
@@ -3545,6 +3642,10 @@ addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'Escape' && state.started && !state.ended && !event.repeat) {
+    if (state.breakerGameOpen) {
+      closeBreakerGame();
+      return;
+    }
     if (state.fullMapOpen) {
       toggleFullMap(false);
       return;
@@ -4142,7 +4243,8 @@ function updateShopButtons() {
     const type = button.dataset.shopBuy;
     const purchased = (type === 'noise' && state.noiseMultiplier <= 0.5)
       || (type === 'breaker' && state.breakerDurationMultiplier >= 2)
-      || (type === 'light' && state.lightRangeMultiplier >= 2);
+      || (type === 'light' && state.lightRangeMultiplier >= 2)
+      || (type === 'stun' && state.ghostStunTimeMultiplier <= 0.5);
     button.classList.toggle('purchased', purchased);
     button.setAttribute('aria-pressed', purchased ? 'true' : 'false');
   });
@@ -4175,6 +4277,7 @@ const SHOP_PRICES = {
   noise: 20,
   breaker: 20,
   light: 10,
+  stun: 20,
 };
 
 function buyShopItem(type) {
@@ -4208,6 +4311,14 @@ function buyShopItem(type) {
     savePersistentShopUpgrades();
     updateShopButtons();
     return setShopMessage(`ライト範囲が2倍になった / 所持コイン：${state.coins}`);
+  }
+  if (type === 'stun') {
+    if (state.ghostStunTimeMultiplier <= 0.5) return setShopMessage('ライトスタン短縮は購入済み');
+    if (!spendCoins(SHOP_PRICES.stun)) return setShopMessage(`コインが足りない（ライトスタン短縮：${SHOP_PRICES.stun}コイン）`);
+    state.ghostStunTimeMultiplier = 0.5;
+    savePersistentShopUpgrades();
+    updateShopButtons();
+    return setShopMessage(`ライトスタンまでの時間が半分になった / 所持コイン：${state.coins}`);
   }
 }
 
@@ -4757,6 +4868,69 @@ function nearestSafeMansionNode(x, z, minDistance = 0) {
   return best || nearestMansionNode(x, z, minDistance);
 }
 
+function mansionNodeKey(node) {
+  return `${Math.round(node.x * 10) / 10},${Math.round(node.z * 10) / 10}`;
+}
+
+function findMansionPath(startNode, targetNode) {
+  if (!startNode || !targetNode) return [];
+  const startKey = mansionNodeKey(startNode);
+  const targetKey = mansionNodeKey(targetNode);
+  if (startKey === targetKey) return [targetNode];
+  const nodeByKey = new Map();
+  for (const node of mansionNodes) nodeByKey.set(mansionNodeKey(node), node);
+  const queue = [startKey];
+  const previous = new Map([[startKey, null]]);
+  while (queue.length) {
+    const key = queue.shift();
+    const node = nodeByKey.get(key);
+    if (!node) continue;
+    const neighbors = mansionNodes.filter((candidate) => {
+      if (previous.has(mansionNodeKey(candidate))) return false;
+      const dx = Math.abs(candidate.x - node.x);
+      const dz = Math.abs(candidate.z - node.z);
+      if (!((dx <= CELL + 0.1 && dz < 0.1) || (dz <= CELL + 0.1 && dx < 0.1))) return false;
+      const midX = (candidate.x + node.x) / 2;
+      const midZ = (candidate.z + node.z) / 2;
+      return canEnemyMoveTo(candidate.x, candidate.z, 0.22) && canEnemyMoveTo(midX, midZ, 0.22);
+    });
+    for (const neighbor of neighbors) {
+      const nextKey = mansionNodeKey(neighbor);
+      previous.set(nextKey, key);
+      if (nextKey === targetKey) {
+        const path = [targetNode];
+        let walkKey = key;
+        while (walkKey && walkKey !== startKey) {
+          const walkNode = nodeByKey.get(walkKey);
+          if (walkNode) path.unshift(walkNode);
+          walkKey = previous.get(walkKey);
+        }
+        return path.slice(0, 10);
+      }
+      queue.push(nextKey);
+    }
+  }
+  return [];
+}
+
+function setWomanRoutedTarget(x, z, time, direct = false) {
+  if (direct || hasLineOfSight(womanEnemy.group.position.clone().setY(1.1), cleanupPosition.set(x, 1.1, z))) {
+    womanEnemy.path = [];
+    womanEnemy.target = { x, z };
+    return;
+  }
+  if (time < (womanEnemy.pathRepathAt || 0) && womanEnemy.path?.length) {
+    womanEnemy.target = womanEnemy.path[0];
+    return;
+  }
+  const start = nearestSafeMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z);
+  const goal = nearestSafeMansionNode(x, z);
+  const path = findMansionPath(start, goal);
+  womanEnemy.path = path.length ? path : [];
+  womanEnemy.pathRepathAt = time + 0.85;
+  womanEnemy.target = womanEnemy.path[0] || goal || { x, z };
+}
+
 function isFlashlightHittingWoman() {
   const now = clock.elapsedTime;
   if (now < (isFlashlightHittingWoman.cachedUntil || 0)) return isFlashlightHittingWoman.cachedValue;
@@ -4767,26 +4941,40 @@ function isFlashlightHittingWoman() {
   };
   if (!state.flashlight || state.battery <= 0 || state.mapMode !== 'mansion') return finish(false);
   if (now < womanEnemy.stunnedUntil) return finish(false);
-  const targetX = womanEnemy.group.position.x;
-  const targetY = womanEnemy.group.position.y + 1.35;
-  const targetZ = womanEnemy.group.position.z;
-  const dx = targetX - camera.position.x;
-  const dy = targetY - camera.position.y;
-  const dz = targetZ - camera.position.z;
-  const distanceSq = dx * dx + dy * dy + dz * dz;
-  if (distanceSq > 100 || distanceSq < 0.001) return finish(false);
-  const invDistance = 1 / Math.sqrt(distanceSq);
   camera.getWorldDirection(forward);
-  const centered = forward.x * dx * invDistance + forward.y * dy * invDistance + forward.z * dz * invDistance;
-  if (centered < 0.982) return finish(false);
-  const target = cleanupPosition.set(targetX, targetY, targetZ);
-  return finish(hasLineOfSight(camera.position, target));
+  const base = womanEnemy.group.position;
+  const targetOffsets = [
+    [0, 1.55, 0],
+    [0, 1.18, 0],
+    [0, 0.85, 0],
+    [0.34, 1.22, 0],
+    [-0.34, 1.22, 0],
+  ];
+  for (const [ox, oy, oz] of targetOffsets) {
+    const targetX = base.x + ox;
+    const targetY = base.y + oy;
+    const targetZ = base.z + oz;
+    const dx = targetX - camera.position.x;
+    const dy = targetY - camera.position.y;
+    const dz = targetZ - camera.position.z;
+    const distanceSq = dx * dx + dy * dy + dz * dz;
+    if (distanceSq > 100 || distanceSq < 0.001) continue;
+    const invDistance = 1 / Math.sqrt(distanceSq);
+    const centered = forward.x * dx * invDistance + forward.y * dy * invDistance + forward.z * dz * invDistance;
+    const distance = Math.sqrt(distanceSq);
+    const requiredCentering = THREE.MathUtils.lerp(0.965, 0.985, THREE.MathUtils.clamp(distance / 10, 0, 1));
+    if (centered < requiredCentering) continue;
+    const target = cleanupPosition.set(targetX, targetY, targetZ);
+    if (hasLineOfSight(camera.position, target)) return finish(true);
+  }
+  return finish(false);
 }
 
 function updateGhostStunReticle(active) {
   const reticle = $('#ghost-stun-reticle');
   if (!reticle) return;
-  const progress = active ? THREE.MathUtils.clamp(state.ghostLightSeconds / 5, 0, 1) : 0;
+  const required = 3 * state.ghostStunTimeMultiplier;
+  const progress = active ? THREE.MathUtils.clamp(state.ghostLightSeconds / required, 0, 1) : 0;
   reticle.style.setProperty('--stun-progress', progress.toFixed(3));
   reticle.classList.toggle('visible', active);
 }
@@ -4988,8 +5176,8 @@ function updateWomanEnemy(dt, time) {
   womanEnemy.group.rotation.z = THREE.MathUtils.lerp(womanEnemy.group.rotation.z, 0, 0.09);
   if (time >= womanEnemy.nextPhaseAt) {
     womanEnemy.phaseChargeUntil = time + 1.0;
-    womanEnemy.phaseUntil = time + 2.0;
-    womanEnemy.nextPhaseAt = time + 30;
+    womanEnemy.phaseUntil = time + 11.0;
+    womanEnemy.nextPhaseAt = time + 40;
     playSonarRoar(0.34);
   }
   const phaseCharging = time < womanEnemy.phaseChargeUntil;
@@ -5044,7 +5232,7 @@ function updateWomanEnemy(dt, time) {
   const flashlightHit = !state.hidden && isFlashlightHittingWoman();
   state.ghostLightSeconds = flashlightHit ? state.ghostLightSeconds + dt : Math.max(0, state.ghostLightSeconds - dt * 1.8);
   updateGhostStunReticle(flashlightHit);
-  if (state.ghostLightSeconds >= 5) {
+  if (state.ghostLightSeconds >= 3 * state.ghostStunTimeMultiplier) {
     womanEnemy.stunnedUntil = time + 10;
     state.ghostLightSeconds = 0;
     updateGhostStunReticle(false);
@@ -5077,11 +5265,12 @@ function updateWomanEnemy(dt, time) {
   }
   state.alert = state.detection > 70 ? 'HUNTING' : state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
   if (!state.hidden && playerOnSecondFloor && (ghostSeesPlayer || state.detection > 70 || distance < 6.5)) {
-    womanEnemy.target = { x: camera.position.x, z: camera.position.z };
+    setWomanRoutedTarget(camera.position.x, camera.position.z, time, phasing || ghostSeesPlayer);
     womanEnemy.speed = phasing ? 6.4 : 4.1;
   } else if (!womanEnemy.target || time >= womanEnemy.repathAt || Math.hypot(womanEnemy.group.position.x - womanEnemy.target.x, womanEnemy.group.position.z - womanEnemy.target.z) < 0.7) {
     const node = nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 8);
     if (node) womanEnemy.target = { x: node.x, z: node.z };
+    womanEnemy.path = [];
     womanEnemy.repathAt = time + 3 + Math.random() * 3;
     womanEnemy.speed = phasing ? 4.8 : 2.5;
   }
@@ -5090,6 +5279,10 @@ function updateWomanEnemy(dt, time) {
     setDetection(Math.max(state.detection - dt * 7, detectionFloor()));
   }
   if (womanEnemy.target) {
+    if (womanEnemy.path?.length && Math.hypot(womanEnemy.group.position.x - womanEnemy.target.x, womanEnemy.group.position.z - womanEnemy.target.z) < 0.75) {
+      womanEnemy.path.shift();
+      if (womanEnemy.path.length) womanEnemy.target = womanEnemy.path[0];
+    }
     const dx = womanEnemy.target.x - womanEnemy.group.position.x;
     const dz = womanEnemy.target.z - womanEnemy.group.position.z;
     const len = Math.hypot(dx, dz);
@@ -5108,8 +5301,8 @@ function updateWomanEnemy(dt, time) {
           womanEnemy.group.position.x += slide.x * step;
           womanEnemy.group.position.z += slide.z * step;
         } else {
-          womanEnemy.target = nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 6);
-          womanEnemy.repathAt = time + 0.7;
+          setWomanRoutedTarget(camera.position.x, camera.position.z, time - 1, false);
+          womanEnemy.repathAt = time + 0.35;
         }
       }
       womanEnemy.group.rotation.y = Math.atan2(dx, dz);
@@ -5255,7 +5448,7 @@ function toggleFullMap(force = null) {
     $('#full-map-screen')?.classList.remove('visible');
     return;
   }
-  if (!state.started || state.loading || state.ended || state.caught || state.settingsOpen || state.shopOpen) return;
+  if (!state.started || state.loading || state.ended || state.caught || state.settingsOpen || state.shopOpen || state.breakerGameOpen) return;
   state.fullMapOpen = force === null ? !state.fullMapOpen : force;
   $('#full-map-screen')?.classList.toggle('visible', state.fullMapOpen);
   if (state.fullMapOpen) drawFullMap();
@@ -5554,7 +5747,7 @@ function animate() {
   }
   if (state.caught) {
     updateCaughtCutscene(time);
-  } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen) {
+  } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen && !state.breakerGameOpen) {
     updateSonarRoar(time);
     updatePlayer(dt);
     updateLockerView();

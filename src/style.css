@@ -244,6 +244,15 @@ html, body { touch-action: none; }
   letter-spacing:.12em;
 }
 .shop-card #shop-close { text-align:center; color:#9fb5be; }
+.breaker-game-screen { z-index:26; background:rgba(2,4,3,.9); }
+.breaker-game-card { width:min(520px,88vw); padding:30px 34px; border:1px solid #586a4f; background:linear-gradient(145deg,rgba(17,24,18,.98),rgba(3,7,5,.98)); box-shadow:0 24px 80px #000; text-align:center; }
+.breaker-game-card h2 { margin:0 0 12px; font-size:42px; letter-spacing:.12em; }
+#breaker-game-message { min-height:24px; color:#bcd4bd; font:14px 'Share Tech Mono'; letter-spacing:.08em; }
+.breaker-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:20px auto; width:min(360px,72vw); }
+.breaker-grid button { aspect-ratio:1; border:1px solid rgba(150,172,142,.55); background:rgba(28,41,29,.82); box-shadow:inset 0 0 18px rgba(0,0,0,.55); cursor:pointer; }
+.breaker-grid button.lit { background:#d7ffd1; border-color:#efffe8; box-shadow:0 0 26px rgba(170,255,150,.75), inset 0 0 18px rgba(255,255,255,.35); }
+.breaker-grid button.correct { background:#75d889; border-color:#beffd0; }
+.breaker-grid button.wrong { background:#d64735; border-color:#ff9b8d; }
 .full-map-card { width:min(980px,92vw); padding:24px; border:1px solid rgba(118,146,128,.48); background:linear-gradient(145deg,rgba(5,9,7,.96),rgba(0,0,0,.98)); box-shadow:0 28px 90px #000; }
 .full-map-card canvas { width:100%; max-height:68vh; background:#020403; border:1px solid rgba(108,132,116,.34); display:block; }
 .full-map-legend { display:flex; flex-wrap:wrap; gap:14px; margin:14px 0 16px; color:#aebcb4; font:12px 'Share Tech Mono'; letter-spacing:.08em; }

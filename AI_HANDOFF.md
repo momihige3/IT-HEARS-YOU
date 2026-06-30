@@ -791,3 +791,22 @@ Build:
 - Ghost doppelganger visual now matches the mansion ghost:
   - After `yurei_woman_v1.glb` loads, the doppelganger receives a cloned GLB model instead of keeping the old procedural fallback.
   - Doppelganger materials are cloned separately and kept semi-transparent.
+
+## 2026-06-30 Ghost Stun / Breaker Minigame Update
+
+- Flashlight stun targeting was widened:
+  - The stun charge now checks several points around the ghost's head/body instead of a single fixed center point.
+  - This lets the stun meter continue charging while aiming around the ghost, not only at the initial exact point.
+- Mansion ghost balance:
+  - Flashlight stun requirement changed from 5 seconds to 3 seconds.
+  - Ghost wall-phasing duration changed to 10 seconds after its 1-second charge.
+  - Ghost movement now attempts a mansion-node route toward the player when direct movement is blocked by walls/objects.
+  - During phasing, direct wall movement remains allowed.
+- Shop update:
+  - Added `ライトスタン時間半減：20コイン`.
+  - The upgrade is persisted with the existing shop-upgrade storage and changes stun charge from 3 seconds to 1.5 seconds.
+- Breaker update:
+  - Turning the breaker OFF remains immediate.
+  - Turning the breaker ON now opens a 3x3 sequence minigame.
+  - The player must press 5 lit cells in order, similar to the Among Us breaker/memory task.
+  - Gameplay pauses while the breaker minigame is open.

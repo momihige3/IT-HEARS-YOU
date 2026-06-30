@@ -109,7 +109,21 @@
           <button data-shop-buy="noise">ノイズ半減：20コイン</button>
           <button data-shop-buy="breaker">ブレーカーON時間2倍：20コイン</button>
           <button data-shop-buy="light">ライト範囲2倍：10コイン</button>
+          <button data-shop-buy="stun">ライトスタン時間半減：20コイン</button>
           <button id="shop-close" class="secondary-button">閉じる</button>
+        </div>
+      </section>
+      <section id="breaker-game-screen" class="screen breaker-game-screen">
+        <div class="breaker-game-card">
+          <p class="eyebrow">ブレーカー起動</p>
+          <h2>順番に押す</h2>
+          <p id="breaker-game-message">光った順番を覚えて押してください</p>
+          <div id="breaker-grid" class="breaker-grid">
+            <button data-breaker-cell="0"></button><button data-breaker-cell="1"></button><button data-breaker-cell="2"></button>
+            <button data-breaker-cell="3"></button><button data-breaker-cell="4"></button><button data-breaker-cell="5"></button>
+            <button data-breaker-cell="6"></button><button data-breaker-cell="7"></button><button data-breaker-cell="8"></button>
+          </div>
+          <button id="breaker-game-close" class="secondary-button">やめる</button>
         </div>
       </section>
 
