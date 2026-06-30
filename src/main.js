@@ -1005,8 +1005,15 @@ function buildMansionSecondFloor() {
   localBox(shopGroup, 0, 1.68, 0.31, 1.1, 0.24, 0.05, material(0x8ac8ff, 0.36, 0.02));
   const mansionShopNode = mansionNodes
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 9)
-    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 9)
-    .sort(() => Math.random() - 0.5)[0] || nearestMansionNode(offsetX + 12, 12) || { x: offsetX + 12, z: 12 };
+    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > EXIT_SHOP_CLEARANCE)
+    .filter((node) => Math.hypot(node.x - breakerAnchor.x, node.z - breakerAnchor.z) > IMPORTANT_OBJECT_CLEARANCE)
+    .sort(() => Math.random() - 0.5)[0]
+    || mansionNodes
+      .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > EXIT_SHOP_CLEARANCE)
+      .filter((node) => Math.hypot(node.x - breakerAnchor.x, node.z - breakerAnchor.z) > IMPORTANT_OBJECT_CLEARANCE)
+      .sort((a, b) => Math.hypot(b.x - mansionExit.x, b.z - mansionExit.z) - Math.hypot(a.x - mansionExit.x, a.z - mansionExit.z))[0]
+    || nearestMansionNode(offsetX + 12, 12)
+    || { x: offsetX + 12, z: 12 };
   const mansionShopSide = [
     { x: -1.18, z: 0, yaw: Math.PI / 2 },
     { x: 1.18, z: 0, yaw: -Math.PI / 2 },
@@ -1333,26 +1340,48 @@ const keyOffsets = [
   [0, 0], [0.72, 0], [-0.72, 0], [0, 0.72], [0, -0.72],
   [0.62, 0.62], [-0.62, 0.62], [0.62, -0.62], [-0.62, -0.62],
 ];
+const IMPORTANT_OBJECT_CLEARANCE = 4.0;
+const EXIT_SHOP_CLEARANCE = 6.0;
+
+function activeExitPointForMode(mode = state.mapMode) {
+  return mode === 'mansion' && mansionExit ? mansionExit : exitDoor.position;
+}
+
+function pointOnCurrentWalkableMap(x, z, mode = state.mapMode, maxDistance = 1.35) {
+  const nodes = mode === 'mansion' ? mansionNodes : walkableNodes;
+  return nodes.some((node) => Math.hypot(node.x - x, node.z - z) <= maxDistance);
+}
+
 function pickupNearRestrictedUtility(x, z, mode = state.mapMode) {
   const point = { x, z };
   const activeBreaker = mode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel.position : breakerPanel.position;
   const activeShop = mode === 'mansion' && mansionShop ? mansionShop : shop;
-  if (activeBreaker && horizontalDistance(point, activeBreaker) < 3) return true;
-  if (activeShop && horizontalDistance(point, activeShop) < 3) return true;
+  const activeExit = activeExitPointForMode(mode);
+  if (activeExit && horizontalDistance(point, activeExit) < IMPORTANT_OBJECT_CLEARANCE) return true;
+  if (activeBreaker && horizontalDistance(point, activeBreaker) < IMPORTANT_OBJECT_CLEARANCE) return true;
+  if (activeShop && horizontalDistance(point, activeShop) < IMPORTANT_OBJECT_CLEARANCE) return true;
   return lockers.some((locker) => {
     const isMansionLocker = inMansionBounds(locker.x, locker.z);
     if ((mode === 'mansion') !== isMansionLocker) return false;
-    return Math.hypot(locker.x - x, locker.z - z) < 3;
+    return Math.hypot(locker.x - x, locker.z - z) < IMPORTANT_OBJECT_CLEARANCE;
   });
 }
+
+function keyItemTooCloseToImportantObjects(x, z, mode = state.mapMode, used = []) {
+  if (!pointOnCurrentWalkableMap(x, z, mode)) return true;
+  if (pickupNearRestrictedUtility(x, z, mode)) return true;
+  if (used.some((p) => Math.hypot(p.x - x, p.z - z) < IMPORTANT_OBJECT_CLEARANCE)) return true;
+  return false;
+}
+
 function findSafePickupPosition(node, used = []) {
   const base = worldFromGrid(node.gx, node.gz);
+  if (!walkable.has(node.key)) return null;
   for (const [ox, oz] of keyOffsets.slice().sort(() => Math.random() - 0.5)) {
     const x = base.x + ox;
     const z = base.z + oz;
-    if (horizontalDistance({ x, z }, exitDoor.position) < 3.2) continue;
-    if (pickupNearRestrictedUtility(x, z, 'school')) continue;
-    if (used.some((p) => Math.hypot(p.x - x, p.z - z) < 2.25)) continue;
+    if (keyItemTooCloseToImportantObjects(x, z, 'school', used)) continue;
+    if (!canMoveTo(x, z)) continue;
     if (!isSafeSpawnPoint(x, z, 1.05)) continue;
     if (coverPoints.some((cover) => Math.hypot(cover.x - x, cover.z - z) < 1.65)) continue;
     return { x, z };
@@ -1852,6 +1881,7 @@ function createWomanEnemy() {
 const womanEnemy = createWomanEnemy();
 markSharedObject(womanEnemy.group);
 const WOMAN_MODEL_FORWARD_YAW = Math.PI / 2;
+const WOMAN_MODEL_STUN_X = Math.PI / 2;
 const ghostDouble = createWomanEnemy();
 markSharedObject(ghostDouble.group);
 ghostDouble.group.visible = false;
@@ -1960,6 +1990,15 @@ function applyExternalWomanModelToGhostDouble(sourceModel) {
   }
   ghostDouble.externalModel = clone;
   ghostDouble.group.add(clone);
+}
+
+function setWomanVisualPose(stunned = false) {
+  womanEnemy.group.rotation.x = 0;
+  womanEnemy.group.rotation.z = 0;
+  if (womanEnemy.externalModel) {
+    womanEnemy.externalModel.rotation.set(stunned ? WOMAN_MODEL_STUN_X : 0, WOMAN_MODEL_FORWARD_YAW, 0);
+    womanEnemy.externalModel.position.set(0, stunned ? -0.42 : -0.03, 0);
+  }
 }
 
 function setWomanPhasingVisual(active) {
@@ -3319,6 +3358,7 @@ function respawnPlayer() {
   womanEnemy.group.rotation.x = 0;
   womanEnemy.group.rotation.z = 0;
   womanEnemy.group.scale.setScalar(1);
+  setWomanVisualPose(false);
   ghostDouble.group.visible = false;
   ghostDouble.active = false;
   ghostDouble.spawnAt = respawnMode === 'mansion' ? clock.elapsedTime + 60 : Infinity;
@@ -3591,6 +3631,7 @@ async function startGame(mode = 'school') {
     womanEnemy.group.rotation.x = 0;
     womanEnemy.group.rotation.z = 0;
     womanEnemy.group.scale.setScalar(1);
+    setWomanVisualPose(false);
     ghostDouble.group.visible = false;
     ghostDouble.active = false;
     ghostDouble.spawnAt = clock.elapsedTime + 60;
@@ -4215,10 +4256,20 @@ function canPlaceShopAt(x, z) {
   if (!isSafeSpawnPoint(x, z, 0.86)) return false;
   if (horizontalDistance({ x, z }, camera.position) < 5.5) return false;
   if (horizontalDistance({ x, z }, enemyStart) < 4.5) return false;
-  if (horizontalDistance({ x, z }, exitDoor.position) < 4.0) return false;
-  if (horizontalDistance({ x, z }, breakerPanel.position) < 4.0) return false;
-  if (keyItems.some((item) => horizontalDistance({ x, z }, item.group.position) < 3.0)) return false;
+  if (horizontalDistance({ x, z }, exitDoor.position) < EXIT_SHOP_CLEARANCE) return false;
+  if (horizontalDistance({ x, z }, breakerPanel.position) < IMPORTANT_OBJECT_CLEARANCE) return false;
+  if (keyItems.some((item) => horizontalDistance({ x, z }, item.group.position) < IMPORTANT_OBJECT_CLEARANCE)) return false;
   return true;
+}
+
+function canPlaceShopHardFallbackAt(x, z) {
+  const node = nearestNode(x, z);
+  if (!node || !getRoomAt(node.gx, node.gz)) return false;
+  if (!pointOnCurrentWalkableMap(x, z, 'school', 2.1)) return false;
+  if (horizontalDistance({ x, z }, exitDoor.position) < EXIT_SHOP_CLEARANCE) return false;
+  if (horizontalDistance({ x, z }, breakerPanel.position) < IMPORTANT_OBJECT_CLEARANCE) return false;
+  if (keyItems.some((item) => horizontalDistance({ x, z }, item.group.position) < IMPORTANT_OBJECT_CLEARANCE)) return false;
+  return !lockers.some((locker) => !inMansionBounds(locker.x, locker.z) && Math.hypot(locker.x - x, locker.z - z) < IMPORTANT_OBJECT_CLEARANCE);
 }
 
 function shopWallPositionForRoom(room) {
@@ -4240,8 +4291,13 @@ function createShop() {
     .map((room) => ({ room, ...shopWallPositionForRoom(room) }))
     .filter((candidate) => canPlaceShopAt(candidate.x, candidate.z))
     .sort(() => Math.random() - 0.5);
-  const fallbackRoom = schoolRooms.find((room) => room.id !== 'breaker') || schoolRooms[0];
-  const node = candidates[0] || shopWallPositionForRoom(fallbackRoom);
+  const fallbackCandidates = schoolRooms
+    .filter((room) => room.id !== 'breaker')
+    .map((room) => ({ room, ...shopWallPositionForRoom(room) }))
+    .filter((candidate) => canPlaceShopHardFallbackAt(candidate.x, candidate.z))
+    .sort((a, b) => horizontalDistance({ x: b.x, z: b.z }, exitDoor.position) - horizontalDistance({ x: a.x, z: a.z }, exitDoor.position));
+  const node = candidates[0] || fallbackCandidates[0];
+  if (!node) return;
   const group = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 0.42), shopMat);
   body.position.y = 0.86;
@@ -5193,8 +5249,10 @@ function updateWomanEnemy(dt, time) {
   if (time < (womanEnemy.emergeUntil || 0)) {
     const progress = THREE.MathUtils.clamp((time - (womanEnemy.emergeStartedAt || time)) / 3, 0, 1);
     womanEnemy.group.position.y = THREE.MathUtils.lerp(-1.8, 0.28, progress);
-    womanEnemy.group.rotation.x = THREE.MathUtils.lerp(-0.45, 0, progress);
+    womanEnemy.group.rotation.x = 0;
+    womanEnemy.group.rotation.z = 0;
     womanEnemy.group.scale.setScalar(THREE.MathUtils.lerp(0.65, 1, progress));
+    setWomanVisualPose(false);
     ghostEmergeEffect.visible = true;
     ghostEmergeEffect.scale.setScalar(0.35 + progress * 1.15);
     ghostEmergeEffect.material.opacity = 0.72 * (1 - progress * 0.55);
@@ -5209,6 +5267,7 @@ function updateWomanEnemy(dt, time) {
     womanEnemy.group.rotation.x = 0;
     womanEnemy.group.rotation.z = 0;
     womanEnemy.group.scale.setScalar(1);
+    setWomanVisualPose(false);
     setWomanPhasingVisual(false);
   }
   if (time < state.fakeOfudaAlertUntil) setDetection(100);
@@ -5218,15 +5277,13 @@ function updateWomanEnemy(dt, time) {
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     womanEnemy.target = null;
-    womanEnemy.group.rotation.x = -Math.PI / 2.15;
-    womanEnemy.group.rotation.z = 0.18;
-    womanEnemy.group.position.y = 0.12 + Math.sin(time * 1.6) * 0.006;
+    setWomanVisualPose(true);
+    womanEnemy.group.position.y = 0.18 + Math.sin(time * 1.6) * 0.006;
     setDetection(state.detection - dt * 9);
     state.alert = state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
     return;
   }
-  womanEnemy.group.rotation.x = THREE.MathUtils.lerp(womanEnemy.group.rotation.x, 0, 0.09);
-  womanEnemy.group.rotation.z = THREE.MathUtils.lerp(womanEnemy.group.rotation.z, 0, 0.09);
+  setWomanVisualPose(false);
   if (time >= womanEnemy.nextPhaseAt) {
     womanEnemy.phaseChargeUntil = time + 1.0;
     womanEnemy.phaseUntil = time + 11.0;
@@ -5287,9 +5344,8 @@ function updateWomanEnemy(dt, time) {
   updateGhostStunReticle(flashlightHit);
   if (state.ghostLightSeconds >= 3 * state.ghostStunTimeMultiplier) {
     womanEnemy.stunnedUntil = time + 10;
-    womanEnemy.group.rotation.x = -Math.PI / 2.15;
-    womanEnemy.group.rotation.z = 0.18;
-    womanEnemy.group.position.y = 0.12;
+    setWomanVisualPose(true);
+    womanEnemy.group.position.y = 0.18;
     state.ghostLightSeconds = 0;
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
@@ -5528,16 +5584,6 @@ function drawFullMap() {
   const lockerSource = lockers.filter((locker) => state.mapMode === 'mansion' ? inMansionBounds(locker.x, locker.z) : !inMansionBounds(locker.x, locker.z));
   const xs = nodes.map((node) => node.x);
   const zs = nodes.map((node) => node.z);
-  const extraPoints = [
-    ...lockerSource.map((locker) => ({ x: locker.x, z: locker.z })),
-    state.mapMode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel.position : breakerPanel.position,
-    state.mapMode === 'mansion' && mansionExit ? mansionExit : exitDoor.position,
-    state.mapMode === 'mansion' && mansionShop ? mansionShop : shop,
-  ].filter(Boolean);
-  for (const point of extraPoints) {
-    xs.push(point.x);
-    zs.push(point.z);
-  }
   const minX = Math.min(...xs) - CELL * 1.2;
   const maxX = Math.max(...xs) + CELL * 1.2;
   const minZ = Math.min(...zs) - CELL * 1.2;

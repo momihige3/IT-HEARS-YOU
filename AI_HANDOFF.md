@@ -856,3 +856,17 @@ Build:
 - Stun pose hardened:
   - On stun trigger, the ghost immediately snaps to a fallen pose.
   - While stunned, X/Z rotation and low position are forced every frame instead of lerped, preventing the ghost from standing upright during stun.
+
+## 2026-07-01 Placement / Map / Ghost Upright Fix
+
+- Important object placement was tightened:
+  - Shop, breaker, exit, real key items, and fake ofuda now keep wider spacing from each other.
+  - School key placement now rejects non-walkable / out-of-map cells and verifies the final pickup point with movement collision checks.
+  - School shop placement no longer uses a fallback that can block the exit or overlap important pickups.
+- Full-map bounds now use walkable cells as the source of truth:
+  - This keeps the school/mansion map centered on playable space and avoids misleading empty-map offset.
+- Mansion ghost pose was corrected:
+  - During normal movement and fake-ofuda emergence, the ghost is forced upright and no longer uses crawl/lean rotations.
+  - The GLB forward correction remains at the tested 90-degree offset to prevent sideways sliding.
+  - Stun pose now rotates the GLB on the X axis only, so it lies sideways without flipping upside down.
+  - Recovery and respawn reset the ghost back to a fully upright pose.
