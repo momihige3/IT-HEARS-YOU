@@ -716,3 +716,14 @@ Build:
   - Branch seeds increased from 7 to 12.
   - Branches keep a short initial direction so they form visible side corridors instead of tiny stubs.
   - Branch length and small loop count were slightly increased while keeping the wall-heavy layout.
+
+## 2026-06-30 Mansion Outer Loop / Locker Furniture Clearance
+
+- Mansion outer-edge accessibility improved:
+  - Added a forced one-cell-wide outer circulation loop around the mansion grid.
+  - Added several forced connectors from the inner route network to the outer loop.
+  - The outer loop is treated as a protected route so random furniture is not placed on it.
+- Locker furniture clearance tightened:
+  - Desk/shelf colliders are now tagged as `furniture`.
+  - Mansion locker placement rejects any locker whose exit/standing area has furniture within about 1m.
+  - Wall collision checks remain separate so lockers can still be placed against walls.

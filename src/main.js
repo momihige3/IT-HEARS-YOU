@@ -739,6 +739,13 @@ function hasColliderOverlap(x, z, padding = 0.42) {
     Math.abs(x - collider.x) < collider.hw + padding && Math.abs(z - collider.z) < collider.hz + padding);
 }
 
+function hasFurnitureOverlap(x, z, padding = 0.42) {
+  return colliders.some((collider) =>
+    collider.kind === 'furniture'
+    && Math.abs(x - collider.x) < collider.hw + padding
+    && Math.abs(z - collider.z) < collider.hz + padding);
+}
+
 function isSafeSpawnPoint(x, z, padding = 0.46) {
   return !hasColliderOverlap(x, z, padding);
 }
@@ -883,6 +890,15 @@ function buildMansionSecondFloor() {
   carveMansionLine(3, -3, 6, -9, true, true);
   carveMansionLine(-1, 0, -4, -2, true, true);
   carveMansionLine(-4, -2, -5, -6, true, false);
+  // Outer circulation loop: keep the mansion maze narrow, but make the outer
+  // edge usable as a loop so exploration is not trapped in a single central path.
+  carveMansionLine(-6, 9, -6, -9, true, false);
+  carveMansionLine(-6, -9, 6, -9, true, true);
+  carveMansionLine(6, -9, 6, 9, true, false);
+  carveMansionLine(6, 9, -6, 9, true, true);
+  carveMansionLine(-3, 4, -6, 4, true, true);
+  carveMansionLine(3, -3, 6, -3, true, true);
+  carveMansionLine(0, 4, 0, 9, true, false);
   const branchSeeds = [...mansionCellKeys]
     .map((key) => key.split(',').map(Number))
     .sort(() => Math.random() - 0.5)
@@ -895,10 +911,15 @@ function buildMansionSecondFloor() {
     const to = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
     if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) <= 5) carveMansionLine(from[0], from[1], to[0], to[1]);
   }
-  const mansionProtectedSpot = (x, z) =>
-    Math.hypot(x - offsetX, z - 28) < 5.2
-    || Math.hypot(x - (offsetX - 26), z - 24) < 8.0
-    || (z > 20 && x > offsetX - 30 && x < offsetX + 6);
+  const mansionProtectedSpot = (x, z) => {
+    const ix = Math.round((x - offsetX) / CELL);
+    const iz = Math.round((z + 12) / CELL);
+    const outerLoop = Math.abs(ix) === 6 || iz === 9 || iz === -9;
+    return outerLoop
+      || Math.hypot(x - offsetX, z - 28) < 5.2
+      || Math.hypot(x - (offsetX - 26), z - 24) < 8.0
+      || (z > 20 && x > offsetX - 30 && x < offsetX + 6);
+  };
   for (let ix = -6; ix <= 6; ix += 1) {
     for (let iz = -9; iz <= 10; iz += 1) {
       if (!mansionCellKeys.has(mansionCellKey(ix, iz))) continue;
@@ -996,11 +1017,17 @@ function buildMansionSecondFloor() {
       const exitZ = node.z - side.z * 0.75;
       const sideStepX = side.z;
       const sideStepZ = -side.x;
+      const clearancePoints = [
+        [exitX, exitZ, 1.0],
+        [exitX + sideStepX * 0.75, exitZ + sideStepZ * 0.75, 0.78],
+        [exitX - sideStepX * 0.75, exitZ - sideStepZ * 0.75, 0.78],
+        [exitX - side.x * 0.62, exitZ - side.z * 0.62, 0.82],
+      ];
       return !hasColliderOverlap(x, z, 0.34)
-        && !hasColliderOverlap(exitX, exitZ, 0.72)
-        && canEnemyMoveTo(exitX, exitZ, 0.54)
-        && canEnemyMoveTo(exitX + sideStepX * 0.46, exitZ + sideStepZ * 0.46, 0.38)
-        && canEnemyMoveTo(exitX - sideStepX * 0.46, exitZ - sideStepZ * 0.46, 0.38);
+        && clearancePoints.every(([px, pz, padding]) => !hasFurnitureOverlap(px, pz, padding))
+        && canEnemyMoveTo(exitX, exitZ, 0.8)
+        && canEnemyMoveTo(exitX + sideStepX * 0.62, exitZ + sideStepZ * 0.62, 0.62)
+        && canEnemyMoveTo(exitX - sideStepX * 0.62, exitZ - sideStepZ * 0.62, 0.62);
     };
     const sideOptions = [
       { x: -1.22, z: 0, yaw: Math.PI / 2 },
@@ -1100,7 +1127,7 @@ function addDeskSet(x, z, rot = 0) {
   localBox(group, 0, 0.76, 0.87, 0.56, 0.62, 0.08, chairMat);
   group.position.set(x, 0, z);
   scene.add(group);
-  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? 0.68 : 0.48, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.48 : 0.68 });
+  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? 0.68 : 0.48, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.48 : 0.68, kind: 'furniture' });
   return group;
 }
 
@@ -1112,7 +1139,7 @@ function addShelf(x, z, w = 1.8, rot = 0) {
   for (let i = 0; i < 5; i += 1) localBox(group, -w * 0.34 + i * w * 0.17, 1.05 + (i % 2) * 0.32, 0.21, 0.1, 0.32, 0.08, bookMat);
   group.position.set(x, 0, z);
   scene.add(group);
-  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.22, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : w / 2 });
+  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.22, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : w / 2, kind: 'furniture' });
   return group;
 }
 
