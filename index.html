@@ -39,6 +39,7 @@
         <i></i>
         <span>LIGHT</span>
       </div>
+      <div id="eye-scare" aria-hidden="true"><i></i></div>
       <div id="prompt"></div>
 
       <div id="bottom-hud">
@@ -114,6 +115,17 @@
 
       <section id="message-screen" class="screen">
         <div class="message-card"><p id="message-kicker"></p><h2 id="message-title"></h2><p id="message-body"></p><button id="restart-button">もう一度</button></div>
+      </section>
+      <section id="full-map-screen" class="screen">
+        <div class="full-map-card">
+          <p class="eyebrow">全体マップ</p>
+          <canvas id="full-map-canvas" width="900" height="620"></canvas>
+          <div class="full-map-legend">
+            <span><i class="path"></i>通路</span><span><i class="wall"></i>壁</span><span><i class="locker"></i>ロッカー</span>
+            <span><i class="breaker"></i>ブレーカー</span><span><i class="shop"></i>ショップ</span><span><i class="exit"></i>出口</span>
+          </div>
+          <button id="full-map-close" class="secondary-button">閉じる</button>
+        </div>
       </section>
       <div id="loading-screen"><div><strong id="loading-title">ロード中</strong><span id="loading-detail">マップを準備しています...</span></div></div>
       <div id="toast"></div>

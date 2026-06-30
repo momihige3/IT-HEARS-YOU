@@ -168,6 +168,9 @@ const state = {
   lockerHideStartDetection: 0,
   ghostLightSeconds: 0,
   fakeOfudaAlertUntil: 0,
+  fullMapOpen: false,
+  nextEyeScareAt: Infinity,
+  eyeScareUntil: 0,
   settingsOpen: false,
   allowExit: false,
   bob: 0,
@@ -603,6 +606,25 @@ function localBox(group, x, y, z, w, h, d, mat) {
   return mesh;
 }
 
+function addLockerSpotlight(x, z, yaw, mansion = false) {
+  const light = new THREE.SpotLight(0xdde7ff, mansion ? 1.65 : 1.25, 5.8, Math.PI / 5.2, 0.7, 1.5);
+  light.position.set(x - Math.sin(yaw) * 0.95, 2.35, z - Math.cos(yaw) * 0.95);
+  light.target.position.set(x, 1.0, z);
+  light.castShadow = false;
+  scene.add(light);
+  scene.add(light.target);
+  schoolLights.push(light);
+  schoolLights.push(light.target);
+  if (mansion) {
+    registerMansionObject(light);
+    registerMansionObject(light.target);
+  } else {
+    markSharedObject(light);
+    markSharedObject(light.target);
+  }
+  return light;
+}
+
 function makeLocker(gx, gz, wallSide) {
   const cell = worldFromGrid(gx, gz);
   const group = new THREE.Group();
@@ -640,6 +662,7 @@ function makeLocker(gx, gz, wallSide) {
   colliders.push({ x, z, hw: sideways ? 0.46 : 0.56, hz: sideways ? 0.56 : 0.46 });
   const locker = { group, x, z, yaw };
   lockers.push(locker);
+  addLockerSpotlight(x, z, yaw, false);
   return locker;
 }
 
@@ -1052,6 +1075,7 @@ function buildMansionSecondFloor() {
     registerMansionObject(group);
     lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
     colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
+    addLockerSpotlight(x, z, yaw, true);
     placedMansionLockers += 1;
   }
 }
@@ -1795,6 +1819,25 @@ function createWomanEnemy() {
 
 const womanEnemy = createWomanEnemy();
 markSharedObject(womanEnemy.group);
+const ghostDouble = createWomanEnemy();
+markSharedObject(ghostDouble.group);
+ghostDouble.group.visible = false;
+ghostDouble.active = false;
+ghostDouble.spawnAt = Infinity;
+ghostDouble.despawnAt = 0;
+ghostDouble.visualMaterials = [];
+ghostDouble.group.traverse((child) => {
+  if (!child.material) return;
+  const materials = Array.isArray(child.material) ? child.material : [child.material];
+  for (const matItem of materials) {
+    matItem.transparent = true;
+    matItem.opacity = 0.42;
+    matItem.emissive = matItem.emissive || new THREE.Color(0x000000);
+    matItem.emissive.setHex(0x1a2032);
+    matItem.emissiveIntensity = Math.max(matItem.emissiveIntensity || 0, 0.16);
+    ghostDouble.visualMaterials.push(matItem);
+  }
+});
 const ghostEmergeEffect = new THREE.Mesh(
   new THREE.CircleGeometry(1.45, 28),
   new THREE.MeshBasicMaterial({ color: 0x5a0606, transparent: true, opacity: 0, depthWrite: false }),
@@ -2915,6 +2958,7 @@ function updateSchoolLighting(time) {
   scene.background.set(power ? 0xc8d4d8 : 0x080b08);
   renderer.toneMappingExposure = THREE.MathUtils.lerp(1.08, 2.25, power);
   for (const light of schoolLights) {
+    if (!light.isLight) continue;
     light.intensity = THREE.MathUtils.lerp(2.2, 22.0, power);
     light.distance = THREE.MathUtils.lerp(8, 22, power);
   }
@@ -3081,6 +3125,8 @@ function respawnPlayer() {
   state.nextTrapAt = 0;
   state.lockerExitGraceUntil = clock.elapsedTime + 1;
   state.settingsOpen = false;
+  state.fullMapOpen = false;
+  $('#full-map-screen')?.classList.remove('visible');
   mobileInput.moveX = mobileInput.moveY = 0;
   mobileInput.running = false;
   $('#mobile-run-toggle').classList.remove('running');
@@ -3110,6 +3156,13 @@ function respawnPlayer() {
   womanEnemy.group.rotation.x = 0;
   womanEnemy.group.rotation.z = 0;
   womanEnemy.group.scale.setScalar(1);
+  ghostDouble.group.visible = false;
+  ghostDouble.active = false;
+  ghostDouble.spawnAt = respawnMode === 'mansion' ? clock.elapsedTime + 60 : Infinity;
+  ghostDouble.despawnAt = 0;
+  ghostDouble.target = null;
+  state.nextEyeScareAt = respawnMode === 'mansion' ? clock.elapsedTime + 120 + Math.random() * 180 : Infinity;
+  state.eyeScareUntil = 0;
   setWomanPhasingVisual(false);
   placeKeyItemsForMode(respawnMode);
   updateExitCounter();
@@ -3198,6 +3251,10 @@ function updateCaughtCutscene(time) {
 function endGame(win) {
   state.ended = true;
   state.allowExit = true;
+  state.fullMapOpen = false;
+  ghostDouble.group.visible = false;
+  ghostDouble.active = false;
+  $('#eye-scare')?.classList.remove('visible');
   stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
   if (win) playClearSound();
@@ -3211,6 +3268,7 @@ function endGame(win) {
     ? '背後で、まだ何かが扉を叩いている。'
     : '速すぎた。うるさすぎた。もう一度、静かに。';
   $('#message-screen').classList.add('visible');
+  $('#full-map-screen')?.classList.remove('visible');
 }
 
 function openSettings() {
@@ -3368,6 +3426,12 @@ async function startGame(mode = 'school') {
     womanEnemy.group.rotation.x = 0;
     womanEnemy.group.rotation.z = 0;
     womanEnemy.group.scale.setScalar(1);
+    ghostDouble.group.visible = false;
+    ghostDouble.active = false;
+    ghostDouble.spawnAt = clock.elapsedTime + 60;
+    ghostDouble.despawnAt = 0;
+    ghostDouble.target = null;
+    scheduleNextEyeScare(clock.elapsedTime);
     setWomanPhasingVisual(false);
     womanEnemy.target = nearestMansionNode(safeStart.x, safeStart.z, 14);
   } else {
@@ -3377,6 +3441,7 @@ async function startGame(mode = 'school') {
   setLoading(true, 'ゲームを開始しています...');
   await nextFrame();
   state.started = true;
+  state.fullMapOpen = false;
   initAudio();
   scheduleNextRoar(clock.elapsedTime);
   if (mode === 'school' && healItems.length === 0) {
@@ -3387,6 +3452,7 @@ async function startGame(mode = 'school') {
   document.body.classList.add('game-running');
   $('#mobile-controls')?.classList.remove('disabled');
   $('#start-screen').classList.remove('visible');
+  $('#full-map-screen')?.classList.remove('visible');
   setLoading(false);
   lockPointer();
 }
@@ -3409,6 +3475,19 @@ $('#restart-button').addEventListener('pointerup', (event) => {
   state.allowExit = true;
   location.reload();
 }, { passive: false });
+$('#radar-panel')?.addEventListener('pointerup', (event) => {
+  if (!mobileInput.active || !state.started || state.ended || state.caught) return;
+  event.preventDefault();
+  event.stopPropagation();
+  toggleFullMap();
+}, { passive: false });
+$('#full-map-close')?.addEventListener('click', () => toggleFullMap(false));
+$('#full-map-close')?.addEventListener('pointerup', (event) => {
+  if (!mobileInput.active) return;
+  event.preventDefault();
+  event.stopPropagation();
+  toggleFullMap(false);
+}, { passive: false });
 renderer.domElement.addEventListener('click', () => {
   if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
@@ -3418,7 +3497,16 @@ addEventListener('keydown', (event) => {
 }, { capture: true });
 addEventListener('keydown', (event) => {
   keys[event.code] = true;
+  if (event.code === 'KeyM' && state.started && !event.repeat) {
+    event.preventDefault();
+    toggleFullMap();
+    return;
+  }
   if (event.code === 'Escape' && state.started && !state.ended && !event.repeat) {
+    if (state.fullMapOpen) {
+      toggleFullMap(false);
+      return;
+    }
     if (state.settingsOpen) closeSettings();
     else openSettings();
   }
@@ -4705,6 +4793,109 @@ function reactWomanToSoundEvent(event, now) {
   }
 }
 
+function scheduleNextEyeScare(time) {
+  state.nextEyeScareAt = time + 120 + Math.random() * 180;
+}
+
+function updateEyeScare(time) {
+  const eye = $('#eye-scare');
+  if (!eye) return;
+  if (state.mapMode !== 'mansion' || !state.started || state.ended || state.caught) {
+    eye.classList.remove('visible');
+    return;
+  }
+  if (!Number.isFinite(state.nextEyeScareAt)) scheduleNextEyeScare(time);
+  if (time >= state.nextEyeScareAt) {
+    state.eyeScareUntil = time + 1;
+    scheduleNextEyeScare(time + 1);
+  }
+  const active = time < state.eyeScareUntil;
+  eye.classList.toggle('visible', active);
+  if (active) {
+    const progress = THREE.MathUtils.clamp(1 - (state.eyeScareUntil - time), 0, 1);
+    const pulse = Math.sin(progress * Math.PI);
+    eye.style.opacity = String(0.12 + pulse * 0.78);
+    eye.style.transform = `scale(${(1.04 + pulse * 0.035).toFixed(3)})`;
+  } else {
+    eye.style.opacity = '';
+    eye.style.transform = '';
+  }
+}
+
+function spawnGhostDouble(time) {
+  const candidates = mansionNodes
+    .filter((node) => canEnemyMoveTo(node.x, node.z, 0.3))
+    .filter((node) => Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 9)
+    .sort(() => Math.random() - 0.5);
+  const node = candidates[0] || nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 10);
+  if (!node) return;
+  ghostDouble.group.position.set(node.x, 0.28, node.z);
+  ghostDouble.group.rotation.set(0, Math.random() * Math.PI * 2, 0);
+  ghostDouble.group.visible = true;
+  ghostDouble.active = true;
+  ghostDouble.despawnAt = time + 60;
+  ghostDouble.target = nearestMansionNode(node.x, node.z, 8);
+  ghostDouble.repathAt = time + 1.5;
+}
+
+function despawnGhostDouble(time) {
+  ghostDouble.group.visible = false;
+  ghostDouble.active = false;
+  ghostDouble.target = null;
+  ghostDouble.spawnAt = time + 60;
+  ghostDouble.despawnAt = 0;
+}
+
+function updateGhostDouble(dt, time) {
+  if (state.mapMode !== 'mansion' || state.ended || state.caught) {
+    ghostDouble.group.visible = false;
+    return;
+  }
+  if (!Number.isFinite(ghostDouble.spawnAt)) ghostDouble.spawnAt = time + 60;
+  if (!ghostDouble.active) {
+    if (time >= ghostDouble.spawnAt) spawnGhostDouble(time);
+    return;
+  }
+  if (time >= ghostDouble.despawnAt) {
+    despawnGhostDouble(time);
+    return;
+  }
+  if (!ghostDouble.target || time >= ghostDouble.repathAt || Math.hypot(ghostDouble.group.position.x - ghostDouble.target.x, ghostDouble.group.position.z - ghostDouble.target.z) < 0.7) {
+    const node = mansionNodes
+      .filter((candidate) => Math.hypot(candidate.x - ghostDouble.group.position.x, candidate.z - ghostDouble.group.position.z) > 7)
+      .sort(() => Math.random() - 0.5)[0] || nearestMansionNode(ghostDouble.group.position.x, ghostDouble.group.position.z, 6);
+    if (node) ghostDouble.target = { x: node.x, z: node.z };
+    ghostDouble.repathAt = time + 2.5 + Math.random() * 2.5;
+  }
+  if (ghostDouble.target) {
+    const dx = ghostDouble.target.x - ghostDouble.group.position.x;
+    const dz = ghostDouble.target.z - ghostDouble.group.position.z;
+    const len = Math.hypot(dx, dz);
+    if (len > 0.05) {
+      const speed = 2.5;
+      const step = speed * dt;
+      const nx = ghostDouble.group.position.x + (dx / len) * step;
+      const nz = ghostDouble.group.position.z + (dz / len) * step;
+      if (canEnemyMoveTo(nx, nz, 0.22)) {
+        ghostDouble.group.position.x = nx;
+        ghostDouble.group.position.z = nz;
+      } else {
+        ghostDouble.target = nearestMansionNode(ghostDouble.group.position.x, ghostDouble.group.position.z, 5);
+        ghostDouble.repathAt = time + 0.5;
+      }
+      ghostDouble.group.rotation.y = Math.atan2(dx, dz);
+    }
+  }
+  ghostDouble.group.position.y = 0.28 + Math.sin(time * 2.4 + 1.7) * 0.1;
+  if (!state.hidden && Math.hypot(ghostDouble.group.position.x - camera.position.x, ghostDouble.group.position.z - camera.position.z) < 0.82) {
+    state.seatedUntil = Math.max(state.seatedUntil, time + 5);
+    state.hp = Math.max(1, state.hp - 8);
+    emitWorldSound(camera.position.x, camera.position.z, 45, 8, true);
+    showToast('幽霊の分身に足をすくわれた');
+    despawnGhostDouble(time);
+  }
+}
+
 function updateWomanEnemy(dt, time) {
   if (!womanEnemy || state.ended) {
     updateGhostStunReticle(false);
@@ -4841,15 +5032,15 @@ function updateWomanEnemy(dt, time) {
   state.alert = state.detection > 70 ? 'HUNTING' : state.detection > 35 ? 'SUSPICIOUS' : 'UNNOTICED';
   if (!state.hidden && playerOnSecondFloor && (ghostSeesPlayer || state.detection > 70 || distance < 6.5)) {
     womanEnemy.target = { x: camera.position.x, z: camera.position.z };
-    womanEnemy.speed = phasing ? 3.2 : 2.05;
+    womanEnemy.speed = phasing ? 6.4 : 4.1;
   } else if (!womanEnemy.target || time >= womanEnemy.repathAt || Math.hypot(womanEnemy.group.position.x - womanEnemy.target.x, womanEnemy.group.position.z - womanEnemy.target.z) < 0.7) {
     const node = nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 8);
     if (node) womanEnemy.target = { x: node.x, z: node.z };
     womanEnemy.repathAt = time + 3 + Math.random() * 3;
-    womanEnemy.speed = phasing ? 2.4 : 1.25;
+    womanEnemy.speed = phasing ? 4.8 : 2.5;
   }
   if (flashlightHit) {
-    womanEnemy.speed *= 0.5;
+    womanEnemy.speed *= distance <= 5 ? 0.2 : 0.5;
     setDetection(Math.max(state.detection - dt * 7, detectionFloor()));
   }
   if (womanEnemy.target) {
@@ -4963,6 +5154,7 @@ function updateLight(time) {
   updateSchoolLighting(time);
   const activeLightDistance = state.mapMode === 'mansion' ? 30 : 24;
   for (const light of schoolLights) {
+    if (!light.isLight) continue;
     light.visible = light.position.distanceTo(camera.position) < activeLightDistance;
   }
   if (breakerLight) breakerLight.visible = state.mapMode !== 'mansion' && breakerLight.position.distanceTo(camera.position) < 18;
@@ -4994,6 +5186,8 @@ function updateLight(time) {
 
 const minimap = $('#minimap');
 const radar = minimap.getContext('2d');
+const fullMapCanvas = $('#full-map-canvas');
+const fullMapContext = fullMapCanvas?.getContext('2d');
 function radarPoint(x, z, scale = 8.2) {
   return {
     x: minimap.width / 2 + (x - camera.position.x) * scale,
@@ -5003,6 +5197,98 @@ function radarPoint(x, z, scale = 8.2) {
 
 function angleDelta(a, b) {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
+function currentMapNodes() {
+  return state.mapMode === 'mansion' ? mansionNodes : [...navNodes.values()];
+}
+
+function toggleFullMap(force = null) {
+  if (force === false) {
+    state.fullMapOpen = false;
+    $('#full-map-screen')?.classList.remove('visible');
+    return;
+  }
+  if (!state.started || state.loading || state.ended || state.caught || state.settingsOpen || state.shopOpen) return;
+  state.fullMapOpen = force === null ? !state.fullMapOpen : force;
+  $('#full-map-screen')?.classList.toggle('visible', state.fullMapOpen);
+  if (state.fullMapOpen) drawFullMap();
+}
+
+function drawFullMap() {
+  if (!fullMapContext || !fullMapCanvas) return;
+  const ctx = fullMapContext;
+  const nodes = currentMapNodes();
+  ctx.clearRect(0, 0, fullMapCanvas.width, fullMapCanvas.height);
+  ctx.fillStyle = '#020403';
+  ctx.fillRect(0, 0, fullMapCanvas.width, fullMapCanvas.height);
+  if (!nodes.length) return;
+  const xs = nodes.map((node) => node.x);
+  const zs = nodes.map((node) => node.z);
+  const extraPoints = [
+    ...lockers.map((locker) => ({ x: locker.x, z: locker.z })),
+    state.mapMode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel.position : breakerPanel.position,
+    state.mapMode === 'mansion' && mansionExit ? mansionExit : exitDoor.position,
+    state.mapMode === 'mansion' && mansionShop ? mansionShop : shop,
+  ].filter(Boolean);
+  for (const point of extraPoints) {
+    xs.push(point.x);
+    zs.push(point.z);
+  }
+  const minX = Math.min(...xs) - CELL * 1.2;
+  const maxX = Math.max(...xs) + CELL * 1.2;
+  const minZ = Math.min(...zs) - CELL * 1.2;
+  const maxZ = Math.max(...zs) + CELL * 1.2;
+  const scale = Math.min(
+    (fullMapCanvas.width - 64) / Math.max(1, maxX - minX),
+    (fullMapCanvas.height - 64) / Math.max(1, maxZ - minZ),
+  );
+  const toMap = (x, z) => ({
+    x: 32 + (x - minX) * scale,
+    y: 32 + (z - minZ) * scale,
+  });
+  ctx.fillStyle = '#0b0e0c';
+  ctx.fillRect(24, 24, fullMapCanvas.width - 48, fullMapCanvas.height - 48);
+  const cellSize = Math.max(5, CELL * scale * 0.92);
+  ctx.fillStyle = '#294236';
+  for (const node of nodes) {
+    const p = toMap(node.x, node.z);
+    ctx.fillRect(p.x - cellSize / 2, p.y - cellSize / 2, cellSize, cellSize);
+  }
+  ctx.strokeStyle = 'rgba(126,156,136,.18)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(24, 24, fullMapCanvas.width - 48, fullMapCanvas.height - 48);
+  const drawMarker = (point, label, color, size = 9) => {
+    if (!point) return;
+    const p = toMap(point.x ?? point.position?.x, point.z ?? point.position?.z);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#071008';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#071008';
+    ctx.font = `bold ${Math.max(10, size)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, p.x, p.y + 0.5);
+    ctx.restore();
+  };
+  const lockerSource = lockers.filter((locker) => state.mapMode === 'mansion' ? inMansionBounds(locker.x, locker.z) : !inMansionBounds(locker.x, locker.z));
+  for (const locker of lockerSource) drawMarker(locker, 'L', '#9ba8b8', 6.5);
+  const breakerMarker = state.mapMode === 'mansion' && mansionBreakerPanel
+    ? { x: mansionBreakerPanel.position.x, z: mansionBreakerPanel.position.z }
+    : { x: breakerPanel.position.x, z: breakerPanel.position.z };
+  drawMarker(breakerMarker, 'ブ', '#76e695', 10);
+  drawMarker(state.mapMode === 'mansion' && mansionShop ? mansionShop : shop, 'シ', '#84cfff', 10);
+  drawMarker(state.mapMode === 'mansion' && mansionExit ? mansionExit : { x: exitDoor.position.x, z: exitDoor.position.z }, '出', '#ffe07a', 11);
+  drawMarker({ x: camera.position.x, z: camera.position.z }, '自', '#ffffff', 9);
+  ctx.fillStyle = '#c8d5ce';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(state.mapMode === 'mansion' ? '屋敷' : '学校', 34, 26);
 }
 
 function updateRadar(dt, time) {
@@ -5222,12 +5508,13 @@ function animate() {
   }
   if (state.caught) {
     updateCaughtCutscene(time);
-  } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen) {
+  } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen) {
     updateSonarRoar(time);
     updatePlayer(dt);
     updateLockerView();
     updateEnemy(dt, time);
     updateWomanEnemy(dt, time);
+    updateGhostDouble(dt, time);
     updateNoiseTraps(dt, time);
     updateHealItems(dt, time);
     updateCoins(dt, time);
@@ -5255,8 +5542,10 @@ function animate() {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
+  if (state.fullMapOpen) drawFullMap();
   updateScreenShake(time);
   updateScreenFlash(time);
+  updateEyeScare(time);
   renderer.render(scene, camera);
   perfFrames += 1;
   const now = performance.now();

@@ -755,3 +755,25 @@ Build:
   - End-game now marks `allowExit = true`, clears locker visual state, hides the mobile action prompt, and disables the mobile control overlay.
   - Mobile controls are re-enabled on respawn/game start.
   - Restart button now also supports mobile `pointerup`, not only desktop-style `click`.
+
+## 2026-06-30 Full Map / Locker Light / Mansion Ghost Events
+
+- Added soft spotlights to school and mansion lockers so hiding spots are easier to notice in dark areas.
+- Added a full-map overlay:
+  - PC opens/closes it with `M`.
+  - Mobile opens it by tapping the radar/minimap panel.
+  - The overlay shows walkable corridors, implied walls, lockers, breaker, shop, exit, and the player position.
+  - Gameplay simulation pauses while the full map is open.
+- Mansion ghost balance updated:
+  - Base movement speed is doubled.
+  - When the flashlight is hitting the ghost within 5m, the ghost slows to 20% speed.
+  - Beyond 5m, existing flashlight slow remains lighter.
+- Added mansion ghost doppelganger event:
+  - Spawns after 60 seconds at a reachable mansion point away from the player.
+  - Patrols/searches for up to 60 seconds.
+  - Touching the player causes a 5-second seated/stumble state instead of capture, then the doppelganger disappears.
+  - The event repeats on a 60-second cooldown.
+- Added mansion eye-scare event:
+  - Every 2–5 minutes in mansion mode, a close-up eye fades in/out for about 1 second.
+- Technical note:
+  - Locker spotlights add both the light and target to the shared light/object lists; update loops now skip non-light targets where needed.
