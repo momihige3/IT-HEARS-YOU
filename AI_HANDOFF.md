@@ -746,3 +746,12 @@ Build:
   - Procedural ghost parts are hidden.
   - External model materials are registered for phasing/transparent visual effects.
   - Loaded model is rotated 180 degrees so the visual facing direction matches the existing AI forward vector.
+
+## 2026-06-30 Mobile Exit Input Freeze Fix
+
+- Fixed a mobile-only freeze/lockup risk when tapping the center action button to escape:
+  - Mobile center action now triggers on `pointerup` via `requestAnimationFrame` instead of mutating game/end UI during `pointerdown`.
+  - Pointer capture is released before running the interaction.
+  - End-game now marks `allowExit = true`, clears locker visual state, hides the mobile action prompt, and disables the mobile control overlay.
+  - Mobile controls are re-enabled on respawn/game start.
+  - Restart button now also supports mobile `pointerup`, not only desktop-style `click`.

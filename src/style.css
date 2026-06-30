@@ -170,6 +170,7 @@ html, body, #app, #game, canvas, button {
 html, body { touch-action: none; }
 #game canvas { touch-action: none !important; }
 #mobile-controls { touch-action: none; }
+#mobile-controls.disabled { pointer-events: none; opacity: 0; }
 #mobile-controls button { touch-action: none; -webkit-user-select: none; user-select: none; }
 #coin-panel {
   min-width: 112px;

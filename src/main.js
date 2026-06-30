@@ -3086,6 +3086,7 @@ function respawnPlayer() {
   $('#mobile-run-toggle').classList.remove('running');
   $('#mobile-run-toggle').textContent = '歩行中';
   document.body.classList.remove('caught-cutscene', 'hidden-in-locker');
+  $('#mobile-controls')?.classList.remove('disabled');
   if (respawnMode === 'mansion' && mansionStartPoint) {
     const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
     camera.position.set(safeStart.x, 1.68, safeStart.z);
@@ -3196,10 +3197,14 @@ function updateCaughtCutscene(time) {
 
 function endGame(win) {
   state.ended = true;
+  state.allowExit = true;
   stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
   if (win) playClearSound();
   controls.unlock();
+  document.body.classList.remove('hidden-in-locker');
+  $('#mobile-controls')?.classList.add('disabled');
+  $('#mobile-action')?.classList.remove('visible');
   $('#message-kicker').textContent = win ? '脱出成功' : '見つかった';
   $('#message-title').textContent = win ? '生還' : '捕獲';
   $('#message-body').textContent = win
@@ -3380,6 +3385,7 @@ async function startGame(mode = 'school') {
   }
   if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
   document.body.classList.add('game-running');
+  $('#mobile-controls')?.classList.remove('disabled');
   $('#start-screen').classList.remove('visible');
   setLoading(false);
   lockPointer();
@@ -3396,6 +3402,13 @@ $('#restart-button').addEventListener('click', () => {
   state.allowExit = true;
   location.reload();
 });
+$('#restart-button').addEventListener('pointerup', (event) => {
+  if (!mobileInput.active) return;
+  event.preventDefault();
+  event.stopPropagation();
+  state.allowExit = true;
+  location.reload();
+}, { passive: false });
 renderer.domElement.addEventListener('click', () => {
   if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
@@ -3500,7 +3513,41 @@ bindMobileButton('#mobile-flashlight', () => {
   state.flashlight = !state.flashlight;
   $('#mobile-flashlight').classList.toggle('active', state.flashlight);
 });
-bindMobileButton('#mobile-action', interact);
+function bindMobileActionButton() {
+  const element = $('#mobile-action');
+  if (!element) return;
+  let activePointer = null;
+  let triggered = false;
+  element.addEventListener('pointerdown', (event) => {
+    if (!state.started || state.ended || state.caught) return;
+    event.preventDefault();
+    event.stopPropagation();
+    activePointer = event.pointerId;
+    triggered = false;
+    try { element.setPointerCapture(activePointer); } catch { /* Pointer capture may not be available. */ }
+  }, { passive: false });
+  const release = (event) => {
+    if (activePointer !== event.pointerId || triggered) return;
+    event.preventDefault();
+    event.stopPropagation();
+    triggered = true;
+    activePointer = null;
+    try { element.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
+    requestAnimationFrame(() => {
+      if (!state.ended && !state.caught) interact();
+    });
+  };
+  element.addEventListener('pointerup', release, { passive: false });
+  element.addEventListener('pointercancel', () => {
+    activePointer = null;
+    triggered = false;
+  });
+  element.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+}
+bindMobileActionButton();
 
 let cameraSwipePointer = null;
 let cameraSwipeX = 0;
