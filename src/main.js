@@ -546,17 +546,17 @@ function addRoomBoundaryWalls(room) {
     const west = worldFromGrid(room.gx0, gz);
     const east = worldFromGrid(room.gx1, gz);
     if (!(doorOnWest && gz === doorZ)) {
-      addBox(west.x - CELL / 2, 2.05, west.z, 0.18, 4.2, CELL + 0.18, wallMat, true, true, false);
+      addBox(west.x - CELL / 2, 2.05, west.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true, false);
     }
     if (!(doorOnEast && gz === doorZ)) {
-      addBox(east.x + CELL / 2, 2.05, east.z, 0.18, 4.2, CELL + 0.18, wallMat, true, true, false);
+      addBox(east.x + CELL / 2, 2.05, east.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true, false);
     }
   }
   for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
     const north = worldFromGrid(gx, room.gz0);
     const south = worldFromGrid(gx, room.gz1);
-    addBox(north.x, 2.05, north.z - CELL / 2, CELL + 0.18, 4.2, 0.18, wallMat, true, true, false);
-    addBox(south.x, 2.05, south.z + CELL / 2, CELL + 0.18, 4.2, 0.18, wallMat, true, true, false);
+    addBox(north.x, 2.05, north.z - CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
+    addBox(south.x, 2.05, south.z + CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
   }
 }
 
@@ -572,8 +572,8 @@ for (const key of walkable) {
 
   for (const [dx, dz] of directions) {
     if (walkable.has(gridKey(gx + dx, gz + dz))) continue;
-    if (dx !== 0) addBox(pos.x + dx * CELL / 2, 2.05, pos.z, 0.18, 4.2, CELL + 0.18, wallMat, true, true);
-    else addBox(pos.x, 2.05, pos.z + dz * CELL / 2, CELL + 0.18, 4.2, 0.18, wallMat, true, true);
+    if (dx !== 0) addBox(pos.x + dx * CELL / 2, 2.05, pos.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true);
+    else addBox(pos.x, 2.05, pos.z + dz * CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true);
   }
 
   if ((gx * 5 + gz * 3) % 9 === 0) {
@@ -3322,7 +3322,7 @@ function respawnPlayer() {
   ghostDouble.spawnAt = respawnMode === 'mansion' ? clock.elapsedTime + 60 : Infinity;
   ghostDouble.despawnAt = 0;
   ghostDouble.target = null;
-  state.nextEyeScareAt = respawnMode === 'mansion' ? clock.elapsedTime + 120 + Math.random() * 180 : Infinity;
+  state.nextEyeScareAt = respawnMode === 'mansion' ? clock.elapsedTime + 30 : Infinity;
   state.eyeScareUntil = 0;
   setWomanPhasingVisual(false);
   placeKeyItemsForMode(respawnMode);
@@ -5054,7 +5054,21 @@ function reactWomanToSoundEvent(event, now) {
 }
 
 function scheduleNextEyeScare(time) {
-  state.nextEyeScareAt = time + 120 + Math.random() * 180;
+  state.nextEyeScareAt = time + 30;
+}
+
+const eyeScareSounds = [
+  './audio/mitsuketa.mp3',
+  './audio/doko_ni_iruno.mp3',
+  './audio/kocchi_ni_kinasai.mp3',
+];
+
+function playEyeScareSound() {
+  if (seVolume <= 0) return;
+  const source = eyeScareSounds[Math.floor(Math.random() * eyeScareSounds.length)];
+  const sound = new Audio(source);
+  sound.volume = Math.min(1, Math.max(0, seVolume / 100));
+  sound.play().catch(() => {});
 }
 
 function updateEyeScare(time) {
@@ -5067,6 +5081,7 @@ function updateEyeScare(time) {
   if (!Number.isFinite(state.nextEyeScareAt)) scheduleNextEyeScare(time);
   if (time >= state.nextEyeScareAt) {
     state.eyeScareUntil = time + 1;
+    playEyeScareSound();
     scheduleNextEyeScare(time + 1);
   }
   const active = time < state.eyeScareUntil;
@@ -5506,10 +5521,11 @@ function drawFullMap() {
   ctx.fillStyle = '#020403';
   ctx.fillRect(0, 0, fullMapCanvas.width, fullMapCanvas.height);
   if (!nodes.length) return;
+  const lockerSource = lockers.filter((locker) => state.mapMode === 'mansion' ? inMansionBounds(locker.x, locker.z) : !inMansionBounds(locker.x, locker.z));
   const xs = nodes.map((node) => node.x);
   const zs = nodes.map((node) => node.z);
   const extraPoints = [
-    ...lockers.map((locker) => ({ x: locker.x, z: locker.z })),
+    ...lockerSource.map((locker) => ({ x: locker.x, z: locker.z })),
     state.mapMode === 'mansion' && mansionBreakerPanel ? mansionBreakerPanel.position : breakerPanel.position,
     state.mapMode === 'mansion' && mansionExit ? mansionExit : exitDoor.position,
     state.mapMode === 'mansion' && mansionShop ? mansionShop : shop,
@@ -5526,17 +5542,42 @@ function drawFullMap() {
     (fullMapCanvas.width - 64) / Math.max(1, maxX - minX),
     (fullMapCanvas.height - 64) / Math.max(1, maxZ - minZ),
   );
+  const mapWidth = (maxX - minX) * scale;
+  const mapHeight = (maxZ - minZ) * scale;
+  const mapOffsetX = (fullMapCanvas.width - mapWidth) / 2;
+  const mapOffsetY = (fullMapCanvas.height - mapHeight) / 2;
   const toMap = (x, z) => ({
-    x: 32 + (x - minX) * scale,
-    y: 32 + (z - minZ) * scale,
+    x: mapOffsetX + (x - minX) * scale,
+    y: mapOffsetY + (z - minZ) * scale,
   });
   ctx.fillStyle = '#0b0e0c';
   ctx.fillRect(24, 24, fullMapCanvas.width - 48, fullMapCanvas.height - 48);
   const cellSize = Math.max(5, CELL * scale * 0.92);
+  const nodeKey = (x, z) => `${Math.round(x * 10) / 10},${Math.round(z * 10) / 10}`;
+  const nodeSet = new Set(nodes.map((node) => nodeKey(node.x, node.z)));
   ctx.fillStyle = '#294236';
   for (const node of nodes) {
     const p = toMap(node.x, node.z);
     ctx.fillRect(p.x - cellSize / 2, p.y - cellSize / 2, cellSize, cellSize);
+  }
+  ctx.strokeStyle = '#789082';
+  ctx.lineWidth = Math.max(3, CELL * scale * 0.12);
+  ctx.lineCap = 'square';
+  for (const node of nodes) {
+    const p = toMap(node.x, node.z);
+    const half = cellSize / 2;
+    for (const [dx, dz, ax, az, bx, bz] of [
+      [CELL, 0, half, -half, half, half],
+      [-CELL, 0, -half, -half, -half, half],
+      [0, CELL, -half, half, half, half],
+      [0, -CELL, -half, -half, half, -half],
+    ]) {
+      if (nodeSet.has(nodeKey(node.x + dx, node.z + dz))) continue;
+      ctx.beginPath();
+      ctx.moveTo(p.x + ax, p.y + az);
+      ctx.lineTo(p.x + bx, p.y + bz);
+      ctx.stroke();
+    }
   }
   ctx.strokeStyle = 'rgba(126,156,136,.18)';
   ctx.lineWidth = 1;
@@ -5559,7 +5600,6 @@ function drawFullMap() {
     ctx.fillText(label, p.x, p.y + 0.5);
     ctx.restore();
   };
-  const lockerSource = lockers.filter((locker) => state.mapMode === 'mansion' ? inMansionBounds(locker.x, locker.z) : !inMansionBounds(locker.x, locker.z));
   for (const locker of lockerSource) drawMarker(locker, 'L', '#9ba8b8', 6.5);
   const breakerMarker = state.mapMode === 'mansion' && mansionBreakerPanel
     ? { x: mansionBreakerPanel.position.x, z: mansionBreakerPanel.position.z }

@@ -823,3 +823,19 @@ Build:
 - Enemy movement visual fix:
   - Mansion ghost and ghost doppelganger now face their actual movement vector.
   - This prevents visible sideways sliding when sliding along walls or correcting around obstacles.
+
+## 2026-06-30 Eye Scare Asset / Full Map Visibility Update
+
+- Eye scare presentation updated:
+  - Added `public/images/eye_scare.png` from the provided close-up eye reference.
+  - Added three provided voice clips under `public/audio/`.
+  - Eye scare now uses the provided image instead of CSS-generated gradients.
+  - Eye scare interval changed to 30 seconds for effect checking.
+  - Eye scare overlay z-index was raised so it can appear over the breaker minigame.
+  - A random provided voice clip plays whenever the eye scare triggers.
+- Full map rendering improved:
+  - Full-map bounds now only include lockers from the currently active map, preventing the map from being pushed left with empty space on the right.
+  - Full map is centered in the canvas using the actual scaled map size.
+  - Full map now draws thick wall edges around walkable cells so school/classroom walls are easier to read.
+- School wall visibility improved:
+  - School room/corridor wall thickness increased from 0.18 to 0.36 world units.
