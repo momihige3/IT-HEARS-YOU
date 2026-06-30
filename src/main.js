@@ -851,8 +851,9 @@ function buildMansionSecondFloor() {
     let ix = seedIx;
     let iz = seedIz;
     addMansionCell(ix, iz);
+    const firstDirection = shuffledDirections()[0];
     for (let i = 0; i < steps; i += 1) {
-      const [dx, dz] = shuffledDirections()[0];
+      const [dx, dz] = i < 2 ? firstDirection : shuffledDirections()[0];
       const nextIx = ix + dx;
       const nextIz = iz + dz;
       if (!addMansionCell(nextIx, nextIz)) continue;
@@ -860,7 +861,7 @@ function buildMansionSecondFloor() {
       iz = nextIz;
       // Occasional one-cell side pockets create dead ends without opening the
       // whole floor into a plaza.
-      if (Math.random() < 0.18) {
+      if (Math.random() < 0.1) {
         const [sideDx, sideDz] = shuffledDirections()[0];
         addMansionCell(ix + sideDx, iz + sideDz);
       }
@@ -885,14 +886,14 @@ function buildMansionSecondFloor() {
   const branchSeeds = [...mansionCellKeys]
     .map((key) => key.split(',').map(Number))
     .sort(() => Math.random() - 0.5)
-    .slice(0, 7);
-  for (const [ix, iz] of branchSeeds) growMansionBranch(ix, iz, 3 + Math.floor(Math.random() * 4));
+    .slice(0, 12);
+  for (const [ix, iz] of branchSeeds) growMansionBranch(ix, iz, 4 + Math.floor(Math.random() * 4));
   // A few tiny loops keep navigation from feeling like a single snake, while
   // still leaving most grid cells as walls.
-  for (let i = 0; i < 3; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     const from = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
     const to = branchSeeds[Math.floor(Math.random() * branchSeeds.length)] || [0, 0];
-    if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) <= 4) carveMansionLine(from[0], from[1], to[0], to[1]);
+    if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) <= 5) carveMansionLine(from[0], from[1], to[0], to[1]);
   }
   const mansionProtectedSpot = (x, z) =>
     Math.hypot(x - offsetX, z - 28) < 5.2
@@ -984,15 +985,31 @@ function buildMansionSecondFloor() {
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 7)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 7)
     .sort(() => Math.random() - 0.5)
-    .slice(0, 10);
+    .slice(0, 28);
+  let placedMansionLockers = 0;
   for (const node of mansionLockerNodes) {
+    if (placedMansionLockers >= 10) break;
+    const canUseMansionLockerSide = (side) => {
+      const x = node.x + side.x;
+      const z = node.z + side.z;
+      const exitX = node.x - side.x * 0.75;
+      const exitZ = node.z - side.z * 0.75;
+      const sideStepX = side.z;
+      const sideStepZ = -side.x;
+      return !hasColliderOverlap(x, z, 0.34)
+        && !hasColliderOverlap(exitX, exitZ, 0.72)
+        && canEnemyMoveTo(exitX, exitZ, 0.54)
+        && canEnemyMoveTo(exitX + sideStepX * 0.46, exitZ + sideStepZ * 0.46, 0.38)
+        && canEnemyMoveTo(exitX - sideStepX * 0.46, exitZ - sideStepZ * 0.46, 0.38);
+    };
     const sideOptions = [
       { x: -1.22, z: 0, yaw: Math.PI / 2 },
       { x: 1.22, z: 0, yaw: -Math.PI / 2 },
       { x: 0, z: -1.22, yaw: 0 },
       { x: 0, z: 1.22, yaw: Math.PI },
-    ].filter((side) => canEnemyMoveTo(node.x - side.x * 0.65, node.z - side.z * 0.65, 0.24));
-    const side = sideOptions[0] || { x: 0, z: 0, yaw: 0 };
+    ].filter(canUseMansionLockerSide);
+    const side = sideOptions[0];
+    if (!side) continue;
     const x = node.x + side.x;
     const z = node.z + side.z;
     const yaw = side.yaw;
@@ -1008,6 +1025,7 @@ function buildMansionSecondFloor() {
     registerMansionObject(group);
     lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
     colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
+    placedMansionLockers += 1;
   }
 }
 const exitRooms = schoolRooms.filter((room) => room.id !== 'breaker');

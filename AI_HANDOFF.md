@@ -705,3 +705,14 @@ Build:
   - Branch length reduced.
   - Extra loop connectors reduced from 10 to 3.
   - This should make the mansion much more wall-heavy and labyrinth-like.
+
+## 2026-06-30 Mansion Locker Clearance / Maze Branch Balance
+
+- Mansion locker placement now validates the exit/standing area before placing a locker:
+  - Rejects lockers if the player exit point overlaps furniture/colliders.
+  - Checks side clearance around the exit point so a desk/shelf cannot trap the player immediately after leaving.
+  - Uses more candidate nodes while still capping placed mansion lockers at 10.
+- Mansion maze generation rebalanced away from a single path:
+  - Branch seeds increased from 7 to 12.
+  - Branches keep a short initial direction so they form visible side corridors instead of tiny stubs.
+  - Branch length and small loop count were slightly increased while keeping the wall-heavy layout.
