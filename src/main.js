@@ -1763,6 +1763,9 @@ function createWomanEnemy() {
   const glow = new THREE.PointLight(0xdde8ff, 0.12, 2.2);
   glow.position.set(0, 1.55, 0);
   group.add(glow);
+  group.traverse((child) => {
+    child.userData.proceduralGhost = true;
+  });
   const start = mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
   group.position.set(start.x, 0, start.z);
   group.visible = false;
@@ -1778,6 +1781,7 @@ function createWomanEnemy() {
     stunnedUntil: 0,
     phasingVisual: false,
     visualMaterials: [],
+    externalModel: null,
     detailParts,
     lastSightCheckAt: -Infinity,
     cachedSeesPlayer: false,
@@ -1804,6 +1808,49 @@ womanEnemy.group.traverse((child) => {
   const materials = Array.isArray(child.material) ? child.material : [child.material];
   for (const matItem of materials) womanEnemy.visualMaterials.push(matItem);
 });
+
+function loadExternalWomanModel() {
+  if (womanEnemy.externalModel) return;
+  const loader = new GLTFLoader();
+  loader.load('./models/yurei_woman_v1.glb', (gltf) => {
+    const model = gltf.scene;
+    model.name = 'YUREI_WOMAN_V1_GLB';
+    model.rotation.y = Math.PI;
+    model.position.set(0, -0.03, 0);
+    model.scale.setScalar(1.02);
+    model.traverse((child) => {
+      if (!child.isMesh && !child.isLight) return;
+      child.frustumCulled = true;
+      child.castShadow = false;
+      child.receiveShadow = false;
+      if (child.geometry) child.geometry.computeVertexNormals();
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const matItem of materials) {
+          matItem.side = THREE.DoubleSide;
+          matItem.roughness = Math.max(matItem.roughness ?? 0.85, 0.82);
+          matItem.needsUpdate = true;
+        }
+      }
+    });
+    for (const child of womanEnemy.group.children) {
+      if (child.userData.proceduralGhost) child.visible = false;
+    }
+    womanEnemy.externalModel = model;
+    womanEnemy.visualMaterials = [];
+    womanEnemy.detailParts = [];
+    model.traverse((child) => {
+      if (!child.material) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const matItem of materials) womanEnemy.visualMaterials.push(matItem);
+    });
+    womanEnemy.group.add(model);
+  }, undefined, () => {
+    // Keep the procedural ghost as a safe fallback if the external model fails.
+  });
+}
+
+loadExternalWomanModel();
 
 function setWomanPhasingVisual(active) {
   if (womanEnemy.phasingVisual === active) return;

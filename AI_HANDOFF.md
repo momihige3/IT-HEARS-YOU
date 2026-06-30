@@ -727,3 +727,22 @@ Build:
   - Desk/shelf colliders are now tagged as `furniture`.
   - Mansion locker placement rejects any locker whose exit/standing area has furniture within about 1m.
   - Wall collision checks remain separate so lockers can still be placed against walls.
+
+## 2026-06-30 High Quality Mansion Ghost Model
+
+- Added an external Blender-generated ghost model:
+  - Source script: `scripts/create-yurei-woman-model.py`
+  - Review files: `model_review/yurei_woman_v1/`
+  - Runtime GLB: `public/models/yurei_woman_v1.glb`
+- The model is an original long-haired white-robed vengeful ghost design inspired by classic Japanese horror imagery, not a direct copyrighted character copy.
+- Visual details include:
+  - Long wet black hair curtain and side locks.
+  - Torn aged white robe with ragged hem pieces.
+  - Pale hidden face/skin, bony hands, long gray nails.
+  - Dirt and dried dark-red stain geometry on the robe.
+- Mansion ghost now loads `./models/yurei_woman_v1.glb` through `GLTFLoader`.
+- Existing procedural ghost remains as fallback if GLB loading fails.
+- On successful GLB load:
+  - Procedural ghost parts are hidden.
+  - External model materials are registered for phasing/transparent visual effects.
+  - Loaded model is rotated 180 degrees so the visual facing direction matches the existing AI forward vector.
