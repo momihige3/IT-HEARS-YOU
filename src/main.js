@@ -607,20 +607,15 @@ function localBox(group, x, y, z, w, h, d, mat) {
 }
 
 function addLockerSpotlight(x, z, yaw, mansion = false) {
-  const light = new THREE.SpotLight(0xdde7ff, mansion ? 1.65 : 1.25, 5.8, Math.PI / 5.2, 0.7, 1.5);
+  const light = new THREE.PointLight(0xdde7ff, mansion ? 1.05 : 0.85, 4.6, 1.7);
   light.position.set(x - Math.sin(yaw) * 0.95, 2.35, z - Math.cos(yaw) * 0.95);
-  light.target.position.set(x, 1.0, z);
   light.castShadow = false;
   scene.add(light);
-  scene.add(light.target);
   schoolLights.push(light);
-  schoolLights.push(light.target);
   if (mansion) {
     registerMansionObject(light);
-    registerMansionObject(light.target);
   } else {
     markSharedObject(light);
-    markSharedObject(light.target);
   }
   return light;
 }
@@ -1369,15 +1364,18 @@ while (selectedKeySpawns.length < REQUIRED_KEYS) {
   selectedKeySpawns.push(pos);
 }
 const keyMat = material(0xc2a44e, 0.25, 0.85);
-const ofudaMat = new THREE.MeshStandardMaterial({ color: 0xe9dfbd, roughness: 0.88, metalness: 0.0, side: THREE.DoubleSide });
+const ofudaMat = new THREE.MeshBasicMaterial({ color: 0xf1e4bc, side: THREE.DoubleSide });
 const ofudaInkMat = new THREE.MeshBasicMaterial({ color: 0x2a1710 });
 const ofudaSealMat = new THREE.MeshBasicMaterial({ color: 0x8f1e18 });
 
-function createOfudaModel() {
+function createOfudaModel(fake = false) {
   const group = new THREE.Group();
-  const paper = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.012, 0.78), ofudaMat);
+  const paper = new THREE.Mesh(
+    new THREE.BoxGeometry(fake ? 0.42 : 0.38, 0.014, fake ? 0.84 : 0.78),
+    fake ? new THREE.MeshBasicMaterial({ color: 0xffe8ba, side: THREE.DoubleSide }) : ofudaMat,
+  );
   group.add(paper);
-  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xb69b6f });
+  const edgeMat = new THREE.MeshBasicMaterial({ color: fake ? 0xd8b16e : 0xb69b6f });
   for (const [x, z, w, d] of [
     [0, -0.395, 0.36, 0.018],
     [0, 0.395, 0.34, 0.018],
@@ -1388,7 +1386,10 @@ function createOfudaModel() {
     edge.position.set(x, 0.004, z);
     group.add(edge);
   }
-  const topSeal = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.02, 0.14), ofudaSealMat);
+  const topSeal = new THREE.Mesh(
+    new THREE.BoxGeometry(0.25, 0.02, 0.14),
+    fake ? new THREE.MeshBasicMaterial({ color: 0xb7251d }) : ofudaSealMat,
+  );
   topSeal.position.z = -0.25;
   topSeal.position.y = 0.012;
   group.add(topSeal);
@@ -1414,6 +1415,14 @@ function createOfudaModel() {
     fiber.position.set(-0.15 + i * 0.06, 0.018, -0.22 + Math.random() * 0.58);
     fiber.rotation.y = (Math.random() - 0.5) * 0.7;
     group.add(fiber);
+  }
+  if (fake) {
+    const curseGlow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.52, 0.006, 0.94),
+      new THREE.MeshBasicMaterial({ color: 0xff2b24, transparent: true, opacity: 0.18, side: THREE.DoubleSide }),
+    );
+    curseGlow.position.y = -0.006;
+    group.add(curseGlow);
   }
   group.rotation.x = -Math.PI / 2;
   group.visible = false;
@@ -1458,7 +1467,7 @@ updateExitCounter();
 for (let i = 0; i < 4; i += 1) {
   const group = new THREE.Group();
   markSharedObject(group);
-  const model = createOfudaModel();
+  const model = createOfudaModel(true);
   model.visible = true;
   group.add(model);
   group.visible = false;
@@ -1888,12 +1897,45 @@ function loadExternalWomanModel() {
       for (const matItem of materials) womanEnemy.visualMaterials.push(matItem);
     });
     womanEnemy.group.add(model);
+    applyExternalWomanModelToGhostDouble(model);
   }, undefined, () => {
     // Keep the procedural ghost as a safe fallback if the external model fails.
   });
 }
 
 loadExternalWomanModel();
+
+function applyExternalWomanModelToGhostDouble(sourceModel) {
+  if (!sourceModel || ghostDouble.externalModel) return;
+  const clone = sourceModel.clone(true);
+  clone.name = 'YUREI_WOMAN_V1_DOUBLE_GLB';
+  ghostDouble.visualMaterials = [];
+  clone.traverse((child) => {
+    child.frustumCulled = true;
+    child.castShadow = false;
+    child.receiveShadow = false;
+    if (!child.material) return;
+    if (Array.isArray(child.material)) child.material = child.material.map((matItem) => matItem.clone());
+    else child.material = child.material.clone();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const matItem of materials) {
+      matItem.transparent = true;
+      matItem.opacity = 0.42;
+      matItem.depthWrite = false;
+      if (matItem.emissive) {
+        matItem.emissive.setHex(0x1a2032);
+        matItem.emissiveIntensity = Math.max(matItem.emissiveIntensity || 0, 0.16);
+      }
+      matItem.needsUpdate = true;
+      ghostDouble.visualMaterials.push(matItem);
+    }
+  });
+  for (const child of ghostDouble.group.children) {
+    if (child.userData.proceduralGhost) child.visible = false;
+  }
+  ghostDouble.externalModel = clone;
+  ghostDouble.group.add(clone);
+}
 
 function setWomanPhasingVisual(active) {
   if (womanEnemy.phasingVisual === active) return;
@@ -4922,6 +4964,10 @@ function updateWomanEnemy(dt, time) {
   } else if (womanEnemy.emergeUntil) {
     womanEnemy.emergeUntil = 0;
     ghostEmergeEffect.visible = false;
+    womanEnemy.group.position.y = 0.28;
+    womanEnemy.group.rotation.x = 0;
+    womanEnemy.group.rotation.z = 0;
+    womanEnemy.group.scale.setScalar(1);
     setWomanPhasingVisual(false);
   }
   if (time < state.fakeOfudaAlertUntil) setDetection(100);

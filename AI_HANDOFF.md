@@ -777,3 +777,17 @@ Build:
   - Every 2–5 minutes in mansion mode, a close-up eye fades in/out for about 1 second.
 - Technical note:
   - Locker spotlights add both the light and target to the shared light/object lists; update loops now skip non-light targets where needed.
+
+## 2026-06-30 Fake Ofuda / Ghost Double Visual Fix
+
+- Fixed fake-ofuda trap emergence cleanup:
+  - The mansion ghost now forcibly resets position height, X/Z rotation, and scale after the floor-emerge animation.
+  - This prevents the ghost from continuing to move while lying down after a fake ofuda trigger.
+- Fake ofuda visuals were brightened:
+  - Ofuda paper now uses a lightweight unlit material so it does not collapse into a black object in dark mansion lighting.
+  - Fake ofuda uses a slightly larger/red-tinted cursed paper variant.
+- Reduced locker-light overhead:
+  - Locker highlight lights were changed from SpotLight + target objects to cheaper PointLights.
+- Ghost doppelganger visual now matches the mansion ghost:
+  - After `yurei_woman_v1.glb` loads, the doppelganger receives a cloned GLB model instead of keeping the old procedural fallback.
+  - Doppelganger materials are cloned separately and kept semi-transparent.
