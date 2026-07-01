@@ -19,6 +19,7 @@ let resolutionTierIndex = 0;
 let dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
 let lastResolutionAdjustAt = performance.now();
 let highFpsSince = performance.now();
+let lastPointerLockAttemptAt = 0;
 function getGameViewport() {
   const portraitPhone = touchDevice && matchMedia('(orientation: portrait)').matches;
   const stableScreenW = Math.max(1, window.screen?.width || 0);
@@ -3600,7 +3601,10 @@ function closeSettings() {
 }
 
 function lockPointer() {
-  if (mobileInput.active) return;
+  if (mobileInput.active || controls.isLocked) return;
+  const now = performance.now();
+  if (now - lastPointerLockAttemptAt < 220) return;
+  lastPointerLockAttemptAt = now;
   try {
     controls.lock(true);
   } catch {
@@ -3818,8 +3822,15 @@ $('#full-map-close')?.addEventListener('pointerup', (event) => {
   toggleFullMap(false);
 }, { passive: false });
 renderer.domElement.addEventListener('click', () => {
-  if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !controls.isLocked) lockPointer();
+  if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen && !state.breakerGameOpen && !controls.isLocked) lockPointer();
 });
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  if (mobileInput.active) return;
+  if (!state.started || state.ended || state.caught || state.settingsOpen || state.shopOpen || state.fullMapOpen || state.breakerGameOpen) return;
+  if (controls.isLocked) return;
+  event.preventDefault();
+  lockPointer();
+}, { passive: false });
 addEventListener('keydown', (event) => {
   if (event.code === 'Escape' && state.shopOpen) {
     event.preventDefault();
@@ -6079,6 +6090,19 @@ function updateScreenShake(time) {
 
 function adjustDynamicResolution(now) {
   if (!perfFps) return;
+  const activeGameplay = state.started
+    && !state.loading
+    && !state.ended
+    && !state.caught
+    && !state.settingsOpen
+    && !state.shopOpen
+    && !state.fullMapOpen
+    && !state.breakerGameOpen
+    && controls.isLocked;
+  if (activeGameplay) {
+    highFpsSince = now;
+    return;
+  }
   if (perfFps < 42 && now - lastResolutionAdjustAt > 2800 && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
     resolutionTierIndex += 1;
     dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];

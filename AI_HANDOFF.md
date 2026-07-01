@@ -947,3 +947,14 @@ Build:
 - Pointer lock `unlock` no longer automatically opens the settings screen.
   - This prevents random settings popups and the need to close settings twice.
 - ESC while the shop is open now stops propagation after closing the shop, preventing it from also toggling settings.
+
+## 2026-07-01 Pointer Lock / Flicker Reduction
+
+- Pointer lock reacquisition was strengthened:
+  - Added throttled pointer-lock attempts to avoid repeated lock spam.
+  - Gameplay canvas now requests pointer lock on pointerdown/click when normal gameplay is active and menus are closed.
+  - Click lock guards now also respect shop/full-map/breaker minigame state.
+- Reduced periodic dark flicker:
+  - Dynamic resolution changes are now skipped during active pointer-locked gameplay.
+  - This prevents `renderer.setSize()` from running during normal play, which could briefly show a dark/black frame.
+  - Resolution adjustment can still occur outside active gameplay, such as menus/loading/unlocked states.
