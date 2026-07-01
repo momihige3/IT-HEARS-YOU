@@ -990,3 +990,18 @@ Build:
   - Each classroom/room perimeter is painted as black wall segments.
   - Only the configured entrance side/door cell is left open.
   - This is layered in addition to collider walls and missing-neighbor boundaries, so room walls should remain visible on the map.
+
+## 2026-07-01 4K Performance Optimization Pass
+
+- Re-enabled dynamic render downscaling during active gameplay when FPS drops.
+  - Gameplay can now step down through the existing resolution tiers instead of staying at the 1920x1080 internal cap.
+  - Upscaling is still blocked during active gameplay to avoid repeated resize flicker.
+- Added a spatial bucket index for colliders.
+  - Player movement, enemy movement, line-of-sight, and vision ray checks now test nearby collider buckets instead of scanning every collider.
+- Cached mansion pathfinding adjacency.
+  - Mansion ghost routing no longer rebuilds neighbor candidates by scanning all mansion nodes on each path request.
+- Reduced recurring update cost:
+  - Removed radar floor-cell sonar reveal rendering and its per-node scan.
+  - Radar update rate reduced to 4Hz.
+  - Mansion distance culling reduced to 4Hz.
+  - School global light intensity updates now run only on breaker state changes or about every 0.35s.

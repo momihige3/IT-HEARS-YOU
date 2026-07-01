@@ -201,6 +201,9 @@ const mobileInput = {
   running: false,
 };
 const colliders = [];
+const COLLIDER_BUCKET_SIZE = 6;
+let colliderSpatialCount = -1;
+let colliderSpatialBuckets = new Map();
 const lockers = [];
 const soundEvents = [];
 const sonarReveals = [];
@@ -2171,7 +2174,8 @@ function visionRayDistance(originX, originZ, dx, dz, maxDistance = currentEnemyV
   const rayMaxX = Math.max(originX, originX + dx * maxDistance) + 0.2;
   const rayMinZ = Math.min(originZ, originZ + dz * maxDistance) - 0.2;
   const rayMaxZ = Math.max(originZ, originZ + dz * maxDistance) + 0.2;
-  for (const collider of colliders) {
+  const candidates = colliderCandidatesInAabb(rayMinX, rayMaxX, rayMinZ, rayMaxZ);
+  for (const collider of candidates) {
     if (collider.x + collider.hw < rayMinX || collider.x - collider.hw > rayMaxX
       || collider.z + collider.hz < rayMinZ || collider.z - collider.hz > rayMaxZ) continue;
     const entry = rayColliderEntry(originX, originZ, dx, dz, collider, nearest);
@@ -3013,15 +3017,63 @@ function isInsidePlayableBounds(x, z) {
   return inSchool || inMansion;
 }
 
+function colliderBucketKey(ix, iz) {
+  return `${ix},${iz}`;
+}
+
+function rebuildColliderSpatialIndex() {
+  if (colliderSpatialCount === colliders.length) return;
+  const buckets = new Map();
+  for (const collider of colliders) {
+    const minIx = Math.floor((collider.x - collider.hw) / COLLIDER_BUCKET_SIZE);
+    const maxIx = Math.floor((collider.x + collider.hw) / COLLIDER_BUCKET_SIZE);
+    const minIz = Math.floor((collider.z - collider.hz) / COLLIDER_BUCKET_SIZE);
+    const maxIz = Math.floor((collider.z + collider.hz) / COLLIDER_BUCKET_SIZE);
+    for (let ix = minIx; ix <= maxIx; ix += 1) {
+      for (let iz = minIz; iz <= maxIz; iz += 1) {
+        const key = colliderBucketKey(ix, iz);
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(collider);
+      }
+    }
+  }
+  colliderSpatialBuckets = buckets;
+  colliderSpatialCount = colliders.length;
+}
+
+function colliderCandidatesInAabb(minX, maxX, minZ, maxZ) {
+  rebuildColliderSpatialIndex();
+  const minIx = Math.floor(minX / COLLIDER_BUCKET_SIZE);
+  const maxIx = Math.floor(maxX / COLLIDER_BUCKET_SIZE);
+  const minIz = Math.floor(minZ / COLLIDER_BUCKET_SIZE);
+  const maxIz = Math.floor(maxZ / COLLIDER_BUCKET_SIZE);
+  const result = [];
+  const seen = new Set();
+  for (let ix = minIx; ix <= maxIx; ix += 1) {
+    for (let iz = minIz; iz <= maxIz; iz += 1) {
+      const bucket = colliderSpatialBuckets.get(colliderBucketKey(ix, iz));
+      if (!bucket) continue;
+      for (const collider of bucket) {
+        if (seen.has(collider)) continue;
+        seen.add(collider);
+        result.push(collider);
+      }
+    }
+  }
+  return result;
+}
+
 function canMoveTo(x, z) {
   if (!isInsidePlayableBounds(x, z)) return false;
-  return !colliders.some((collider) =>
+  const candidates = colliderCandidatesInAabb(x - 0.32, x + 0.32, z - 0.32, z + 0.32);
+  return !candidates.some((collider) =>
     Math.abs(x - collider.x) < collider.hw + 0.26 && Math.abs(z - collider.z) < collider.hz + 0.26);
 }
 
 function canEnemyMoveTo(x, z, padding = 0.16) {
   if (!isInsidePlayableBounds(x, z)) return false;
-  return !colliders.some((collider) =>
+  const candidates = colliderCandidatesInAabb(x - padding - 0.08, x + padding + 0.08, z - padding - 0.08, z + padding + 0.08);
+  return !candidates.some((collider) =>
     Math.abs(x - collider.x) < collider.hw + padding && Math.abs(z - collider.z) < collider.hz + padding);
 }
 
@@ -3034,7 +3086,8 @@ function hasLineOfSight(from, to) {
   const maxX = Math.max(from.x, to.x) + 0.25;
   const minZ = Math.min(from.z, to.z) - 0.25;
   const maxZ = Math.max(from.z, to.z) + 0.25;
-  for (const collider of colliders) {
+  const candidates = colliderCandidatesInAabb(minX, maxX, minZ, maxZ);
+  for (const collider of candidates) {
     if (collider.x + collider.hw < minX || collider.x - collider.hw > maxX
       || collider.z + collider.hz < minZ || collider.z - collider.hz > maxZ) continue;
     if (rayColliderEntry(from.x, from.z, dx, dz, collider, distance, 0.04) < distance) return false;
@@ -3232,6 +3285,9 @@ function updateMansionDistanceCulling() {
 function updateSchoolLighting(time) {
   if (state.breakerOn && time >= state.breakerOutAt) setBreaker(false);
   if (state.mapMode === 'mansion') return;
+  if (time < (updateSchoolLighting.nextAt || 0) && updateSchoolLighting.lastBreakerOn === state.breakerOn) return;
+  updateSchoolLighting.nextAt = time + 0.35;
+  updateSchoolLighting.lastBreakerOn = state.breakerOn;
   const power = state.breakerOn ? 1 : 0;
   hemisphereLight.intensity = THREE.MathUtils.lerp(0.54, 3.8, power);
   ambientLight.intensity = THREE.MathUtils.lerp(0.38, 3.25, power);
@@ -5183,36 +5239,52 @@ function mansionNodeKey(node) {
   return `${Math.round(node.x * 10) / 10},${Math.round(node.z * 10) / 10}`;
 }
 
+let mansionPathGraphCount = -1;
+let mansionPathNodeByKey = new Map();
+let mansionPathNeighbors = new Map();
+
+function buildMansionPathGraph() {
+  if (mansionPathGraphCount === mansionNodes.length) return;
+  mansionPathNodeByKey = new Map();
+  mansionPathNeighbors = new Map();
+  for (const node of mansionNodes) mansionPathNodeByKey.set(mansionNodeKey(node), node);
+  for (const node of mansionNodes) {
+    const key = mansionNodeKey(node);
+    const neighbors = [];
+    for (const [dx, dz] of [[CELL, 0], [-CELL, 0], [0, CELL], [0, -CELL]]) {
+      const candidate = mansionPathNodeByKey.get(`${Math.round((node.x + dx) * 10) / 10},${Math.round((node.z + dz) * 10) / 10}`);
+      if (!candidate) continue;
+      const midX = (candidate.x + node.x) / 2;
+      const midZ = (candidate.z + node.z) / 2;
+      if (canEnemyMoveTo(candidate.x, candidate.z, 0.22) && canEnemyMoveTo(midX, midZ, 0.22)) neighbors.push(candidate);
+    }
+    mansionPathNeighbors.set(key, neighbors);
+  }
+  mansionPathGraphCount = mansionNodes.length;
+}
+
 function findMansionPath(startNode, targetNode) {
   if (!startNode || !targetNode) return [];
+  buildMansionPathGraph();
   const startKey = mansionNodeKey(startNode);
   const targetKey = mansionNodeKey(targetNode);
   if (startKey === targetKey) return [targetNode];
-  const nodeByKey = new Map();
-  for (const node of mansionNodes) nodeByKey.set(mansionNodeKey(node), node);
   const queue = [startKey];
   const previous = new Map([[startKey, null]]);
   while (queue.length) {
     const key = queue.shift();
-    const node = nodeByKey.get(key);
+    const node = mansionPathNodeByKey.get(key);
     if (!node) continue;
-    const neighbors = mansionNodes.filter((candidate) => {
-      if (previous.has(mansionNodeKey(candidate))) return false;
-      const dx = Math.abs(candidate.x - node.x);
-      const dz = Math.abs(candidate.z - node.z);
-      if (!((dx <= CELL + 0.1 && dz < 0.1) || (dz <= CELL + 0.1 && dx < 0.1))) return false;
-      const midX = (candidate.x + node.x) / 2;
-      const midZ = (candidate.z + node.z) / 2;
-      return canEnemyMoveTo(candidate.x, candidate.z, 0.22) && canEnemyMoveTo(midX, midZ, 0.22);
-    });
+    const neighbors = mansionPathNeighbors.get(key) || [];
     for (const neighbor of neighbors) {
       const nextKey = mansionNodeKey(neighbor);
+      if (previous.has(nextKey)) continue;
       previous.set(nextKey, key);
       if (nextKey === targetKey) {
         const path = [targetNode];
         let walkKey = key;
         while (walkKey && walkKey !== startKey) {
-          const walkNode = nodeByKey.get(walkKey);
+          const walkNode = mansionPathNodeByKey.get(walkKey);
           if (walkNode) path.unshift(walkNode);
           walkKey = previous.get(walkKey);
         }
@@ -6014,12 +6086,6 @@ function updateRadar(dt, time) {
   const worldRadius = 14;
   const scale = radarRadius / worldRadius;
   const sweep = time * 1.45;
-  sonarReveals.push({ angle: sweep, age: 0, life: 3.2 });
-  if (sonarReveals.length > 28) sonarReveals.shift();
-  for (let i = sonarReveals.length - 1; i >= 0; i -= 1) {
-    sonarReveals[i].age += dt;
-    if (sonarReveals[i].age >= sonarReveals[i].life) sonarReveals.splice(i, 1);
-  }
 
   radar.save();
   radar.beginPath();
@@ -6031,31 +6097,6 @@ function updateRadar(dt, time) {
     radar.beginPath();
     radar.arc(centerX, centerY, r * radarRadius / 3, 0, Math.PI * 2);
     radar.stroke();
-  }
-
-  const radarCellWidth = CELL * scale;
-  const radarCellHeight = CELL * scale;
-  for (const node of navNodes.values()) {
-    const dx = node.x - camera.position.x;
-    const dz = node.z - camera.position.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance > worldRadius) continue;
-    const nodeAngle = Math.atan2(dz, dx);
-    let revealAlpha = 0;
-    for (const reveal of sonarReveals) {
-      const progress = reveal.age / reveal.life;
-      const matched = angleDelta(nodeAngle, reveal.angle) < 0.34 + progress * 0.08;
-      if (matched) revealAlpha = Math.max(revealAlpha, (1 - progress) * 0.33);
-    }
-    if (revealAlpha <= 0.01) continue;
-    const p = radarPoint(node.x, node.z, scale);
-    radar.fillStyle = `rgba(100,145,116,${revealAlpha})`;
-    radar.fillRect(
-      p.x - radarCellWidth * 0.47,
-      p.y - radarCellHeight * 0.47,
-      radarCellWidth * 0.94,
-      radarCellHeight * 0.94,
-    );
   }
 
   for (let i = soundEvents.length - 1; i >= 0; i -= 1) {
@@ -6174,6 +6215,7 @@ let nextVisionUpdate = 0;
 let radarAccumulator = 1;
 let hudAccumulator = 1;
 let interactionAccumulator = 1;
+let cullingAccumulator = 1;
 function updateScreenShake(time) {
   const app = $('#app');
   if (!app) return;
@@ -6200,17 +6242,14 @@ function adjustDynamicResolution(now) {
     && !state.fullMapOpen
     && !state.breakerGameOpen
     && controls.isLocked;
-  if (activeGameplay) {
-    highFpsSince = now;
-    return;
-  }
-  if (perfFps < 42 && now - lastResolutionAdjustAt > 2800 && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
+  const dropCooldown = activeGameplay ? 5200 : 2800;
+  if (perfFps < 44 && now - lastResolutionAdjustAt > dropCooldown && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
     resolutionTierIndex += 1;
     dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
     lastResolutionAdjustAt = now;
     highFpsSince = now;
     applyRenderCap();
-  } else if (perfFps > 57) {
+  } else if (!activeGameplay && perfFps > 57) {
     if (now - highFpsSince > 8500 && now - lastResolutionAdjustAt > 6000 && resolutionTierIndex > 0) {
       resolutionTierIndex -= 1;
       dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
@@ -6260,11 +6299,15 @@ function animate() {
       hudAccumulator = 0;
     }
     updateLight(time);
-    updateMansionDistanceCulling();
+    cullingAccumulator += dt;
+    if (cullingAccumulator >= 0.25) {
+      updateMansionDistanceCulling();
+      cullingAccumulator = 0;
+    }
     updateAudio(time);
   }
   radarAccumulator += dt;
-  if (radarAccumulator >= 1 / 6) {
+  if (radarAccumulator >= 0.25) {
     updateRadar(radarAccumulator, time);
     radarAccumulator = 0;
   }
