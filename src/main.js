@@ -1635,6 +1635,31 @@ for (let i = 0; i < 4; i += 1) {
 function placeKeyItemsForMode(mode) {
   const respawnMode = mode;
   const used = [];
+  if (mode === 'mansion') {
+    const mansionKeyPositions = [];
+    const chooseMansionKeyNode = (minSpacing, strict = true) => {
+      const candidates = mansionNodes
+        .filter((node) => !strict || isSafeSpawnPoint(node.x, node.z, 0.82))
+        .filter((node) => !pickupNearRestrictedUtility(node.x, node.z, 'mansion'))
+        .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > (strict ? 8 : 4))
+        .filter((node) => !mansionStartPoint || Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > (strict ? 6 : 3))
+        .filter((node) => !mansionKeyPositions.some((p) => Math.hypot(p.x - node.x, p.z - node.z) < minSpacing))
+        .sort(() => Math.random() - 0.5);
+      return candidates[0] || null;
+    };
+    for (let i = 0; i < REQUIRED_KEYS; i += 1) {
+      const node = chooseMansionKeyNode(8, true)
+        || chooseMansionKeyNode(5, true)
+        || chooseMansionKeyNode(3, false)
+        || mansionNodes.find((candidate) => !mansionKeyPositions.some((p) => Math.hypot(p.x - candidate.x, p.z - candidate.z) < 2))
+        || mansionNodes[i % Math.max(1, mansionNodes.length)]
+        || { x: 68 + i * 2, z: -12 };
+      mansionKeyPositions.push({ x: node.x, z: node.z });
+    }
+    keyItems.forEach((item, index) => {
+      item.mansionPosition = mansionKeyPositions[index] || mansionKeyPositions[mansionKeyPositions.length - 1] || { x: 68, z: -12 };
+    });
+  }
   for (const item of keyItems) {
     let pos = item.schoolPosition;
     if (mode === 'mansion') {
@@ -3364,7 +3389,8 @@ function updateMansionDistanceCulling() {
   for (const item of keyItems) {
     if (item.collected) continue;
     const near = item.group.position.distanceToSquared(camera.position) <= radiusSq;
-    const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, MANSION_RENDER_RADIUS, Math.PI / 2.1);
+    const close = item.group.position.distanceToSquared(camera.position) < 7 * 7;
+    const inView = near && (close || isPointInPlayerView(item.group.position.x, item.group.position.z, MANSION_RENDER_RADIUS, Math.PI / 2.1));
     item.group.visible = inView;
     item.light.visible = inView && item.light.position.distanceToSquared(camera.position) < 18 * 18;
   }

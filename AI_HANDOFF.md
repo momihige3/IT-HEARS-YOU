@@ -1035,3 +1035,7 @@ Build:
   - Active gameplay again blocks dynamic renderer resizing, preventing periodic `renderer.setSize()` flicker.
   - 4K/large viewport now picks a lower starting resolution before gameplay begins instead.
   - Eye scare overlay no longer has its own black background and will not show until its image is loaded.
+- Mansion key/ofuda placement now guarantees all 5 required items:
+  - All 5 mansion positions are regenerated each map placement/continue.
+  - Placement relaxes spacing/safety in stages but still prefers reachable mansion nodes away from utilities/start/exit.
+  - Near ofuda remain visible even if outside the current view cone, avoiding cases where nearby required items appear missing.
