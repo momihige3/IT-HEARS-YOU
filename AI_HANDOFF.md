@@ -958,3 +958,14 @@ Build:
   - Dynamic resolution changes are now skipped during active pointer-locked gameplay.
   - This prevents `renderer.setSize()` from running during normal play, which could briefly show a dark/black frame.
   - Resolution adjustment can still occur outside active gameplay, such as menus/loading/unlocked states.
+
+## 2026-07-01 Pointer Lock Start / ESC / School Map Wall Fix
+
+- Pointer lock is now requested immediately from the map start button click handler before async loading begins.
+  - This keeps the request inside the browser's user-activation window and prevents the OS cursor from continuing to move behind the game.
+- Pointer lock unlock now opens settings only during normal focused gameplay.
+  - ESC should now unlock and open settings in one action instead of requiring a second ESC.
+  - A short ESC suppression window prevents the same ESC event from instantly closing settings again.
+- School full-map wall rendering was strengthened:
+  - Missing-neighbor boundaries around walkable school cells now draw as thick black wall lines.
+  - This is in addition to black wall collider rectangles, so thin/light walls should be visible as wall marks on the map.

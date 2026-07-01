@@ -20,6 +20,7 @@ let dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
 let lastResolutionAdjustAt = performance.now();
 let highFpsSince = performance.now();
 let lastPointerLockAttemptAt = 0;
+let suppressEscapeUntil = 0;
 function getGameViewport() {
   const portraitPhone = touchDevice && matchMedia('(orientation: portrait)').matches;
   const stableScreenW = Math.max(1, window.screen?.width || 0);
@@ -3656,6 +3657,20 @@ $('#settings-quit').addEventListener('click', () => {
 });
 controls.addEventListener('unlock', () => {
   clearMovementInput();
+  if (
+    state.started
+    && !state.ended
+    && !state.caught
+    && !state.loading
+    && !state.settingsOpen
+    && !state.shopOpen
+    && !state.fullMapOpen
+    && !state.breakerGameOpen
+    && document.hasFocus()
+  ) {
+    suppressEscapeUntil = performance.now() + 350;
+    openSettings();
+  }
 });
 
 function clearSpawnedPickupRuntime() {
@@ -3787,7 +3802,10 @@ async function startGame(mode = 'school') {
 }
 
 document.querySelectorAll('[data-map-start]').forEach((button) => {
-  button.addEventListener('click', () => startGame(button.dataset.mapStart || 'school'));
+  button.addEventListener('click', () => {
+    lockPointer();
+    startGame(button.dataset.mapStart || 'school');
+  });
 });
 $('#shop-close')?.addEventListener('click', closeShop);
 document.querySelectorAll('[data-shop-buy]').forEach((button) => {
@@ -3855,6 +3873,10 @@ addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'Escape' && state.started && !state.ended && !event.repeat) {
+    if (performance.now() < suppressEscapeUntil) {
+      event.preventDefault();
+      return;
+    }
     if (state.breakerGameOpen) {
       closeBreakerGame();
       return;
@@ -5848,8 +5870,8 @@ function drawFullMap() {
     const height = Math.max(2.5, wall.hz * 2 * scale);
     ctx.fillRect(p.x - width / 2, p.y - height / 2, width, height);
   }
-  ctx.strokeStyle = '#789082';
-  ctx.lineWidth = Math.max(3, CELL * scale * 0.12);
+  ctx.strokeStyle = state.mapMode === 'school' ? '#020202' : '#789082';
+  ctx.lineWidth = state.mapMode === 'school' ? Math.max(4, CELL * scale * 0.22) : Math.max(3, CELL * scale * 0.12);
   ctx.lineCap = 'square';
   for (const node of nodes) {
     const p = toMap(node.x, node.z);
