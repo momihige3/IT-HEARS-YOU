@@ -976,3 +976,17 @@ Build:
   - The unadjusted/raw mouse request can fail asynchronously in some browsers, leaving the OS cursor active over the game.
   - Start-game, post-loading, and settings-return paths now force a fresh standard pointer-lock attempt.
 - `lockPointer(force)` can bypass the short retry throttle for user-confirmed transitions such as starting the game or closing settings.
+
+## 2026-07-01 Pointer Resume / School Room Map Walls
+
+- Settings/full-map close now routes through a shared gameplay pointer-lock resume helper.
+  - The game canvas is focused before requesting pointer lock.
+  - A forced pointer-lock attempt is made immediately, with one animation-frame retry if gameplay is still active.
+- Full map now unlocks the pointer while open and resumes pointer lock when closed by ESC/M/close controls.
+- Added a capture-phase mousemove guard while pointer-locked:
+  - Ignores the first short burst after pointer lock.
+  - Drops extremely large movement deltas to reduce sudden camera jumps when turning left/right.
+- School full-map rendering now draws explicit room perimeter walls:
+  - Each classroom/room perimeter is painted as black wall segments.
+  - Only the configured entrance side/door cell is left open.
+  - This is layered in addition to collider walls and missing-neighbor boundaries, so room walls should remain visible on the map.

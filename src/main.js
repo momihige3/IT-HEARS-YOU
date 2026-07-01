@@ -21,6 +21,8 @@ let lastResolutionAdjustAt = performance.now();
 let highFpsSince = performance.now();
 let lastPointerLockAttemptAt = 0;
 let suppressEscapeUntil = 0;
+let ignoreMouseMoveUntil = 0;
+const MAX_POINTER_MOVEMENT = 240;
 function getGameViewport() {
   const portraitPhone = touchDevice && matchMedia('(orientation: portrait)').matches;
   const stableScreenW = Math.max(1, window.screen?.width || 0);
@@ -61,6 +63,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
 $('#game').append(renderer.domElement);
+renderer.domElement.tabIndex = 0;
+renderer.domElement.style.outline = 'none';
 // Mobile play protection: disable text selection, long-press menu, pinch-zoom, and double-tap zoom.
 document.addEventListener('contextmenu', (event) => {
   if (touchDevice) event.preventDefault();
@@ -3598,7 +3602,7 @@ function closeSettings() {
   clearMovementInput();
   state.settingsOpen = false;
   $('#settings-screen').classList.remove('visible');
-  if (state.started && !state.ended && !state.caught) lockPointer(true);
+  resumeGameplayPointerLock();
 }
 
 function lockPointer(force = false) {
@@ -3606,6 +3610,7 @@ function lockPointer(force = false) {
   const now = performance.now();
   if (!force && now - lastPointerLockAttemptAt < 220) return;
   lastPointerLockAttemptAt = now;
+  ignoreMouseMoveUntil = now + 240;
   try {
     // Use standard pointer lock for reliability. `unadjustedMovement:true` can fail
     // asynchronously on some browsers and leave the OS cursor active over the game.
@@ -3621,6 +3626,32 @@ function setLoading(visible, detail = 'マップを準備しています...') {
   const detailNode = $('#loading-detail');
   if (detailNode) detailNode.textContent = detail;
   loading?.classList.toggle('visible', visible);
+}
+
+function canResumePointerLock() {
+  return !mobileInput.active
+    && state.started
+    && !state.loading
+    && !state.ended
+    && !state.caught
+    && !state.settingsOpen
+    && !state.shopOpen
+    && !state.fullMapOpen
+    && !state.breakerGameOpen;
+}
+
+function resumeGameplayPointerLock() {
+  clearMovementInput();
+  if (!canResumePointerLock()) return;
+  try {
+    renderer.domElement.focus({ preventScroll: true });
+  } catch {
+    renderer.domElement.focus();
+  }
+  lockPointer(true);
+  requestAnimationFrame(() => {
+    if (!controls.isLocked && canResumePointerLock()) lockPointer(true);
+  });
 }
 
 function nextFrame() {
@@ -3656,6 +3687,19 @@ $('#settings-close').addEventListener('click', closeSettings);
 $('#settings-quit').addEventListener('click', () => {
   state.allowExit = true;
   location.reload();
+});
+document.addEventListener('mousemove', (event) => {
+  if (!controls.isLocked) return;
+  const now = performance.now();
+  const moveX = Math.abs(event.movementX || 0);
+  const moveY = Math.abs(event.movementY || 0);
+  if (now < ignoreMouseMoveUntil || moveX > MAX_POINTER_MOVEMENT || moveY > MAX_POINTER_MOVEMENT) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, { capture: true, passive: false });
+controls.addEventListener('lock', () => {
+  ignoreMouseMoveUntil = performance.now() + 180;
 });
 controls.addEventListener('unlock', () => {
   clearMovementInput();
@@ -5816,14 +5860,22 @@ function currentMapNodes() {
 
 function toggleFullMap(force = null) {
   if (force === false) {
+    const wasOpen = state.fullMapOpen;
     state.fullMapOpen = false;
     $('#full-map-screen')?.classList.remove('visible');
+    if (wasOpen) resumeGameplayPointerLock();
     return;
   }
   if (!state.started || state.loading || state.ended || state.caught || state.settingsOpen || state.shopOpen || state.breakerGameOpen) return;
   state.fullMapOpen = force === null ? !state.fullMapOpen : force;
   $('#full-map-screen')?.classList.toggle('visible', state.fullMapOpen);
-  if (state.fullMapOpen) drawFullMap();
+  if (state.fullMapOpen) {
+    clearMovementInput();
+    if (controls.isLocked) controls.unlock();
+    drawFullMap();
+  } else {
+    resumeGameplayPointerLock();
+  }
 }
 
 function drawFullMap() {
@@ -5871,6 +5923,31 @@ function drawFullMap() {
     const width = Math.max(2.5, wall.hw * 2 * scale);
     const height = Math.max(2.5, wall.hz * 2 * scale);
     ctx.fillRect(p.x - width / 2, p.y - height / 2, width, height);
+  }
+  if (state.mapMode === 'school') {
+    const wallThickness = Math.max(4, CELL * scale * 0.2);
+    const drawWallRect = (worldX, worldZ, width, height) => {
+      const p = toMap(worldX, worldZ);
+      ctx.fillRect(p.x - width / 2, p.y - height / 2, width, height);
+    };
+    ctx.fillStyle = '#000000';
+    for (const room of schoolRooms) {
+      const doorZ = Math.round(room.sign.gz);
+      const doorOnWest = room.sign.side === 'west';
+      const doorOnEast = room.sign.side === 'east';
+      for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
+        const west = worldFromGrid(room.gx0, gz);
+        const east = worldFromGrid(room.gx1, gz);
+        if (!(doorOnWest && gz === doorZ)) drawWallRect(west.x - CELL / 2, west.z, wallThickness, CELL * scale);
+        if (!(doorOnEast && gz === doorZ)) drawWallRect(east.x + CELL / 2, east.z, wallThickness, CELL * scale);
+      }
+      for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
+        const north = worldFromGrid(gx, room.gz0);
+        const south = worldFromGrid(gx, room.gz1);
+        drawWallRect(north.x, north.z - CELL / 2, CELL * scale, wallThickness);
+        drawWallRect(south.x, south.z + CELL / 2, CELL * scale, wallThickness);
+      }
+    }
   }
   ctx.strokeStyle = state.mapMode === 'school' ? '#020202' : '#789082';
   ctx.lineWidth = state.mapMode === 'school' ? Math.max(4, CELL * scale * 0.22) : Math.max(3, CELL * scale * 0.12);
