@@ -917,3 +917,13 @@ Build:
   - Removed `canEnemyMoveTo` checks from the doppelganger spawn/move loop.
   - The doppelganger now moves directly toward random mansion targets without collision blocking.
   - Repath timing was shortened and movement speed increased so it keeps roaming aggressively instead of getting stuck.
+
+## 2026-07-01 Sequential Ghost Illusions / Mansion Locker Placement
+
+- Ghost illusion scare was made lighter:
+  - Illusion pool increased to 10, but only 1 illusion is active at a time.
+  - After an illusion disappears, the next one spawns after a random 1-10 second delay.
+  - A full scare wave now consists of 10 sequential illusions instead of multiple simultaneous illusions.
+- Mansion locker placement was wall-biased:
+  - Locker candidate sides now require a non-walkable/wall area behind the locker.
+  - Locker offsets were moved farther toward the wall so lockers are less likely to sit in the middle of corridors.

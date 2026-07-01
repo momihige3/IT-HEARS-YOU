@@ -175,6 +175,7 @@ const state = {
   ghostLightSeconds: 0,
   ghostStunCount: 0,
   nextGhostIllusionAt: Infinity,
+  ghostIllusionQueue: 0,
   fakeOfudaAlertUntil: 0,
   fullMapOpen: false,
   breakerGameOpen: false,
@@ -1044,6 +1045,11 @@ function buildMansionSecondFloor() {
   let placedMansionLockers = 0;
   for (const node of mansionLockerNodes) {
     if (placedMansionLockers >= 10) break;
+    const hasWallBehindLocker = (side) => {
+      const probeX = node.x + side.x * 2.05;
+      const probeZ = node.z + side.z * 2.05;
+      return !nearestMansionNode(probeX, probeZ, 1.05);
+    };
     const canUseMansionLockerSide = (side) => {
       const x = node.x + side.x;
       const z = node.z + side.z;
@@ -1058,16 +1064,17 @@ function buildMansionSecondFloor() {
         [exitX - side.x * 0.62, exitZ - side.z * 0.62, 0.82],
       ];
       return !hasColliderOverlap(x, z, 0.34)
+        && hasWallBehindLocker(side)
         && clearancePoints.every(([px, pz, padding]) => !hasFurnitureOverlap(px, pz, padding))
         && canEnemyMoveTo(exitX, exitZ, 0.8)
         && canEnemyMoveTo(exitX + sideStepX * 0.62, exitZ + sideStepZ * 0.62, 0.62)
         && canEnemyMoveTo(exitX - sideStepX * 0.62, exitZ - sideStepZ * 0.62, 0.62);
     };
     const sideOptions = [
-      { x: -1.22, z: 0, yaw: Math.PI / 2 },
-      { x: 1.22, z: 0, yaw: -Math.PI / 2 },
-      { x: 0, z: -1.22, yaw: 0 },
-      { x: 0, z: 1.22, yaw: Math.PI },
+      { x: -1.58, z: 0, yaw: Math.PI / 2 },
+      { x: 1.58, z: 0, yaw: -Math.PI / 2 },
+      { x: 0, z: -1.58, yaw: 0 },
+      { x: 0, z: 1.58, yaw: Math.PI },
     ].filter(canUseMansionLockerSide);
     const side = sideOptions[0];
     if (!side) continue;
@@ -1908,7 +1915,7 @@ ghostDouble.group.traverse((child) => {
   }
 });
 
-const ghostIllusions = Array.from({ length: 5 }, () => {
+const ghostIllusions = Array.from({ length: 10 }, () => {
   const illusion = createWomanEnemy();
   markSharedObject(illusion.group);
   illusion.group.visible = false;
@@ -3371,8 +3378,9 @@ function respawnPlayer() {
   state.ghostStunTimeMultiplier = savedUpgrades.stun ? 0.5 : 1;
   state.breakerMiniGameSkip = savedUpgrades.breakerSkip === true;
   state.ghostLightSeconds = 0;
-  state.ghostStunCount = 0;
-  state.nextGhostIllusionAt = Infinity;
+    state.ghostStunCount = 0;
+    state.nextGhostIllusionAt = Infinity;
+    state.ghostIllusionQueue = 0;
   state.fakeOfudaAlertUntil = 0;
   state.screenFlashUntil = 0;
   state.nextHealAt = 0;
@@ -3707,8 +3715,9 @@ async function startGame(mode = 'school') {
     womanEnemy.phaseChargeUntil = 0;
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
-    state.ghostStunCount = 0;
-    state.nextGhostIllusionAt = Infinity;
+  state.ghostStunCount = 0;
+  state.nextGhostIllusionAt = Infinity;
+  state.ghostIllusionQueue = 0;
     womanEnemy.hiddenRedirectAt = 0;
     womanEnemy.emergeStartedAt = 0;
     womanEnemy.emergeUntil = 0;
@@ -5329,12 +5338,19 @@ function scheduleGhostIllusions(time) {
   state.nextGhostIllusionAt = time + 60 + Math.random() * 60;
 }
 
+function scheduleNextQueuedGhostIllusion(time) {
+  state.nextGhostIllusionAt = time + 1 + Math.random() * 9;
+}
+
 function spawnGhostIllusions(time) {
   if (state.mapMode !== 'mansion') return;
   if (state.hidden) {
-    scheduleGhostIllusions(time);
+    if (state.ghostIllusionQueue > 0) scheduleNextQueuedGhostIllusion(time);
+    else scheduleGhostIllusions(time);
     return;
   }
+  if (state.ghostIllusionQueue <= 0) state.ghostIllusionQueue = 10;
+  if (ghostIllusions.some((illusion) => illusion.active)) return;
   const forward = new THREE.Vector3();
   camera.getWorldDirection(forward);
   forward.y = 0;
@@ -5348,23 +5364,23 @@ function spawnGhostIllusions(time) {
     right.clone().multiplyScalar(-8),
     forward.clone().multiplyScalar(5).add(right.clone().multiplyScalar((Math.random() < 0.5 ? -1 : 1) * 6)),
   ];
-  let spawned = 0;
-  for (let i = 0; i < ghostIllusions.length && i < offsets.length; i += 1) {
-    const illusion = ghostIllusions[i];
-    const rawX = camera.position.x + offsets[i].x;
-    const rawZ = camera.position.z + offsets[i].z;
-    const node = nearestMansionNode(rawX, rawZ, 4) || { x: rawX, z: rawZ };
-    illusion.group.position.set(node.x, 0.28, node.z);
-    illusion.group.rotation.set(0, Math.atan2(camera.position.x - node.x, camera.position.z - node.z), 0);
-    if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
-    illusion.group.visible = true;
-    illusion.active = true;
-    illusion.despawnAt = time + 9;
-    illusion.speed = 5.6 + Math.random() * 0.9;
-    spawned += 1;
-  }
-  if (spawned) playSonarRoar(0.18);
-  scheduleGhostIllusions(time);
+  const illusion = ghostIllusions.find((item) => !item.active);
+  if (!illusion) return;
+  const offset = offsets[Math.floor(Math.random() * offsets.length)];
+  const rawX = camera.position.x + offset.x;
+  const rawZ = camera.position.z + offset.z;
+  const node = nearestMansionNode(rawX, rawZ, 4) || { x: rawX, z: rawZ };
+  illusion.group.position.set(node.x, 0.28, node.z);
+  illusion.group.rotation.set(0, Math.atan2(camera.position.x - node.x, camera.position.z - node.z), 0);
+  if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
+  illusion.group.visible = true;
+  illusion.active = true;
+  illusion.despawnAt = time + 8;
+  illusion.speed = 5.8 + Math.random() * 0.9;
+  state.ghostIllusionQueue = Math.max(0, state.ghostIllusionQueue - 1);
+  playSonarRoar(0.12);
+  if (state.ghostIllusionQueue <= 0) scheduleGhostIllusions(time);
+  else state.nextGhostIllusionAt = Infinity;
 }
 
 function updateGhostIllusions(dt, time) {
@@ -5373,6 +5389,7 @@ function updateGhostIllusions(dt, time) {
       illusion.group.visible = false;
       illusion.active = false;
     }
+    state.ghostIllusionQueue = 0;
     return;
   }
   if (!Number.isFinite(state.nextGhostIllusionAt)) scheduleGhostIllusions(time);
@@ -5382,6 +5399,7 @@ function updateGhostIllusions(dt, time) {
     if (time >= illusion.despawnAt) {
       illusion.group.visible = false;
       illusion.active = false;
+      if (state.ghostIllusionQueue > 0) scheduleNextQueuedGhostIllusion(time);
       continue;
     }
     const dx = camera.position.x - illusion.group.position.x;
@@ -5390,6 +5408,7 @@ function updateGhostIllusions(dt, time) {
     if (len < 0.72) {
       illusion.group.visible = false;
       illusion.active = false;
+      if (state.ghostIllusionQueue > 0) scheduleNextQueuedGhostIllusion(time);
       continue;
     }
     const step = illusion.speed * dt;
