@@ -1005,3 +1005,20 @@ Build:
   - Radar update rate reduced to 4Hz.
   - Mansion distance culling reduced to 4Hz.
   - School global light intensity updates now run only on breaker state changes or about every 0.35s.
+
+## 2026-07-01 Ghost Roar / Eye Scare / Visibility Performance Pass
+
+- Removed `playSonarRoar()` calls from mansion ghost-only events.
+  - Fake ofuda emergence no longer plays the Sonar roar.
+  - Ghost phasing no longer plays the Sonar roar.
+  - Ghost illusion spawn no longer plays the Sonar roar.
+- Eye scare performance was reduced:
+  - Eye image is preloaded at startup.
+  - Eye scare voice clips are pre-created and reused instead of creating `new Audio()` on each scare.
+  - Eye scare DOM class/style updates now avoid repeated inactive-state writes.
+- Added view-based throttling for off-screen gameplay objects:
+  - Traps outside the player view no longer run animation or trigger checks.
+  - Heal items, coins, mansion ofuda, and fake ofuda only animate/light when near and in view.
+  - Mansion culling now also respects player view for ofuda/fake ofuda visibility.
+- Expanded dynamic resolution tiers down to 0.32 and begins lowering at a higher FPS threshold to recover from 4K slowdowns faster.
+- Water trap membership check now exits outside mansion and uses squared distance to avoid unnecessary per-frame work.

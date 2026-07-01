@@ -14,7 +14,7 @@ scene.fog = new THREE.FogExp2(0x0a0e0a, 0.018);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, touchDevice ? 60 : 80);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
-const RESOLUTION_TIERS = [1, 0.85, 0.7, 0.55];
+const RESOLUTION_TIERS = [1, 0.85, 0.7, 0.55, 0.42, 0.32];
 let resolutionTierIndex = 0;
 let dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
 let lastResolutionAdjustAt = performance.now();
@@ -65,6 +65,10 @@ renderer.toneMappingExposure = 1.08;
 $('#game').append(renderer.domElement);
 renderer.domElement.tabIndex = 0;
 renderer.domElement.style.outline = 'none';
+const eyeScareElement = $('#eye-scare');
+const eyeScarePreload = new Image();
+eyeScarePreload.decoding = 'async';
+eyeScarePreload.src = './images/eye_scare.png';
 // Mobile play protection: disable text selection, long-press menu, pinch-zoom, and double-tap zoom.
 document.addEventListener('contextmenu', (event) => {
   if (touchDevice) event.preventDefault();
@@ -2966,7 +2970,13 @@ function emitPlayerSound(strength, baseHearingRadius) {
 }
 
 function isPlayerInWaterTrap() {
-  return noiseTraps.some((trap) => trap.water && horizontalDistance(camera.position, trap) < trap.waterRadius);
+  if (state.mapMode !== 'mansion' || !noiseTraps.length) return false;
+  return noiseTraps.some((trap) => {
+    if (!trap.water) return false;
+    const dx = camera.position.x - trap.x;
+    const dz = camera.position.z - trap.z;
+    return dx * dx + dz * dz < trap.waterRadius * trap.waterRadius;
+  });
 }
 
 function updateAudio(time) {
@@ -3271,14 +3281,16 @@ function updateMansionDistanceCulling() {
   for (const item of keyItems) {
     if (item.collected) continue;
     const near = item.group.position.distanceToSquared(camera.position) <= radiusSq;
-    item.group.visible = near;
-    item.light.visible = near && item.light.position.distanceTo(camera.position) < 18;
+    const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, MANSION_RENDER_RADIUS, Math.PI / 2.1);
+    item.group.visible = inView;
+    item.light.visible = inView && item.light.position.distanceToSquared(camera.position) < 18 * 18;
   }
   for (const item of fakeOfudaItems) {
     if (item.collected) continue;
     const near = state.mapMode === 'mansion' && item.group.position.distanceToSquared(camera.position) <= radiusSq;
-    item.group.visible = near;
-    item.light.visible = near && item.light.position.distanceTo(camera.position) < 18;
+    const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, MANSION_RENDER_RADIUS, Math.PI / 2.1);
+    item.group.visible = inView;
+    item.light.visible = inView && item.light.position.distanceToSquared(camera.position) < 18 * 18;
   }
 }
 
@@ -4166,6 +4178,7 @@ const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const toPlayer = new THREE.Vector3();
+const tmpViewVector = new THREE.Vector3();
 const playerStart = worldFromGrid(6, 18);
 camera.position.set(playerStart.x, 1.68, playerStart.z);
 camera.rotation.order = 'YXZ';
@@ -4213,6 +4226,17 @@ function updateScreenFlash(time) {
   } else {
     flash.style.opacity = '0';
   }
+}
+
+function isPointInPlayerView(x, z, maxDistance = 22, halfAngle = Math.PI / 3.2) {
+  tmpViewVector.set(x - camera.position.x, 0, z - camera.position.z);
+  const distanceSq = tmpViewVector.lengthSq();
+  if (distanceSq > maxDistance * maxDistance || distanceSq < 0.0001) return distanceSq < 0.8;
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+  tmpViewVector.normalize();
+  return forward.dot(tmpViewVector) >= Math.cos(halfAngle);
 }
 
 const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true, opacity: 0.42, depthWrite: false });
@@ -4307,6 +4331,7 @@ function updateNoiseTraps(dt, time) {
   for (let i = noiseTraps.length - 1; i >= 0; i -= 1) {
     const trap = noiseTraps[i];
     const distanceToTrap = horizontalDistance(camera.position, trap);
+    const inView = isPointInPlayerView(trap.x, trap.z, state.mapMode === 'mansion' ? 18 : 16, Math.PI / 2.7);
     if (trap.water && distanceToTrap > 34) {
       trap.mesh.visible = false;
       if (time >= trap.removeAt) {
@@ -4316,10 +4341,12 @@ function updateNoiseTraps(dt, time) {
       }
       continue;
     }
-    trap.mesh.visible = state.mapMode === 'mansion' ? distanceToTrap < 34 : state.breakerOn;
-    trap.mesh.rotation.z += dt * 0.8;
-    trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
-    if (!trap.triggered && !state.hidden && horizontalDistance(camera.position, trap) < 1.12) {
+    trap.mesh.visible = state.mapMode === 'mansion' ? distanceToTrap < 24 && inView : state.breakerOn && distanceToTrap < 18 && inView;
+    if (trap.mesh.visible) {
+      trap.mesh.rotation.z += dt * 0.8;
+      trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
+    }
+    if (!trap.triggered && !state.hidden && inView && distanceToTrap < 1.12) {
       if (state.mapMode === 'mansion') {
         scene.remove(trap.mesh);
         trap.mesh.geometry.dispose();
@@ -4409,11 +4436,17 @@ function updateHealItems(dt, time) {
   }
   for (let i = healItems.length - 1; i >= 0; i -= 1) {
     const item = healItems[i];
-    item.group.rotation.y += dt * 1.25;
-    item.group.position.y = item.baseY + Math.sin(time * 2.2 + item.phase) * 0.055;
-    item.light.position.copy(item.group.position).add(new THREE.Vector3(0, 0.35, 0));
-    item.light.visible = item.group.position.distanceTo(camera.position) < 20;
-    if (!state.hidden && state.hp < 100 && horizontalDistance(camera.position, item) < 1.45) {
+    const distanceSq = item.group.position.distanceToSquared(camera.position);
+    const near = distanceSq < 20 * 20;
+    const inView = near && isPointInPlayerView(item.x, item.z, 20, Math.PI / 2.4);
+    item.group.visible = inView;
+    item.light.visible = inView && distanceSq < 14 * 14;
+    if (inView) {
+      item.group.rotation.y += dt * 1.25;
+      item.group.position.y = item.baseY + Math.sin(time * 2.2 + item.phase) * 0.055;
+      item.light.position.copy(item.group.position).add(new THREE.Vector3(0, 0.35, 0));
+    }
+    if (!state.hidden && state.hp < 100 && near && horizontalDistance(camera.position, item) < 1.45) {
       healPlayer(30);
       scene.remove(item.group);
       scene.remove(item.light);
@@ -4495,11 +4528,17 @@ function updateCoins(dt, time) {
       removeCoinAt(i);
       continue;
     }
-    coin.group.rotation.y += dt * 2.7;
-    coin.group.position.y = coin.baseY + Math.sin(time * 2.8 + coin.phase) * 0.05;
-    coin.light.position.copy(coin.group.position).add(new THREE.Vector3(0, 0.28, 0));
-    coin.light.visible = coin.group.position.distanceTo(camera.position) < 18;
-    if (!state.hidden && horizontalDistance(camera.position, coin) < 1.25) {
+    const distanceSq = coin.group.position.distanceToSquared(camera.position);
+    const near = distanceSq < 18 * 18;
+    const inView = near && isPointInPlayerView(coin.x, coin.z, 18, Math.PI / 2.4);
+    coin.group.visible = inView;
+    coin.light.visible = inView && distanceSq < 13 * 13;
+    if (inView) {
+      coin.group.rotation.y += dt * 2.7;
+      coin.group.position.y = coin.baseY + Math.sin(time * 2.8 + coin.phase) * 0.05;
+      coin.light.position.copy(coin.group.position).add(new THREE.Vector3(0, 0.28, 0));
+    }
+    if (!state.hidden && near && horizontalDistance(camera.position, coin) < 1.25) {
       coin.collected = true;
       state.coins += 1;
       savePersistentCoins();
@@ -5388,7 +5427,6 @@ function triggerFakeOfudaTrap(item) {
   womanEnemy.phaseChargeUntil = 0;
   womanEnemy.phaseUntil = 0;
   setWomanPhasingVisual(true);
-  playSonarRoar(0.42);
   showToast('偽のお札だった');
 }
 
@@ -5414,23 +5452,35 @@ const eyeScareSounds = [
   { src: './audio/mitsuketa.mp3', calmOnly: false },
   { src: './audio/doko_ni_iruno.mp3', calmOnly: true },
   { src: './audio/kocchi_ni_kinasai.mp3', calmOnly: false },
-];
+].map((item) => {
+  const element = new Audio(item.src);
+  element.preload = 'auto';
+  element.volume = Math.min(1, Math.max(0, seVolume / 300));
+  element.load();
+  return { ...item, element };
+});
 
 function playEyeScareSound() {
   if (seVolume <= 0) return;
   const candidates = eyeScareSounds.filter((item) => !item.calmOnly || state.detection < 50);
-  const source = candidates[Math.floor(Math.random() * candidates.length)]?.src;
-  if (!source) return;
-  const sound = new Audio(source);
+  const sound = candidates[Math.floor(Math.random() * candidates.length)]?.element;
+  if (!sound) return;
+  sound.pause();
+  sound.currentTime = 0;
   sound.volume = Math.min(1, Math.max(0, seVolume / 300));
   sound.play().catch(() => {});
 }
 
 function updateEyeScare(time) {
-  const eye = $('#eye-scare');
+  const eye = eyeScareElement;
   if (!eye) return;
   if (state.mapMode !== 'mansion' || !state.started || state.ended || state.caught) {
-    eye.classList.remove('visible');
+    if (updateEyeScare.wasActive) {
+      eye.classList.remove('visible');
+      eye.style.opacity = '';
+      eye.style.transform = '';
+      updateEyeScare.wasActive = false;
+    }
     return;
   }
   if (!Number.isFinite(state.nextEyeScareAt)) scheduleNextEyeScare(time);
@@ -5440,15 +5490,19 @@ function updateEyeScare(time) {
     scheduleNextEyeScare(time + 1);
   }
   const active = time < state.eyeScareUntil;
-  eye.classList.toggle('visible', active);
+  if (active !== updateEyeScare.wasActive) {
+    eye.classList.toggle('visible', active);
+    updateEyeScare.wasActive = active;
+  }
   if (active) {
     const progress = THREE.MathUtils.clamp(1 - (state.eyeScareUntil - time), 0, 1);
     const pulse = Math.sin(progress * Math.PI);
     eye.style.opacity = String(0.12 + pulse * 0.78);
     eye.style.transform = `scale(${(1.04 + pulse * 0.035).toFixed(3)})`;
-  } else {
+  } else if (updateEyeScare.lastCleared !== state.eyeScareUntil) {
     eye.style.opacity = '';
     eye.style.transform = '';
+    updateEyeScare.lastCleared = state.eyeScareUntil;
   }
 }
 
@@ -5560,16 +5614,17 @@ function spawnGhostIllusions(time) {
   illusion.despawnAt = time + 8;
   illusion.speed = 5.8 + Math.random() * 0.9;
   state.ghostIllusionQueue = Math.max(0, state.ghostIllusionQueue - 1);
-  playSonarRoar(0.12);
   if (state.ghostIllusionQueue <= 0) scheduleGhostIllusions(time);
   else state.nextGhostIllusionAt = Infinity;
 }
 
 function updateGhostIllusions(dt, time) {
   if (state.mapMode !== 'mansion' || state.ended || state.caught || state.ghostStunCount < 2) {
-    for (const illusion of ghostIllusions) {
-      illusion.group.visible = false;
-      illusion.active = false;
+    if (state.ghostIllusionQueue > 0 || ghostIllusions.some((illusion) => illusion.active || illusion.group.visible)) {
+      for (const illusion of ghostIllusions) {
+        illusion.group.visible = false;
+        illusion.active = false;
+      }
     }
     state.ghostIllusionQueue = 0;
     return;
@@ -5655,7 +5710,6 @@ function updateWomanEnemy(dt, time) {
     womanEnemy.phaseChargeUntil = time + 1.0;
     womanEnemy.phaseUntil = time + 11.0;
     womanEnemy.nextPhaseAt = time + 40;
-    playSonarRoar(0.34);
   }
   const phaseCharging = time < womanEnemy.phaseChargeUntil;
   let phasing = !phaseCharging && time < womanEnemy.phaseUntil;
@@ -5879,13 +5933,18 @@ function updateHUD() {
 
 function updateLight(time) {
   updateSchoolLighting(time);
-  const activeLightDistance = state.mapMode === 'mansion' ? 30 : 24;
-  for (const light of schoolLights) {
-    if (!light.isLight) continue;
-    light.visible = light.position.distanceTo(camera.position) < activeLightDistance;
+  if (time >= (updateLight.staticNextAt || 0)) {
+    updateLight.staticNextAt = time + 0.25;
+    const activeLightDistance = state.mapMode === 'mansion' ? 24 : 20;
+    const activeLightDistanceSq = activeLightDistance * activeLightDistance;
+    for (const light of schoolLights) {
+      if (!light.isLight) continue;
+      light.visible = light.position.distanceToSquared(camera.position) < activeLightDistanceSq
+        && isPointInPlayerView(light.position.x, light.position.z, activeLightDistance + 4, Math.PI / 1.9);
+    }
+    if (breakerLight) breakerLight.visible = state.mapMode !== 'mansion' && breakerLight.position.distanceToSquared(camera.position) < 18 * 18;
+    if (mansionBreakerLight) mansionBreakerLight.visible = state.mapMode === 'mansion' && mansionBreakerLight.position.distanceToSquared(camera.position) < 18 * 18;
   }
-  if (breakerLight) breakerLight.visible = state.mapMode !== 'mansion' && breakerLight.position.distanceTo(camera.position) < 18;
-  if (mansionBreakerLight) mansionBreakerLight.visible = state.mapMode === 'mansion' && mansionBreakerLight.position.distanceTo(camera.position) < 18;
   flashlight.visible = state.flashlight && !state.hidden;
   fillLight.visible = flashlight.visible;
   lockerViewLight.visible = state.hidden;
@@ -5900,14 +5959,24 @@ function updateLight(time) {
   fillLight.position.copy(camera.position);
   flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1);
   for (const item of keyItems) {
-    item.group.rotation.y = time * 0.9 + item.phase;
-    item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;
-    item.light.visible = !item.collected && item.group.position.distanceTo(camera.position) < 20;
+    const near = !item.collected && item.group.position.distanceToSquared(camera.position) < 20 * 20;
+    const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, 20, Math.PI / 2.3);
+    item.group.visible = !item.collected && (state.mapMode !== 'mansion' || inView);
+    item.light.visible = inView && item.group.position.distanceToSquared(camera.position) < 14 * 14;
+    if (inView) {
+      item.group.rotation.y = time * 0.9 + item.phase;
+      item.group.position.y = item.baseY + Math.sin(time * 2 + item.phase) * 0.06;
+    }
   }
   for (const item of fakeOfudaItems) {
-    item.group.rotation.y = time * 0.9 + item.phase;
-    item.group.position.y = item.baseY + Math.sin(time * 2.1 + item.phase) * 0.06;
-    item.light.visible = state.mapMode === 'mansion' && !item.collected && item.group.position.distanceTo(camera.position) < 18;
+    const near = state.mapMode === 'mansion' && !item.collected && item.group.position.distanceToSquared(camera.position) < 18 * 18;
+    const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, 18, Math.PI / 2.3);
+    item.group.visible = inView;
+    item.light.visible = inView && item.group.position.distanceToSquared(camera.position) < 13 * 13;
+    if (inView) {
+      item.group.rotation.y = time * 0.9 + item.phase;
+      item.group.position.y = item.baseY + Math.sin(time * 2.1 + item.phase) * 0.06;
+    }
   }
 }
 
@@ -6243,7 +6312,7 @@ function adjustDynamicResolution(now) {
     && !state.breakerGameOpen
     && controls.isLocked;
   const dropCooldown = activeGameplay ? 5200 : 2800;
-  if (perfFps < 44 && now - lastResolutionAdjustAt > dropCooldown && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
+  if (perfFps < 48 && now - lastResolutionAdjustAt > dropCooldown && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
     resolutionTierIndex += 1;
     dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
     lastResolutionAdjustAt = now;
