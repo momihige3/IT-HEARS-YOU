@@ -969,3 +969,10 @@ Build:
 - School full-map wall rendering was strengthened:
   - Missing-neighbor boundaries around walkable school cells now draw as thick black wall lines.
   - This is in addition to black wall collider rectangles, so thin/light walls should be visible as wall marks on the map.
+
+## 2026-07-01 Pointer Lock Reliability Hotfix
+
+- `lockPointer()` now uses standard pointer lock instead of `unadjustedMovement:true`.
+  - The unadjusted/raw mouse request can fail asynchronously in some browsers, leaving the OS cursor active over the game.
+  - Start-game, post-loading, and settings-return paths now force a fresh standard pointer-lock attempt.
+- `lockPointer(force)` can bypass the short retry throttle for user-confirmed transitions such as starting the game or closing settings.

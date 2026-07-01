@@ -3598,16 +3598,18 @@ function closeSettings() {
   clearMovementInput();
   state.settingsOpen = false;
   $('#settings-screen').classList.remove('visible');
-  if (state.started && !state.ended && !state.caught) lockPointer();
+  if (state.started && !state.ended && !state.caught) lockPointer(true);
 }
 
-function lockPointer() {
+function lockPointer(force = false) {
   if (mobileInput.active || controls.isLocked) return;
   const now = performance.now();
-  if (now - lastPointerLockAttemptAt < 220) return;
+  if (!force && now - lastPointerLockAttemptAt < 220) return;
   lastPointerLockAttemptAt = now;
   try {
-    controls.lock(true);
+    // Use standard pointer lock for reliability. `unadjustedMovement:true` can fail
+    // asynchronously on some browsers and leave the OS cursor active over the game.
+    controls.lock(false);
   } catch {
     controls.lock(false);
   }
@@ -3798,12 +3800,12 @@ async function startGame(mode = 'school') {
   $('#full-map-screen')?.classList.remove('visible');
   $('#breaker-game-screen')?.classList.remove('visible');
   setLoading(false);
-  lockPointer();
+  lockPointer(true);
 }
 
 document.querySelectorAll('[data-map-start]').forEach((button) => {
   button.addEventListener('click', () => {
-    lockPointer();
+    lockPointer(true);
     startGame(button.dataset.mapStart || 'school');
   });
 });
