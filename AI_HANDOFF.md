@@ -934,3 +934,16 @@ Build:
   - Each illusion now chooses a random angle around the player and a random 6-13m distance.
   - Spawn points are snapped to nearby mansion walkable nodes when possible.
   - This replaces the previous fixed front/back/left/right spawn candidate list.
+
+## 2026-07-01 Input Stability Fix
+
+- Added `clearMovementInput()` and use it when:
+  - Settings open/close.
+  - Pointer lock is released.
+  - Browser window loses focus.
+  - Page visibility becomes hidden.
+- Movement key state is now tracked only for WASD/Shift.
+- Movement keys are ignored while menus/maps/minigames are open or pointer lock is not active.
+- Pointer lock `unlock` no longer automatically opens the settings screen.
+  - This prevents random settings popups and the need to close settings twice.
+- ESC while the shop is open now stops propagation after closing the shop, preventing it from also toggling settings.

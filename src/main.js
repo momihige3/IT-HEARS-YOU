@@ -187,6 +187,7 @@ const state = {
 };
 
 const keys = {};
+const movementKeyCodes = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']);
 const mobileInput = {
   active: touchDevice,
   moveX: 0,
@@ -3567,7 +3568,22 @@ function endGame(win) {
   $('#breaker-game-screen')?.classList.remove('visible');
 }
 
+function clearMovementInput() {
+  Object.keys(keys).forEach((key) => { keys[key] = false; });
+  mobileInput.moveX = 0;
+  mobileInput.moveY = 0;
+  mobileInput.running = false;
+  state.noise = 0;
+  const runButton = $('#mobile-run-toggle');
+  runButton?.classList.remove('running');
+  if (runButton) runButton.textContent = '歩行中';
+  const knob = $('#move-stick i');
+  if (knob) knob.style.transform = '';
+}
+
 function openSettings() {
+  if (state.settingsOpen) return;
+  clearMovementInput();
   state.settingsOpen = true;
   $('#settings-screen').classList.add('visible');
   $('#settings-close').textContent = state.started ? 'ゲームに戻る' : '閉じる';
@@ -3576,6 +3592,8 @@ function openSettings() {
 }
 
 function closeSettings() {
+  if (!state.settingsOpen) return;
+  clearMovementInput();
   state.settingsOpen = false;
   $('#settings-screen').classList.remove('visible');
   if (state.started && !state.ended && !state.caught) lockPointer();
@@ -3633,7 +3651,7 @@ $('#settings-quit').addEventListener('click', () => {
   location.reload();
 });
 controls.addEventListener('unlock', () => {
-  if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen && !state.breakerGameOpen) openSettings();
+  clearMovementInput();
 });
 
 function clearSpawnedPickupRuntime() {
@@ -3803,11 +3821,23 @@ renderer.domElement.addEventListener('click', () => {
   if (!mobileInput.active && state.started && !state.ended && !state.caught && !state.settingsOpen && !controls.isLocked) lockPointer();
 });
 addEventListener('keydown', (event) => {
-  if (event.code === 'Escape' && state.shopOpen) { closeShop(); return; }
+  if (event.code === 'Escape' && state.shopOpen) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    clearMovementInput();
+    closeShop();
+    return;
+  }
   if (state.started && !state.ended && (event.ctrlKey || event.metaKey)) event.preventDefault();
 }, { capture: true });
 addEventListener('keydown', (event) => {
-  keys[event.code] = true;
+  if (movementKeyCodes.has(event.code)) {
+    event.preventDefault();
+    if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen && !state.breakerGameOpen && controls.isLocked) {
+      keys[event.code] = true;
+    }
+    return;
+  }
   if (event.code === 'KeyM' && state.started && !event.repeat) {
     event.preventDefault();
     toggleFullMap();
@@ -3824,14 +3854,22 @@ addEventListener('keydown', (event) => {
     }
     if (state.settingsOpen) closeSettings();
     else openSettings();
+    return;
   }
+  if (state.settingsOpen || state.shopOpen || state.breakerGameOpen || state.fullMapOpen) return;
   if (event.code === 'KeyE' && !event.repeat) interact();
   if (event.code === 'KeyF' && !event.repeat) {
     state.flashlight = !state.flashlight;
     showToast(state.flashlight ? '懐中電灯を点けた' : '懐中電灯を消した');
   }
 });
-addEventListener('keyup', (event) => { keys[event.code] = false; });
+addEventListener('keyup', (event) => {
+  if (movementKeyCodes.has(event.code)) keys[event.code] = false;
+});
+addEventListener('blur', clearMovementInput);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) clearMovementInput();
+});
 addEventListener('mousemove', (event) => {
   if (!state.hidden || !controls.isLocked) return;
   state.lockerLookOffset = THREE.MathUtils.clamp(
