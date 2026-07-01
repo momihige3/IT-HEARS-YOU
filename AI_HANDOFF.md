@@ -896,3 +896,17 @@ Build:
 - Full map wall display:
   - Wall colliders now keep a `wall` flag.
   - Full map draws those wall colliders as black rectangles so thin school walls are represented.
+
+## 2026-07-01 Classroom Trap / Mansion Ghost Illusion Update
+
+- Classroom/school trap behavior restored:
+  - School traps still no longer create mansion water.
+  - On trigger, they now apply seated state for 5 seconds and deal trap damage again.
+  - Triggered trap visuals remain short-lived instead of becoming water circles.
+- Added mansion ghost illusion scare:
+  - Ghost stun successes are counted per run.
+  - After the ghost has been stunned at least 2 times, a scare timer starts.
+  - Every 1-2 minutes, up to 5 translucent ghost illusions spawn around the player and rush directly toward them.
+  - Illusions do not damage, capture, or apply seated state; they disappear on contact or after a short lifetime.
+  - Illusions reuse the external yurei GLB when loaded and fall back to the procedural ghost otherwise.
+  - Continue/start resets stun count, illusion timer, and active illusion state.

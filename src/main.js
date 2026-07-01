@@ -173,6 +173,8 @@ const state = {
   lockerHideAt: -Infinity,
   lockerHideStartDetection: 0,
   ghostLightSeconds: 0,
+  ghostStunCount: 0,
+  nextGhostIllusionAt: Infinity,
   fakeOfudaAlertUntil: 0,
   fullMapOpen: false,
   breakerGameOpen: false,
@@ -1905,6 +1907,26 @@ ghostDouble.group.traverse((child) => {
     ghostDouble.visualMaterials.push(matItem);
   }
 });
+
+const ghostIllusions = Array.from({ length: 5 }, () => {
+  const illusion = createWomanEnemy();
+  markSharedObject(illusion.group);
+  illusion.group.visible = false;
+  illusion.active = false;
+  illusion.despawnAt = 0;
+  illusion.speed = 5.2;
+  illusion.target = new THREE.Vector3();
+  illusion.group.traverse((child) => {
+    if (!child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const matItem of materials) {
+      matItem.transparent = true;
+      matItem.opacity = Math.min(matItem.opacity ?? 1, 0.48);
+      matItem.depthWrite = false;
+    }
+  });
+  return illusion;
+});
 const ghostEmergeEffect = new THREE.Mesh(
   new THREE.CircleGeometry(1.45, 28),
   new THREE.MeshBasicMaterial({ color: 0x5a0606, transparent: true, opacity: 0, depthWrite: false }),
@@ -1994,6 +2016,44 @@ function applyExternalWomanModelToGhostDouble(sourceModel) {
   }
   ghostDouble.externalModel = clone;
   ghostDouble.group.add(clone);
+  applyExternalWomanModelToIllusions(sourceModel);
+}
+
+function applyExternalWomanModelToIllusions(sourceModel) {
+  if (!sourceModel) return;
+  for (let index = 0; index < ghostIllusions.length; index += 1) {
+    const illusion = ghostIllusions[index];
+    if (illusion.externalModel) continue;
+    const clone = sourceModel.clone(true);
+    clone.name = `YUREI_WOMAN_ILLUSION_${index}`;
+    clone.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
+    illusion.visualMaterials = [];
+    clone.traverse((child) => {
+      child.frustumCulled = true;
+      child.castShadow = false;
+      child.receiveShadow = false;
+      if (!child.material) return;
+      if (Array.isArray(child.material)) child.material = child.material.map((matItem) => matItem.clone());
+      else child.material = child.material.clone();
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const matItem of materials) {
+        matItem.transparent = true;
+        matItem.opacity = 0.34;
+        matItem.depthWrite = false;
+        if (matItem.emissive) {
+          matItem.emissive.setHex(0x2d3145);
+          matItem.emissiveIntensity = Math.max(matItem.emissiveIntensity || 0, 0.22);
+        }
+        matItem.needsUpdate = true;
+        illusion.visualMaterials.push(matItem);
+      }
+    });
+    for (const child of illusion.group.children) {
+      if (child.userData.proceduralGhost) child.visible = false;
+    }
+    illusion.externalModel = clone;
+    illusion.group.add(clone);
+  }
 }
 
 function setWomanVisualPose(stunned = false) {
@@ -3311,6 +3371,8 @@ function respawnPlayer() {
   state.ghostStunTimeMultiplier = savedUpgrades.stun ? 0.5 : 1;
   state.breakerMiniGameSkip = savedUpgrades.breakerSkip === true;
   state.ghostLightSeconds = 0;
+  state.ghostStunCount = 0;
+  state.nextGhostIllusionAt = Infinity;
   state.fakeOfudaAlertUntil = 0;
   state.screenFlashUntil = 0;
   state.nextHealAt = 0;
@@ -3380,6 +3442,11 @@ function respawnPlayer() {
   ghostDouble.spawnAt = respawnMode === 'mansion' ? clock.elapsedTime + 60 : Infinity;
   ghostDouble.despawnAt = 0;
   ghostDouble.target = null;
+  for (const illusion of ghostIllusions) {
+    illusion.group.visible = false;
+    illusion.active = false;
+    illusion.despawnAt = 0;
+  }
   state.nextEyeScareAt = respawnMode === 'mansion' ? clock.elapsedTime + 30 : Infinity;
   state.eyeScareUntil = 0;
   setWomanPhasingVisual(false);
@@ -3640,6 +3707,8 @@ async function startGame(mode = 'school') {
     womanEnemy.phaseChargeUntil = 0;
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
+    state.ghostStunCount = 0;
+    state.nextGhostIllusionAt = Infinity;
     womanEnemy.hiddenRedirectAt = 0;
     womanEnemy.emergeStartedAt = 0;
     womanEnemy.emergeUntil = 0;
@@ -3653,6 +3722,11 @@ async function startGame(mode = 'school') {
     ghostDouble.spawnAt = clock.elapsedTime + 60;
     ghostDouble.despawnAt = 0;
     ghostDouble.target = null;
+    for (const illusion of ghostIllusions) {
+      illusion.group.visible = false;
+      illusion.active = false;
+      illusion.despawnAt = 0;
+    }
     scheduleNextEyeScare(clock.elapsedTime);
     setWomanPhasingVisual(false);
     womanEnemy.target = nearestMansionNode(safeStart.x, safeStart.z, 14);
@@ -4083,6 +4157,8 @@ function updateNoiseTraps(dt, time) {
       const cameraRight = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
       const directionToTrap = new THREE.Vector3(trap.x - camera.position.x, 0, trap.z - camera.position.z).normalize();
       playTrapSound(0.64, cameraRight.dot(directionToTrap));
+      state.seatedUntil = Math.max(state.seatedUntil, time + 5);
+      damagePlayer(18, 'trap');
       emitWorldSound(trap.x, trap.z, 100, 9999, true, { forceTrapResponse: true });
     }
     if (time >= trap.removeAt) {
@@ -5256,6 +5332,82 @@ function updateGhostDouble(dt, time) {
   }
 }
 
+function scheduleGhostIllusions(time) {
+  state.nextGhostIllusionAt = time + 60 + Math.random() * 60;
+}
+
+function spawnGhostIllusions(time) {
+  if (state.mapMode !== 'mansion') return;
+  if (state.hidden) {
+    scheduleGhostIllusions(time);
+    return;
+  }
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+  forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+  const offsets = [
+    forward.clone().multiplyScalar(10),
+    forward.clone().multiplyScalar(-8),
+    right.clone().multiplyScalar(8),
+    right.clone().multiplyScalar(-8),
+    forward.clone().multiplyScalar(5).add(right.clone().multiplyScalar((Math.random() < 0.5 ? -1 : 1) * 6)),
+  ];
+  let spawned = 0;
+  for (let i = 0; i < ghostIllusions.length && i < offsets.length; i += 1) {
+    const illusion = ghostIllusions[i];
+    const rawX = camera.position.x + offsets[i].x;
+    const rawZ = camera.position.z + offsets[i].z;
+    const node = nearestMansionNode(rawX, rawZ, 4) || { x: rawX, z: rawZ };
+    illusion.group.position.set(node.x, 0.28, node.z);
+    illusion.group.rotation.set(0, Math.atan2(camera.position.x - node.x, camera.position.z - node.z), 0);
+    if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
+    illusion.group.visible = true;
+    illusion.active = true;
+    illusion.despawnAt = time + 9;
+    illusion.speed = 5.6 + Math.random() * 0.9;
+    spawned += 1;
+  }
+  if (spawned) playSonarRoar(0.18);
+  scheduleGhostIllusions(time);
+}
+
+function updateGhostIllusions(dt, time) {
+  if (state.mapMode !== 'mansion' || state.ended || state.caught || state.ghostStunCount < 2) {
+    for (const illusion of ghostIllusions) {
+      illusion.group.visible = false;
+      illusion.active = false;
+    }
+    return;
+  }
+  if (!Number.isFinite(state.nextGhostIllusionAt)) scheduleGhostIllusions(time);
+  if (time >= state.nextGhostIllusionAt) spawnGhostIllusions(time);
+  for (const illusion of ghostIllusions) {
+    if (!illusion.active) continue;
+    if (time >= illusion.despawnAt) {
+      illusion.group.visible = false;
+      illusion.active = false;
+      continue;
+    }
+    const dx = camera.position.x - illusion.group.position.x;
+    const dz = camera.position.z - illusion.group.position.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.72) {
+      illusion.group.visible = false;
+      illusion.active = false;
+      continue;
+    }
+    const step = illusion.speed * dt;
+    illusion.group.position.x += (dx / Math.max(0.001, len)) * step;
+    illusion.group.position.z += (dz / Math.max(0.001, len)) * step;
+    illusion.group.position.y = 0.24 + Math.sin(time * 5 + len) * 0.06;
+    illusion.group.rotation.y = Math.atan2(dx, dz);
+    if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
+  }
+}
+
 function updateWomanEnemy(dt, time) {
   if (!womanEnemy || state.ended) {
     updateGhostStunReticle(false);
@@ -5368,6 +5520,8 @@ function updateWomanEnemy(dt, time) {
     setWomanVisualPose(true);
     womanEnemy.group.position.y = 0.18;
     state.ghostLightSeconds = 0;
+    state.ghostStunCount += 1;
+    if (state.ghostStunCount >= 2 && !Number.isFinite(state.nextGhostIllusionAt)) scheduleGhostIllusions(time);
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     enemyVisionLines.visible = false;
@@ -5918,6 +6072,7 @@ function animate() {
     updateEnemy(dt, time);
     updateWomanEnemy(dt, time);
     updateGhostDouble(dt, time);
+    updateGhostIllusions(dt, time);
     updateNoiseTraps(dt, time);
     updateHealItems(dt, time);
     updateCoins(dt, time);
