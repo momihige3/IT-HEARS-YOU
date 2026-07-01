@@ -870,3 +870,11 @@ Build:
   - The GLB forward correction remains at the tested 90-degree offset to prevent sideways sliding.
   - Stun pose now rotates the GLB on the X axis only, so it lies sideways without flipping upside down.
   - Recovery and respawn reset the ghost back to a fully upright pose.
+
+## 2026-07-01 Mansion Ghost GLB Axis Correction
+
+- Fixed the mansion ghost starting and moving while lying sideways:
+  - The exported `yurei_woman_v1.glb` uses a model axis where the character height is not aligned with Three.js world Y.
+  - Runtime now applies a permanent local `+90deg X` upright correction during normal movement, spawn, fake-ofuda emergence, and recovery.
+  - The stun pose intentionally removes that upright correction so the ghost lies down only while stunned.
+  - The ghost doppelganger clone receives the same upright correction.

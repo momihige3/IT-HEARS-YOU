@@ -1880,8 +1880,9 @@ function createWomanEnemy() {
 
 const womanEnemy = createWomanEnemy();
 markSharedObject(womanEnemy.group);
-const WOMAN_MODEL_FORWARD_YAW = Math.PI / 2;
-const WOMAN_MODEL_STUN_X = Math.PI / 2;
+const WOMAN_MODEL_UPRIGHT_X = Math.PI / 2;
+const WOMAN_MODEL_FORWARD_YAW = Math.PI;
+const WOMAN_MODEL_STUN_X = 0;
 const ghostDouble = createWomanEnemy();
 markSharedObject(ghostDouble.group);
 ghostDouble.group.visible = false;
@@ -1921,7 +1922,7 @@ function loadExternalWomanModel() {
   loader.load('./models/yurei_woman_v1.glb', (gltf) => {
     const model = gltf.scene;
     model.name = 'YUREI_WOMAN_V1_GLB';
-    model.rotation.y = WOMAN_MODEL_FORWARD_YAW;
+    model.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
     model.position.set(0, -0.03, 0);
     model.scale.setScalar(1.02);
     model.traverse((child) => {
@@ -1963,7 +1964,7 @@ function applyExternalWomanModelToGhostDouble(sourceModel) {
   if (!sourceModel || ghostDouble.externalModel) return;
   const clone = sourceModel.clone(true);
   clone.name = 'YUREI_WOMAN_V1_DOUBLE_GLB';
-  clone.rotation.y = WOMAN_MODEL_FORWARD_YAW;
+  clone.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
   ghostDouble.visualMaterials = [];
   clone.traverse((child) => {
     child.frustumCulled = true;
@@ -1996,7 +1997,7 @@ function setWomanVisualPose(stunned = false) {
   womanEnemy.group.rotation.x = 0;
   womanEnemy.group.rotation.z = 0;
   if (womanEnemy.externalModel) {
-    womanEnemy.externalModel.rotation.set(stunned ? WOMAN_MODEL_STUN_X : 0, WOMAN_MODEL_FORWARD_YAW, 0);
+    womanEnemy.externalModel.rotation.set(stunned ? WOMAN_MODEL_STUN_X : WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
     womanEnemy.externalModel.position.set(0, stunned ? -0.42 : -0.03, 0);
   }
 }
