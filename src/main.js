@@ -5351,25 +5351,18 @@ function spawnGhostIllusions(time) {
   }
   if (state.ghostIllusionQueue <= 0) state.ghostIllusionQueue = 10;
   if (ghostIllusions.some((illusion) => illusion.active)) return;
-  const forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
-  forward.y = 0;
-  if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
-  forward.normalize();
-  const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
-  const offsets = [
-    forward.clone().multiplyScalar(10),
-    forward.clone().multiplyScalar(-8),
-    right.clone().multiplyScalar(8),
-    right.clone().multiplyScalar(-8),
-    forward.clone().multiplyScalar(5).add(right.clone().multiplyScalar((Math.random() < 0.5 ? -1 : 1) * 6)),
-  ];
   const illusion = ghostIllusions.find((item) => !item.active);
   if (!illusion) return;
-  const offset = offsets[Math.floor(Math.random() * offsets.length)];
-  const rawX = camera.position.x + offset.x;
-  const rawZ = camera.position.z + offset.z;
-  const node = nearestMansionNode(rawX, rawZ, 4) || { x: rawX, z: rawZ };
+  let node = null;
+  for (let attempt = 0; attempt < 8 && !node; attempt += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 6 + Math.random() * 7;
+    const rawX = camera.position.x + Math.sin(angle) * distance;
+    const rawZ = camera.position.z + Math.cos(angle) * distance;
+    const candidate = nearestMansionNode(rawX, rawZ, 4);
+    if (candidate && Math.hypot(candidate.x - camera.position.x, candidate.z - camera.position.z) > 4.5) node = candidate;
+  }
+  node ||= nearestMansionNode(camera.position.x, camera.position.z, 10) || { x: camera.position.x + 8, z: camera.position.z };
   illusion.group.position.set(node.x, 0.28, node.z);
   illusion.group.rotation.set(0, Math.atan2(camera.position.x - node.x, camera.position.z - node.z), 0);
   if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);

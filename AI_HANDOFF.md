@@ -927,3 +927,10 @@ Build:
 - Mansion locker placement was wall-biased:
   - Locker candidate sides now require a non-walkable/wall area behind the locker.
   - Locker offsets were moved farther toward the wall so lockers are less likely to sit in the middle of corridors.
+
+## 2026-07-01 Randomized Ghost Illusion Spawn
+
+- Ghost illusion scare spawn positions were randomized:
+  - Each illusion now chooses a random angle around the player and a random 6-13m distance.
+  - Spawn points are snapped to nearby mansion walkable nodes when possible.
+  - This replaces the previous fixed front/back/left/right spawn candidate list.
