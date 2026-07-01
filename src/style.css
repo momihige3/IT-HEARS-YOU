@@ -48,8 +48,9 @@ body.hidden-in-locker #crosshair { opacity:0; }
 #ghost-stun-reticle.visible { opacity:.92; }
 #ghost-stun-reticle i { position:absolute; left:50%; top:50%; width:calc(100% * var(--stun-progress)); height:calc(100% * var(--stun-progress)); transform:translate(-50%,-50%); border-radius:50%; background:rgba(255,42,34,.42); box-shadow:0 0 24px rgba(255,42,34,.36); }
 #ghost-stun-reticle span { position:absolute; left:50%; top:100%; transform:translate(-50%,8px); color:#ffb7ae; font:10px 'Share Tech Mono'; letter-spacing:.18em; text-shadow:0 2px 8px #210000; }
-#eye-scare { position:fixed; inset:0; z-index:34; pointer-events:none; opacity:0; transition:opacity .12s; background:rgba(0,0,0,.18); display:grid; place-items:center; }
+#eye-scare { position:fixed; inset:0; z-index:34; pointer-events:none; opacity:0; transition:opacity .12s; background:transparent; display:grid; place-items:center; }
 #eye-scare.visible { opacity:1; }
+#eye-scare.visible:not(.image-ready) { opacity:0; }
 #eye-scare i { width:100vw; height:100vh; background:
   linear-gradient(90deg, rgba(0,0,0,.68), transparent 18%, transparent 82%, rgba(0,0,0,.68)),
   linear-gradient(0deg, rgba(0,0,0,.55), transparent 18%, transparent 78%, rgba(0,0,0,.72)),

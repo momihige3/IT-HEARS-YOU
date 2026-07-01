@@ -1022,3 +1022,16 @@ Build:
   - Mansion culling now also respects player view for ofuda/fake ofuda visibility.
 - Expanded dynamic resolution tiers down to 0.32 and begins lowering at a higher FPS threshold to recover from 4K slowdowns faster.
 - Water trap membership check now exits outside mansion and uses squared distance to avoid unnecessary per-frame work.
+
+## 2026-07-01 Locker / Ghost Illusion / Flicker Fix
+
+- Added locker placement fallbacks:
+  - School now guarantees at least 5 wall-side lockers by scanning additional safe wall-adjacent walkable cells if fixed candidates fail.
+  - Mansion now falls back to a looser wall-side placement pass to guarantee at least 6 lockers if strict placement yields too few.
+- Fixed the post-stun ghost illusion sequence:
+  - On the second successful ghost stun, the 10-illusion queue is now scheduled 3 seconds later instead of waiting 60-120 seconds.
+  - Later stun events can reschedule a short follow-up if no illusion event is pending.
+- Reduced recurring black flicker risk:
+  - Active gameplay again blocks dynamic renderer resizing, preventing periodic `renderer.setSize()` flicker.
+  - 4K/large viewport now picks a lower starting resolution before gameplay begins instead.
+  - Eye scare overlay no longer has its own black background and will not show until its image is loaded.

@@ -56,6 +56,17 @@ function applyRenderCap() {
   renderer.domElement.dataset.renderCap = `${renderW}x${renderH}`;
   document.body.classList.toggle('mobile-portrait-landscape', portraitPhone);
 }
+
+function tuneInitialResolutionForViewport() {
+  const { width, height } = getGameViewport();
+  const pixels = width * height;
+  const preferredTier = pixels >= 7_000_000 ? 2 : pixels >= 4_000_000 ? 1 : 0;
+  if (resolutionTierIndex >= preferredTier) return;
+  resolutionTierIndex = preferredTier;
+  dynamicResolutionScale = RESOLUTION_TIERS[resolutionTierIndex];
+  lastResolutionAdjustAt = performance.now();
+  applyRenderCap();
+}
 applyRenderCap();
 renderer.shadowMap.enabled = false;
 renderer.shadowMap.type = THREE.BasicShadowMap;
@@ -68,7 +79,9 @@ renderer.domElement.style.outline = 'none';
 const eyeScareElement = $('#eye-scare');
 const eyeScarePreload = new Image();
 eyeScarePreload.decoding = 'async';
+eyeScarePreload.onload = () => eyeScareElement?.classList.add('image-ready');
 eyeScarePreload.src = './images/eye_scare.png';
+if (eyeScarePreload.complete && eyeScarePreload.naturalWidth > 0) eyeScareElement?.classList.add('image-ready');
 // Mobile play protection: disable text selection, long-press menu, pinch-zoom, and double-tap zoom.
 document.addEventListener('contextmenu', (event) => {
   if (touchDevice) event.preventDefault();
@@ -706,10 +719,39 @@ function makeSafeLocker(gx, gz, wallSide) {
   return makeLocker(gx, gz, wallSide);
 }
 
+function schoolLockerCount() {
+  return lockers.filter((locker) => !inMansionBounds(locker.x, locker.z)).length;
+}
+
+function ensureMinimumSchoolLockers(minCount = 5) {
+  if (schoolLockerCount() >= minCount) return;
+  const sides = [
+    ['west', [-1, 0]],
+    ['east', [1, 0]],
+    ['north', [0, -1]],
+    ['south', [0, 1]],
+  ];
+  const candidates = [...walkable]
+    .map((key) => key.split(',').map(Number))
+    .filter(([gx, gz]) => gx > 0 && gx < GRID_W - 1 && gz > 0 && gz < GRID_H - 1)
+    .sort(() => Math.random() - 0.5);
+  for (const [gx, gz] of candidates) {
+    if (schoolLockerCount() >= minCount) break;
+    if (isLockerEntranceBlocked(gx, gz)) continue;
+    const pos = worldFromGrid(gx, gz);
+    if (lockers.some((locker) => !inMansionBounds(locker.x, locker.z) && Math.hypot(locker.x - pos.x, locker.z - pos.z) < 5.5)) continue;
+    for (const [side, delta] of sides.sort(() => Math.random() - 0.5)) {
+      if (walkable.has(gridKey(gx + delta[0], gz + delta[1]))) continue;
+      if (makeSafeLocker(gx, gz, side)) break;
+    }
+  }
+}
+
 [
   [1, 4, 'west'], [11, 4, 'east'], [1, 10, 'west'], [11, 12, 'east'],
   [2, 6, 'west'], [10, 6, 'east'], [2, 12, 'west'], [10, 14, 'east'],
 ].forEach(([gx, gz, wallSide]) => makeSafeLocker(gx, gz, wallSide));
+ensureMinimumSchoolLockers(5);
 
 // Cover objects leave the navigation centerline open while breaking sight lines.
 const coverPoints = [];
@@ -1109,6 +1151,47 @@ function buildMansionSecondFloor() {
     colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
     addLockerSpotlight(x, z, yaw, true);
     placedMansionLockers += 1;
+  }
+  if (placedMansionLockers < 6) {
+    const fallbackNodes = mansionNodes
+      .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 5.5)
+      .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 6)
+      .sort(() => Math.random() - 0.5);
+    for (const node of fallbackNodes) {
+      if (placedMansionLockers >= 6) break;
+      if (lockers.some((locker) => inMansionBounds(locker.x, locker.z) && Math.hypot(locker.x - node.x, locker.z - node.z) < 6)) continue;
+      const side = [
+        { x: -1.48, z: 0, yaw: Math.PI / 2 },
+        { x: 1.48, z: 0, yaw: -Math.PI / 2 },
+        { x: 0, z: -1.48, yaw: 0 },
+        { x: 0, z: 1.48, yaw: Math.PI },
+      ].find((candidate) => {
+        const behindX = node.x + candidate.x * 1.25;
+        const behindZ = node.z + candidate.z * 1.25;
+        const exitX = node.x - candidate.x * 0.7;
+        const exitZ = node.z - candidate.z * 0.7;
+        return !nearestMansionNode(behindX, behindZ, 1.05)
+          && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.32)
+          && canEnemyMoveTo(exitX, exitZ, 0.62);
+      });
+      if (!side) continue;
+      const x = node.x + side.x;
+      const z = node.z + side.z;
+      const yaw = side.yaw;
+      const group = new THREE.Group();
+      localBox(group, 0, 1.2, -0.34, 1.15, 2.4, 0.14, mansionTrimMat);
+      localBox(group, -0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
+      localBox(group, 0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
+      localBox(group, 0, 2.42, 0, 1.15, 0.12, 0.86, mansionTrimMat);
+      group.position.set(x, 0, z);
+      group.rotation.y = yaw;
+      scene.add(group);
+      registerMansionObject(group);
+      lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
+      colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
+      addLockerSpotlight(x, z, yaw, true);
+      placedMansionLockers += 1;
+    }
   }
 }
 const exitRooms = schoolRooms.filter((room) => room.id !== 'breaker');
@@ -3838,6 +3921,7 @@ function purgeUnselectedMapRuntime(mode) {
 
 async function startGame(mode = 'school') {
   if (state.loading || state.started) return;
+  tuneInitialResolutionForViewport();
   setLoading(true, mode === 'mansion' ? '屋敷マップを生成しています...' : '学校マップを準備しています...');
   await nextFrame();
   state.mapMode = mode;
@@ -5485,9 +5569,13 @@ function updateEyeScare(time) {
   }
   if (!Number.isFinite(state.nextEyeScareAt)) scheduleNextEyeScare(time);
   if (time >= state.nextEyeScareAt) {
-    playEyeScareSound();
-    state.eyeScareUntil = time + 1;
-    scheduleNextEyeScare(time + 1);
+    if (!eye.classList.contains('image-ready')) {
+      scheduleNextEyeScare(time + 3);
+    } else {
+      playEyeScareSound();
+      state.eyeScareUntil = time + 1;
+      scheduleNextEyeScare(time + 1);
+    }
   }
   const active = time < state.eyeScareUntil;
   if (active !== updateEyeScare.wasActive) {
@@ -5577,8 +5665,8 @@ function updateGhostDouble(dt, time) {
   }
 }
 
-function scheduleGhostIllusions(time) {
-  state.nextGhostIllusionAt = time + 60 + Math.random() * 60;
+function scheduleGhostIllusions(time, delay = null) {
+  state.nextGhostIllusionAt = time + (delay ?? (60 + Math.random() * 60));
 }
 
 function scheduleNextQueuedGhostIllusion(time) {
@@ -5769,7 +5857,12 @@ function updateWomanEnemy(dt, time) {
     womanEnemy.group.position.y = 0.18;
     state.ghostLightSeconds = 0;
     state.ghostStunCount += 1;
-    if (state.ghostStunCount >= 2 && !Number.isFinite(state.nextGhostIllusionAt)) scheduleGhostIllusions(time);
+    if (state.ghostStunCount === 2) {
+      state.ghostIllusionQueue = 10;
+      scheduleGhostIllusions(time, 3);
+    } else if (state.ghostStunCount > 2 && !Number.isFinite(state.nextGhostIllusionAt)) {
+      scheduleGhostIllusions(time, 8);
+    }
     updateGhostStunReticle(false);
     setWomanPhasingVisual(false);
     enemyVisionLines.visible = false;
@@ -6311,6 +6404,10 @@ function adjustDynamicResolution(now) {
     && !state.fullMapOpen
     && !state.breakerGameOpen
     && controls.isLocked;
+  if (activeGameplay) {
+    highFpsSince = now;
+    return;
+  }
   const dropCooldown = activeGameplay ? 5200 : 2800;
   if (perfFps < 48 && now - lastResolutionAdjustAt > dropCooldown && resolutionTierIndex < RESOLUTION_TIERS.length - 1) {
     resolutionTierIndex += 1;
