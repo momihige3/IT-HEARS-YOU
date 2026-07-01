@@ -5256,7 +5256,6 @@ function updateEyeScare(time) {
 
 function spawnGhostDouble(time) {
   const candidates = mansionNodes
-    .filter((node) => canEnemyMoveTo(node.x, node.z, 0.3))
     .filter((node) => Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 9)
     .sort(() => Math.random() - 0.5);
   const node = candidates[0] || nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 10);
@@ -5267,7 +5266,7 @@ function spawnGhostDouble(time) {
   ghostDouble.active = true;
   ghostDouble.despawnAt = time + 60;
   ghostDouble.target = nearestMansionNode(node.x, node.z, 8);
-  ghostDouble.repathAt = time + 1.5;
+  ghostDouble.repathAt = time + 0.8;
 }
 
 function despawnGhostDouble(time) {
@@ -5294,29 +5293,23 @@ function updateGhostDouble(dt, time) {
   }
   if (!ghostDouble.target || time >= ghostDouble.repathAt || Math.hypot(ghostDouble.group.position.x - ghostDouble.target.x, ghostDouble.group.position.z - ghostDouble.target.z) < 0.7) {
     const node = mansionNodes
-      .filter((candidate) => Math.hypot(candidate.x - ghostDouble.group.position.x, candidate.z - ghostDouble.group.position.z) > 7)
+      .filter((candidate) => Math.hypot(candidate.x - ghostDouble.group.position.x, candidate.z - ghostDouble.group.position.z) > 8)
       .sort(() => Math.random() - 0.5)[0] || nearestMansionNode(ghostDouble.group.position.x, ghostDouble.group.position.z, 6);
     if (node) ghostDouble.target = { x: node.x, z: node.z };
-    ghostDouble.repathAt = time + 2.5 + Math.random() * 2.5;
+    ghostDouble.repathAt = time + 1.2 + Math.random() * 1.8;
   }
   if (ghostDouble.target) {
     const dx = ghostDouble.target.x - ghostDouble.group.position.x;
     const dz = ghostDouble.target.z - ghostDouble.group.position.z;
     const len = Math.hypot(dx, dz);
     if (len > 0.05) {
-      const speed = 2.5;
+      const speed = 4.8;
       const step = speed * dt;
       const prevX = ghostDouble.group.position.x;
       const prevZ = ghostDouble.group.position.z;
-      const nx = ghostDouble.group.position.x + (dx / len) * step;
-      const nz = ghostDouble.group.position.z + (dz / len) * step;
-      if (canEnemyMoveTo(nx, nz, 0.22)) {
-        ghostDouble.group.position.x = nx;
-        ghostDouble.group.position.z = nz;
-      } else {
-        ghostDouble.target = nearestMansionNode(ghostDouble.group.position.x, ghostDouble.group.position.z, 5);
-        ghostDouble.repathAt = time + 0.5;
-      }
+      // Doppelganger is a ghostly harassment effect: it should always phase through walls/furniture.
+      ghostDouble.group.position.x += (dx / len) * step;
+      ghostDouble.group.position.z += (dz / len) * step;
       const moveX = ghostDouble.group.position.x - prevX;
       const moveZ = ghostDouble.group.position.z - prevZ;
       if (Math.hypot(moveX, moveZ) > 0.001) ghostDouble.group.rotation.y = Math.atan2(moveX, moveZ);

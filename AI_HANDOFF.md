@@ -910,3 +910,10 @@ Build:
   - Illusions do not damage, capture, or apply seated state; they disappear on contact or after a short lifetime.
   - Illusions reuse the external yurei GLB when loaded and fall back to the procedural ghost otherwise.
   - Continue/start resets stun count, illusion timer, and active illusion state.
+
+## 2026-07-01 Ghost Doppelganger Phasing Movement
+
+- Mansion ghost doppelganger movement was changed to always phase through walls/furniture:
+  - Removed `canEnemyMoveTo` checks from the doppelganger spawn/move loop.
+  - The doppelganger now moves directly toward random mansion targets without collision blocking.
+  - Repath timing was shortened and movement speed increased so it keeps roaming aggressively instead of getting stuck.
