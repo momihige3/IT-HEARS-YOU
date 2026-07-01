@@ -878,3 +878,21 @@ Build:
   - Runtime now applies a permanent local `+90deg X` upright correction during normal movement, spawn, fake-ofuda emergence, and recovery.
   - The stun pose intentionally removes that upright correction so the ghost lies down only while stunned.
   - The ghost doppelganger clone receives the same upright correction.
+
+## 2026-07-01 Ghost Axis / Continue / Trap / Shop / Map Fix
+
+- Corrected the mansion ghost upright correction again:
+  - The previous X-axis correction was inverted and made the ghost appear upside down.
+  - Runtime now uses the opposite local X correction for the GLB upright pose.
+- Continue/respawn safety:
+  - On mansion respawn, the ghost is placed at a mansion node at least 22m away from the player when possible.
+  - This prevents immediate repeat game-over loops after continuing.
+- School trap fix:
+  - School/classroom traps no longer convert into mansion ghost water traps when stepped on.
+  - They now trigger as a short-lived noise trap only.
+- Shop update:
+  - Added a persistent `breakerSkip` upgrade for 50 coins.
+  - When purchased, turning the breaker ON skips the 3x3 minigame and powers it immediately.
+- Full map wall display:
+  - Wall colliders now keep a `wall` flag.
+  - Full map draws those wall colliders as black rectangles so thin school walls are represented.

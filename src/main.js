@@ -105,9 +105,10 @@ function loadPersistentShopUpgrades() {
       breaker: parsed.breaker === true,
       light: parsed.light === true,
       stun: parsed.stun === true,
+      breakerSkip: parsed.breakerSkip === true,
     };
   } catch {
-    return { noise: false, breaker: false, light: false, stun: false };
+    return { noise: false, breaker: false, light: false, stun: false, breakerSkip: false };
   }
 }
 function savePersistentShopUpgrades() {
@@ -117,6 +118,7 @@ function savePersistentShopUpgrades() {
       breaker: state.breakerDurationMultiplier >= 2,
       light: state.lightRangeMultiplier >= 2,
       stun: state.ghostStunTimeMultiplier <= 0.5,
+      breakerSkip: state.breakerMiniGameSkip === true,
     }));
   } catch {
     // Storage can be unavailable in private/browser-restricted modes; gameplay still works in-memory.
@@ -143,6 +145,7 @@ const state = {
   breakerDurationMultiplier: savedShopUpgrades.breaker ? 2 : 1,
   lightRangeMultiplier: savedShopUpgrades.light ? 2 : 1,
   ghostStunTimeMultiplier: savedShopUpgrades.stun ? 0.5 : 1,
+  breakerMiniGameSkip: savedShopUpgrades.breakerSkip === true,
   mapMode: 'school',
   screenFlashUntil: 0,
   screenFlashColor: 'red',
@@ -530,7 +533,7 @@ function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow
   mesh.receiveShadow = false;
   scene.add(mesh);
   if (mansionBuilt && inMansionBounds(x, z)) registerMansionObject(mesh);
-  if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2 });
+  if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2, wall });
   return mesh;
 }
 
@@ -1880,7 +1883,7 @@ function createWomanEnemy() {
 
 const womanEnemy = createWomanEnemy();
 markSharedObject(womanEnemy.group);
-const WOMAN_MODEL_UPRIGHT_X = Math.PI / 2;
+const WOMAN_MODEL_UPRIGHT_X = -Math.PI / 2;
 const WOMAN_MODEL_FORWARD_YAW = Math.PI;
 const WOMAN_MODEL_STUN_X = 0;
 const ghostDouble = createWomanEnemy();
@@ -3065,6 +3068,11 @@ function openBreakerGame() {
     setBreaker(false);
     return;
   }
+  if (state.breakerMiniGameSkip) {
+    setBreaker(true, false);
+    showToast('ブレーカーを即時ONにした');
+    return;
+  }
   state.breakerGameOpen = true;
   breakerGame.sequence = makeBreakerSequence();
   breakerGame.inputIndex = 0;
@@ -3301,6 +3309,7 @@ function respawnPlayer() {
   state.breakerDurationMultiplier = savedUpgrades.breaker ? 2 : 1;
   state.lightRangeMultiplier = savedUpgrades.light ? 2 : 1;
   state.ghostStunTimeMultiplier = savedUpgrades.stun ? 0.5 : 1;
+  state.breakerMiniGameSkip = savedUpgrades.breakerSkip === true;
   state.ghostLightSeconds = 0;
   state.fakeOfudaAlertUntil = 0;
   state.screenFlashUntil = 0;
@@ -3344,7 +3353,13 @@ function respawnPlayer() {
     camera.position.set(playerStart.x, 1.68, playerStart.z);
     camera.rotation.set(0, 0, 0);
   }
-  const womanStart = mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
+  const womanStart = respawnMode === 'mansion'
+    ? [...mansionNodes]
+      .filter((node) => Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 22)
+      .sort((a, b) => Math.hypot(b.x - camera.position.x, b.z - camera.position.z) - Math.hypot(a.x - camera.position.x, a.z - camera.position.z))[0]
+      || mansionNodes[Math.floor(mansionNodes.length * 0.5)]
+      || { x: 68, z: -12 }
+    : mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
   womanEnemy.group.position.set(womanStart.x, 0, womanStart.z);
   womanEnemy.target = null;
   womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
@@ -4056,17 +4071,12 @@ function updateNoiseTraps(dt, time) {
         continue;
       }
       trap.triggered = true;
-      trap.water = true;
-      trap.waterRadius = WATER_TRAP_RADIUS;
-      trap.removeAt = time + 55;
-      scene.remove(trap.mesh);
-      trap.mesh.geometry.dispose();
-      trap.mesh = new THREE.Mesh(new THREE.CircleGeometry(WATER_TRAP_RADIUS, 24), waterTrapMat.clone());
-      trap.mesh.rotation.x = -Math.PI / 2;
-      trap.mesh.position.set(camera.position.x, 0.025, camera.position.z);
+      trap.water = false;
+      trap.waterRadius = 0;
+      trap.removeAt = time + 8;
+      trap.mesh.material = trapTriggeredMat.clone();
       trap.x = camera.position.x;
       trap.z = camera.position.z;
-      scene.add(trap.mesh);
       camera.getWorldDirection(forward);
       forward.y = 0;
       forward.normalize();
@@ -4333,7 +4343,8 @@ function updateShopButtons() {
     const purchased = (type === 'noise' && state.noiseMultiplier <= 0.5)
       || (type === 'breaker' && state.breakerDurationMultiplier >= 2)
       || (type === 'light' && state.lightRangeMultiplier >= 2)
-      || (type === 'stun' && state.ghostStunTimeMultiplier <= 0.5);
+      || (type === 'stun' && state.ghostStunTimeMultiplier <= 0.5)
+      || (type === 'breakerSkip' && state.breakerMiniGameSkip);
     button.classList.toggle('purchased', purchased);
     button.setAttribute('aria-pressed', purchased ? 'true' : 'false');
   });
@@ -4367,9 +4378,18 @@ const SHOP_PRICES = {
   breaker: 20,
   light: 10,
   stun: 20,
+  breakerSkip: 50,
 };
 
 function buyShopItem(type) {
+  if (type === 'breakerSkip') {
+    if (state.breakerMiniGameSkip) return setShopMessage('ブレーカーミニゲームスキップは購入済み');
+    if (!spendCoins(SHOP_PRICES.breakerSkip)) return setShopMessage(`コインが足りない（ミニゲームスキップ：${SHOP_PRICES.breakerSkip}コイン）`);
+    state.breakerMiniGameSkip = true;
+    savePersistentShopUpgrades();
+    updateShopButtons();
+    return setShopMessage(`ブレーカーON時のミニゲームをスキップ可能 / 所持コイン：${state.coins}`);
+  }
   if (type === 'heal') {
     if (state.hp >= 100) return setShopMessage('HP満タンなので回復できない');
     if (!spendCoins(SHOP_PRICES.heal)) return setShopMessage(`コインが足りない（回復：${SHOP_PRICES.heal}コイン）`);
@@ -5610,6 +5630,15 @@ function drawFullMap() {
   for (const node of nodes) {
     const p = toMap(node.x, node.z);
     ctx.fillRect(p.x - cellSize / 2, p.y - cellSize / 2, cellSize, cellSize);
+  }
+  const wallSource = colliders.filter((collider) => collider.wall
+    && (state.mapMode === 'mansion' ? inMansionBounds(collider.x, collider.z) : inSchoolBounds(collider.x, collider.z)));
+  ctx.fillStyle = '#020202';
+  for (const wall of wallSource) {
+    const p = toMap(wall.x, wall.z);
+    const width = Math.max(2.5, wall.hw * 2 * scale);
+    const height = Math.max(2.5, wall.hz * 2 * scale);
+    ctx.fillRect(p.x - width / 2, p.y - height / 2, width, height);
   }
   ctx.strokeStyle = '#789082';
   ctx.lineWidth = Math.max(3, CELL * scale * 0.12);
