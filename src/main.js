@@ -946,6 +946,13 @@ function isLockerFrontClear(x, z, yaw, padding = 0.24) {
     && isObjectInLockerFrontZone(virtualLocker, collider.x, collider.z, collider.hw, collider.hz, padding));
 }
 
+function isClearOfMansionUtilities(x, z, minDistance = 3.2) {
+  if (mansionExit && Math.hypot(x - mansionExit.x, z - mansionExit.z) < minDistance) return false;
+  if (mansionBreakerPanel && Math.hypot(x - mansionBreakerPanel.position.x, z - mansionBreakerPanel.position.z) < minDistance) return false;
+  if (mansionShop && Math.hypot(x - mansionShop.x, z - mansionShop.z) < minDistance) return false;
+  return true;
+}
+
 function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.34) {
   if (hasColliderOverlap(x, z, Math.max(hw, hz) + padding)) return false;
   if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 2.1 + padding)) return false;
@@ -1200,6 +1207,11 @@ function buildMansionSecondFloor() {
   ];
   const isMansionWallFacingSide = (node, side, scale = 2.05) =>
     !nearestMansionNode(node.x + side.x * scale, node.z + side.z * scale, 1.05);
+  const wallExitFallbacks = shuffleCopy(mansionNodes)
+    .flatMap((node) => shuffleCopy(mansionExitSides)
+      .filter((side) => isMansionWallFacingSide(node, side, 2.05)
+        && !hasNonWallColliderOverlap(node.x + side.x * 1.9, node.z + side.z * 1.9, 0.2))
+      .map((side) => ({ node, side })));
   const mansionExitCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
     .flatMap((node) => shuffleCopy(mansionExitSides)
@@ -1208,6 +1220,7 @@ function buildMansionSecondFloor() {
         && !hasNonWallColliderOverlap(node.x + side.x * 1.9, node.z + side.z * 1.9, 0.2))
       .map((side) => ({ node, side })));
   const mansionExitPlacement = mansionExitCandidates[0]
+    || wallExitFallbacks[0]
     || { node: shuffleCopy(mansionNodes).find((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 8) || mansionNodes[0], side: shuffleCopy(mansionExitSides)[0] };
   const mansionExitNode = mansionExitPlacement.node;
   const mansionExitSide = mansionExitPlacement.side;
@@ -1215,8 +1228,10 @@ function buildMansionSecondFloor() {
   const exitDoorZ = mansionExitNode.z + mansionExitSide.z * 1.92;
   mansionExit = {
     mesh: addBox(exitDoorX, 1.45, exitDoorZ, mansionExitSide.doorW, 2.35, mansionExitSide.doorD, doorMat, false, false, false),
-    x: mansionExitNode.x,
-    z: mansionExitNode.z,
+    x: exitDoorX,
+    z: exitDoorZ,
+    approachX: mansionExitNode.x,
+    approachZ: mansionExitNode.z,
   };
   addBox(exitDoorX + mansionExitSide.x * -0.08, 2.85, exitDoorZ + mansionExitSide.z * -0.08, mansionExitSide.doorW === 0.16 ? 0.08 : 1.65, 0.34, mansionExitSide.doorD === 0.16 ? 0.08 : 1.65, material(0x123f2a, 0.32, 0.02), false, false, false);
   addBox(exitDoorX + mansionExitSide.x * -0.14, 1.48, exitDoorZ + mansionExitSide.z * -0.14, mansionExitSide.doorW === 0.16 ? 0.05 : 1.2, 1.7, mansionExitSide.doorD === 0.16 ? 0.05 : 1.2, material(0x1f1712, 0.72, 0.08), false, false, false);
@@ -1233,16 +1248,23 @@ function buildMansionSecondFloor() {
     { x: 0, z: -1.86, yaw: 0, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: -1.74 },
     { x: 0, z: 1.86, yaw: Math.PI, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: 1.74 },
   ];
+  const wallBreakerFallbacks = shuffleCopy(mansionNodes)
+    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
+    .flatMap((node) => shuffleCopy(mansionWallSideOptions)
+      .filter((side) => isMansionWallFacingSide(node, side, 1.08)
+        && !hasNonWallColliderOverlap(node.x + side.x, node.z + side.z, 0.18))
+      .map((side) => ({ node, side })));
   const breakerCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 6)
-    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > IMPORTANT_OBJECT_CLEARANCE)
+    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
       .filter((side) => isMansionWallFacingSide(node, side, 1.08)
         && canEnemyMoveTo(node.x - Math.sign(side.x) * 0.58, node.z - Math.sign(side.z) * 0.58, 0.44)
         && !hasNonWallColliderOverlap(node.x + side.x, node.z + side.z, 0.18))
       .map((side) => ({ node, side })));
   const breakerPlacement = breakerCandidates[0]
-    || { node: shuffleCopy(mansionNodes).find((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > IMPORTANT_OBJECT_CLEARANCE) || mansionNodes[0], side: shuffleCopy(mansionWallSideOptions)[0] };
+    || wallBreakerFallbacks[0]
+    || { node: shuffleCopy(mansionNodes).find((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE) || mansionNodes[0], side: shuffleCopy(mansionWallSideOptions)[0] };
   const breakerAnchor = breakerPlacement.node;
   const breakerSide = breakerPlacement.side;
   mansionBreakerPanel = addBox(breakerAnchor.x + breakerSide.x, 1.45, breakerAnchor.z + breakerSide.z, breakerSide.panelW, 1.35, breakerSide.panelD, material(0x241915, 0.62, 0.32), true, false, false);
@@ -1286,6 +1308,7 @@ function buildMansionSecondFloor() {
   const mansionLockerNodes = mansionNodes
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 7)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 7)
+    .filter((node) => isClearOfMansionUtilities(node.x, node.z, 4.2))
     .sort(() => Math.random() - 0.5)
     .slice(0, 28);
   let placedMansionLockers = 0;
@@ -1311,6 +1334,8 @@ function buildMansionSecondFloor() {
       ];
       return !hasColliderOverlap(x, z, 0.34)
         && hasWallBehindLocker(side)
+        && isClearOfMansionUtilities(x, z, 4.2)
+        && isClearOfMansionUtilities(exitX, exitZ, 3.2)
         && isLockerFrontClear(x, z, side.yaw, 0.38)
         && clearancePoints.every(([px, pz, padding]) => !hasFurnitureOverlap(px, pz, padding))
         && canEnemyMoveTo(exitX, exitZ, 0.8)
@@ -1348,6 +1373,7 @@ function buildMansionSecondFloor() {
     const fallbackNodes = mansionNodes
       .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 5.5)
       .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 6)
+      .filter((node) => isClearOfMansionUtilities(node.x, node.z, 4.2))
       .sort(() => Math.random() - 0.5);
     for (const node of fallbackNodes) {
       if (placedMansionLockers >= 6) break;
@@ -1364,6 +1390,8 @@ function buildMansionSecondFloor() {
         const exitZ = node.z - candidate.z * 0.7;
         return !nearestMansionNode(behindX, behindZ, 1.05)
           && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.32)
+          && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 4.2)
+          && isClearOfMansionUtilities(exitX, exitZ, 3.2)
           && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
           && canEnemyMoveTo(exitX, exitZ, 0.62);
       });
@@ -1391,6 +1419,7 @@ function buildMansionSecondFloor() {
     const forcedLockerNodes = mansionNodes
       .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 4.5)
       .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 5)
+      .filter((node) => isClearOfMansionUtilities(node.x, node.z, 4.2))
       .sort(() => Math.random() - 0.5);
     for (const node of forcedLockerNodes) {
       if (placedMansionLockers >= 8) break;
@@ -1404,6 +1433,8 @@ function buildMansionSecondFloor() {
         const exitX = node.x - candidate.x * 0.8;
         const exitZ = node.z - candidate.z * 0.8;
         return !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.22)
+          && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 4.2)
+          && isClearOfMansionUtilities(exitX, exitZ, 3.2)
           && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
           && canEnemyMoveTo(exitX, exitZ, 0.48);
       });
@@ -5975,8 +6006,10 @@ function updateEyeScare(time) {
   if (active) {
     const progress = THREE.MathUtils.clamp(1 - (state.eyeScareUntil - time), 0, 1);
     const pulse = Math.sin(progress * Math.PI);
+    const baseScale = touchDevice ? 1.0 : 1.04;
+    const pulseScale = touchDevice ? 0.012 : 0.035;
     eye.style.opacity = String(0.12 + pulse * 0.78);
-    eye.style.transform = `scale(${(1.04 + pulse * 0.035).toFixed(3)})`;
+    eye.style.transform = `scale(${(baseScale + pulse * pulseScale).toFixed(3)})`;
   } else if (updateEyeScare.lastCleared !== state.eyeScareUntil) {
     eye.style.opacity = '';
     eye.style.transform = '';

@@ -1167,3 +1167,11 @@ Build:
 - Furniture placement now rejects objects that would block any existing locker doorway.
 - Mansion locker placement, including fallback/forced locker passes, now rejects locker positions whose doorway would face existing furniture.
 - This should prevent getting stuck immediately after exiting a locker because a desk or shelf spawned in front of it.
+
+## 2026-07-03 Mansion Utility Wall-Offset / Mobile Eye Scare Fix
+
+- Mansion exit fallback now prefers wall-facing candidates before any generic fallback.
+- Mansion exit interaction/glow/marker position now uses the wall-side door position instead of the corridor cell center, preventing the exit from appearing in the middle of the hallway.
+- Mansion breaker fallback now also prefers wall-facing candidates.
+- Mansion locker placement now avoids exit, breaker, and shop positions so lockers cannot be generated behind/in front of breaker panels.
+- Mobile eye scare rendering now uses `background-size: contain` and a reduced JS scale pulse so the full image remains visible on phone screens.
