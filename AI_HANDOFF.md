@@ -1160,3 +1160,10 @@ Build:
 - Replaced `sort(() => Math.random() - 0.5)` candidate shuffling for these placements with a Fisher-Yates shuffle using Web Crypto randomness when available.
 - Invalidated the collider spatial cache after mansion runtime cleanup so regenerated mansion wall/object collision checks cannot reuse stale buckets.
 - Fallback positions are now selected from shuffled reachable mansion nodes instead of fixed hardcoded coordinates.
+
+## 2026-07-02 Locker Front Clearance Fix
+
+- Added a locker-door front clearance zone so desks/shelves cannot spawn in the usable space directly in front of lockers.
+- Furniture placement now rejects objects that would block any existing locker doorway.
+- Mansion locker placement, including fallback/forced locker passes, now rejects locker positions whose doorway would face existing furniture.
+- This should prevent getting stuck immediately after exiting a locker because a desk or shelf spawned in front of it.

@@ -922,9 +922,34 @@ function hasFurnitureOverlap(x, z, padding = 0.42) {
     && Math.abs(z - collider.z) < collider.hz + padding);
 }
 
+function isObjectInLockerFrontZone(locker, x, z, hw = 0, hz = 0, padding = 0.22) {
+  const frontX = Math.sin(locker.yaw || 0);
+  const frontZ = Math.cos(locker.yaw || 0);
+  const sideX = Math.cos(locker.yaw || 0);
+  const sideZ = -Math.sin(locker.yaw || 0);
+  const dx = x - locker.x;
+  const dz = z - locker.z;
+  const forward = dx * frontX + dz * frontZ;
+  const lateral = dx * sideX + dz * sideZ;
+  const radius = Math.max(hw, hz) + padding;
+  return forward > 0.18 && forward < 3.05 + radius && Math.abs(lateral) < 1.05 + radius;
+}
+
+function isAnyLockerFrontBlockedByObject(x, z, hw = 0, hz = 0, padding = 0.22) {
+  return lockers.some((locker) => isObjectInLockerFrontZone(locker, x, z, hw, hz, padding));
+}
+
+function isLockerFrontClear(x, z, yaw, padding = 0.24) {
+  const virtualLocker = { x, z, yaw };
+  return !colliders.some((collider) =>
+    !collider.wall
+    && isObjectInLockerFrontZone(virtualLocker, collider.x, collider.z, collider.hw, collider.hz, padding));
+}
+
 function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.34) {
   if (hasColliderOverlap(x, z, Math.max(hw, hz) + padding)) return false;
   if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 2.1 + padding)) return false;
+  if (isAnyLockerFrontBlockedByObject(x, z, hw, hz, padding)) return false;
   if (shop && horizontalDistance({ x, z }, shop) < 2.4 + padding) return false;
   if (mansionShop && horizontalDistance({ x, z }, mansionShop) < 2.4 + padding) return false;
   if (mansionBreakerPanel && horizontalDistance({ x, z }, mansionBreakerPanel.position) < 2.2 + padding) return false;
@@ -1286,6 +1311,7 @@ function buildMansionSecondFloor() {
       ];
       return !hasColliderOverlap(x, z, 0.34)
         && hasWallBehindLocker(side)
+        && isLockerFrontClear(x, z, side.yaw, 0.38)
         && clearancePoints.every(([px, pz, padding]) => !hasFurnitureOverlap(px, pz, padding))
         && canEnemyMoveTo(exitX, exitZ, 0.8)
         && canEnemyMoveTo(exitX + sideStepX * 0.62, exitZ + sideStepZ * 0.62, 0.62)
@@ -1338,6 +1364,7 @@ function buildMansionSecondFloor() {
         const exitZ = node.z - candidate.z * 0.7;
         return !nearestMansionNode(behindX, behindZ, 1.05)
           && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.32)
+          && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
           && canEnemyMoveTo(exitX, exitZ, 0.62);
       });
       if (!side) continue;
@@ -1377,6 +1404,7 @@ function buildMansionSecondFloor() {
         const exitX = node.x - candidate.x * 0.8;
         const exitZ = node.z - candidate.z * 0.8;
         return !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.22)
+          && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
           && canEnemyMoveTo(exitX, exitZ, 0.48);
       });
       if (!side) continue;
