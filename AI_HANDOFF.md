@@ -1175,3 +1175,10 @@ Build:
 - Mansion breaker fallback now also prefers wall-facing candidates.
 - Mansion locker placement now avoids exit, breaker, and shop positions so lockers cannot be generated behind/in front of breaker panels.
 - Mobile eye scare rendering now uses `background-size: contain` and a reduced JS scale pulse so the full image remains visible on phone screens.
+
+## 2026-07-03 Mansion Wall-Snap Correction
+
+- Corrected mansion exit/breaker mount offsets to snap their visible mesh against the inner wall surface instead of using loose center-based offsets.
+- Exit door and breaker panel centers are now calculated from wall inner surface minus half the object thickness.
+- Breaker switch and light are offset back toward the corridor side after the panel is wall-mounted.
+- Emergency mansion utility fallbacks no longer use arbitrary shuffled sides first; wall-facing candidates remain preferred to avoid corridor-center placement.

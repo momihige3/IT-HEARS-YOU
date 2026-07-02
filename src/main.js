@@ -1205,27 +1205,42 @@ function buildMansionSecondFloor() {
     { x: 0, z: -1, label: 'north', doorW: 1.55, doorD: 0.16 },
     { x: 0, z: 1, label: 'south', doorW: 1.55, doorD: 0.16 },
   ];
+  const wallInnerSurface = CELL / 2 - 0.1;
+  const wallMountOffset = (side, thickness = 0.16) => wallInnerSurface - thickness / 2 + 0.005;
+  const wallMountPoint = (node, side, thickness = 0.16) => ({
+    x: node.x + side.x * wallMountOffset(side, thickness),
+    z: node.z + side.z * wallMountOffset(side, thickness),
+  });
   const isMansionWallFacingSide = (node, side, scale = 2.05) =>
     !nearestMansionNode(node.x + side.x * scale, node.z + side.z * scale, 1.05);
   const wallExitFallbacks = shuffleCopy(mansionNodes)
     .flatMap((node) => shuffleCopy(mansionExitSides)
       .filter((side) => isMansionWallFacingSide(node, side, 2.05)
-        && !hasNonWallColliderOverlap(node.x + side.x * 1.9, node.z + side.z * 1.9, 0.2))
+        && !hasNonWallColliderOverlap(
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
+          0.2,
+        ))
       .map((side) => ({ node, side })));
   const mansionExitCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
     .flatMap((node) => shuffleCopy(mansionExitSides)
       .filter((side) => isMansionWallFacingSide(node, side, 2.05)
         && canEnemyMoveTo(node.x - side.x * 0.72, node.z - side.z * 0.72, 0.48)
-        && !hasNonWallColliderOverlap(node.x + side.x * 1.9, node.z + side.z * 1.9, 0.2))
+        && !hasNonWallColliderOverlap(
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
+          0.2,
+        ))
       .map((side) => ({ node, side })));
   const mansionExitPlacement = mansionExitCandidates[0]
     || wallExitFallbacks[0]
-    || { node: shuffleCopy(mansionNodes).find((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 8) || mansionNodes[0], side: shuffleCopy(mansionExitSides)[0] };
+    || { node: mansionNodes[0], side: mansionExitSides[0] };
   const mansionExitNode = mansionExitPlacement.node;
   const mansionExitSide = mansionExitPlacement.side;
-  const exitDoorX = mansionExitNode.x + mansionExitSide.x * 1.92;
-  const exitDoorZ = mansionExitNode.z + mansionExitSide.z * 1.92;
+  const exitDoorMount = wallMountPoint(mansionExitNode, mansionExitSide, mansionExitSide.x ? mansionExitSide.doorW : mansionExitSide.doorD);
+  const exitDoorX = exitDoorMount.x;
+  const exitDoorZ = exitDoorMount.z;
   mansionExit = {
     mesh: addBox(exitDoorX, 1.45, exitDoorZ, mansionExitSide.doorW, 2.35, mansionExitSide.doorD, doorMat, false, false, false),
     x: exitDoorX,
@@ -1243,16 +1258,20 @@ function buildMansionSecondFloor() {
   schoolLights.push(exitGlow);
   registerMansionObject(exitGlow);
   const mansionWallSideOptions = [
-    { x: -1.86, z: 0, yaw: Math.PI / 2, panelW: 0.18, panelD: 1.1, switchX: -1.74, switchZ: 0 },
-    { x: 1.86, z: 0, yaw: -Math.PI / 2, panelW: 0.18, panelD: 1.1, switchX: 1.74, switchZ: 0 },
-    { x: 0, z: -1.86, yaw: 0, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: -1.74 },
-    { x: 0, z: 1.86, yaw: Math.PI, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: 1.74 },
+    { x: -1, z: 0, yaw: Math.PI / 2, panelW: 0.18, panelD: 1.1 },
+    { x: 1, z: 0, yaw: -Math.PI / 2, panelW: 0.18, panelD: 1.1 },
+    { x: 0, z: -1, yaw: 0, panelW: 1.1, panelD: 0.18 },
+    { x: 0, z: 1, yaw: Math.PI, panelW: 1.1, panelD: 0.18 },
   ];
   const wallBreakerFallbacks = shuffleCopy(mansionNodes)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
       .filter((side) => isMansionWallFacingSide(node, side, 1.08)
-        && !hasNonWallColliderOverlap(node.x + side.x, node.z + side.z, 0.18))
+        && !hasNonWallColliderOverlap(
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
+          0.18,
+        ))
       .map((side) => ({ node, side })));
   const breakerCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 6)
@@ -1260,17 +1279,24 @@ function buildMansionSecondFloor() {
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
       .filter((side) => isMansionWallFacingSide(node, side, 1.08)
         && canEnemyMoveTo(node.x - Math.sign(side.x) * 0.58, node.z - Math.sign(side.z) * 0.58, 0.44)
-        && !hasNonWallColliderOverlap(node.x + side.x, node.z + side.z, 0.18))
+        && !hasNonWallColliderOverlap(
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
+          0.18,
+        ))
       .map((side) => ({ node, side })));
   const breakerPlacement = breakerCandidates[0]
     || wallBreakerFallbacks[0]
-    || { node: shuffleCopy(mansionNodes).find((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE) || mansionNodes[0], side: shuffleCopy(mansionWallSideOptions)[0] };
+    || { node: mansionNodes[0], side: mansionWallSideOptions[0] };
   const breakerAnchor = breakerPlacement.node;
   const breakerSide = breakerPlacement.side;
-  mansionBreakerPanel = addBox(breakerAnchor.x + breakerSide.x, 1.45, breakerAnchor.z + breakerSide.z, breakerSide.panelW, 1.35, breakerSide.panelD, material(0x241915, 0.62, 0.32), true, false, false);
-  mansionBreakerSwitch = addBox(breakerAnchor.x + breakerSide.switchX, 1.78, breakerAnchor.z + breakerSide.switchZ, breakerSide.panelW > breakerSide.panelD ? 0.55 : 0.05, 0.2, breakerSide.panelW > breakerSide.panelD ? 0.05 : 0.55, material(0xff6d4d, 0.32), false, false, false);
+  const breakerMount = wallMountPoint(breakerAnchor, breakerSide, breakerSide.x ? breakerSide.panelW : breakerSide.panelD);
+  const breakerSwitchX = breakerMount.x - breakerSide.x * 0.095;
+  const breakerSwitchZ = breakerMount.z - breakerSide.z * 0.095;
+  mansionBreakerPanel = addBox(breakerMount.x, 1.45, breakerMount.z, breakerSide.panelW, 1.35, breakerSide.panelD, material(0x241915, 0.62, 0.32), true, false, false);
+  mansionBreakerSwitch = addBox(breakerSwitchX, 1.78, breakerSwitchZ, breakerSide.panelW > breakerSide.panelD ? 0.55 : 0.05, 0.2, breakerSide.panelW > breakerSide.panelD ? 0.05 : 0.55, material(0xff6d4d, 0.32), false, false, false);
   mansionBreakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
-  mansionBreakerLight.position.set(breakerAnchor.x + breakerSide.x * 0.84, 2.2, breakerAnchor.z + breakerSide.z * 0.84);
+  mansionBreakerLight.position.set(breakerMount.x - breakerSide.x * 0.28, 2.2, breakerMount.z - breakerSide.z * 0.28);
   scene.add(mansionBreakerLight);
   registerMansionObject(mansionBreakerLight);
   applyBreakerVisual(false);
