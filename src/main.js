@@ -184,6 +184,11 @@ function savePersistentShopUpgrades() {
 }
 const savedShopUpgrades = loadPersistentShopUpgrades();
 
+function syncUnlockUI() {
+  document.body.classList.toggle('map-unlocked', state?.hasFullMap === true);
+  document.body.classList.toggle('radar-locked', state?.hasRadar !== true);
+}
+
 const state = {
   started: false,
   loading: false,
@@ -255,6 +260,7 @@ const mobileInput = {
   moveY: 0,
   running: false,
 };
+syncUnlockUI();
 const colliders = [];
 const COLLIDER_BUCKET_SIZE = 6;
 let colliderSpatialCount = -1;
@@ -475,7 +481,7 @@ const directions = [
 ];
 
 const schoolRooms = [
-  { id: 'breaker', name: 'ブレーカー室', gx0: 1, gx1: 3, gz0: 15, gz1: 17, connector: [[4, 16], [5, 16], [6, 16]], sign: { gx: 3.55, gz: 16, side: 'east' } },
+  { id: 'breaker', name: '倉庫', gx0: 1, gx1: 3, gz0: 15, gz1: 17, connector: [[4, 16], [5, 16], [6, 16]], sign: { gx: 3.55, gz: 16, side: 'east' } },
   { id: 'classroom-a', name: '1年A組', gx0: 9, gx1: 11, gz0: 14, gz1: 17, connector: [[8, 16], [7, 16], [6, 16]], sign: { gx: 8.45, gz: 16, side: 'west' } },
   { id: 'science', name: '理科室', gx0: 1, gx1: 3, gz0: 1, gz1: 3, connector: [[4, 2], [5, 2], [6, 2]], sign: { gx: 3.55, gz: 2, side: 'east' } },
   { id: 'nurse', name: '保健室', gx0: 9, gx1: 11, gz0: 1, gz1: 3, connector: [[8, 2], [7, 2], [6, 2]], sign: { gx: 8.45, gz: 2, side: 'west' } },
@@ -891,6 +897,15 @@ function hasFurnitureOverlap(x, z, padding = 0.42) {
     && Math.abs(z - collider.z) < collider.hz + padding);
 }
 
+function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.34) {
+  if (hasColliderOverlap(x, z, Math.max(hw, hz) + padding)) return false;
+  if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 2.1 + padding)) return false;
+  if (shop && horizontalDistance({ x, z }, shop) < 2.4 + padding) return false;
+  if (mansionShop && horizontalDistance({ x, z }, mansionShop) < 2.4 + padding) return false;
+  if (mansionBreakerPanel && horizontalDistance({ x, z }, mansionBreakerPanel.position) < 2.2 + padding) return false;
+  return true;
+}
+
 function isSafeSpawnPoint(x, z, padding = 0.46) {
   return !hasColliderOverlap(x, z, padding);
 }
@@ -1115,11 +1130,33 @@ function buildMansionSecondFloor() {
   scene.add(exitGlow);
   schoolLights.push(exitGlow);
   registerMansionObject(exitGlow);
-  const breakerAnchor = nearestMansionNode(offsetX - 24, 24) || { x: offsetX - 24, z: 24 };
-  mansionBreakerPanel = addBox(breakerAnchor.x - 1.86, 1.45, breakerAnchor.z, 0.18, 1.35, 1.1, material(0x241915, 0.62, 0.32), true, false, false);
-  mansionBreakerSwitch = addBox(breakerAnchor.x - 1.74, 1.78, breakerAnchor.z, 0.05, 0.2, 0.55, material(0xff6d4d, 0.32), false, false, false);
+  const mansionWallSideOptions = [
+    { x: -1.86, z: 0, yaw: Math.PI / 2, panelW: 0.18, panelD: 1.1, switchX: -1.74, switchZ: 0 },
+    { x: 1.86, z: 0, yaw: -Math.PI / 2, panelW: 0.18, panelD: 1.1, switchX: 1.74, switchZ: 0 },
+    { x: 0, z: -1.86, yaw: 0, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: -1.74 },
+    { x: 0, z: 1.86, yaw: Math.PI, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: 1.74 },
+  ];
+  const breakerCandidates = mansionNodes
+    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
+    .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > IMPORTANT_OBJECT_CLEARANCE)
+    .map((node) => {
+      const side = [...mansionWallSideOptions]
+        .sort(() => Math.random() - 0.5)
+        .find((candidate) => !nearestMansionNode(node.x + candidate.x * 1.08, node.z + candidate.z * 1.08, 1.05)
+          && canEnemyMoveTo(node.x - candidate.x * 0.58, node.z - candidate.z * 0.58, 0.44)
+          && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.18));
+      return side ? { node, side } : null;
+    })
+    .filter(Boolean)
+    .sort(() => Math.random() - 0.5);
+  const breakerPlacement = breakerCandidates[0]
+    || { node: nearestMansionNode(offsetX - 24, 24) || { x: offsetX - 24, z: 24 }, side: mansionWallSideOptions[0] };
+  const breakerAnchor = breakerPlacement.node;
+  const breakerSide = breakerPlacement.side;
+  mansionBreakerPanel = addBox(breakerAnchor.x + breakerSide.x, 1.45, breakerAnchor.z + breakerSide.z, breakerSide.panelW, 1.35, breakerSide.panelD, material(0x241915, 0.62, 0.32), true, false, false);
+  mansionBreakerSwitch = addBox(breakerAnchor.x + breakerSide.switchX, 1.78, breakerAnchor.z + breakerSide.switchZ, breakerSide.panelW > breakerSide.panelD ? 0.55 : 0.05, 0.2, breakerSide.panelW > breakerSide.panelD ? 0.05 : 0.55, material(0xff6d4d, 0.32), false, false, false);
   mansionBreakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
-  mansionBreakerLight.position.set(breakerAnchor.x - 1.55, 2.2, breakerAnchor.z);
+  mansionBreakerLight.position.set(breakerAnchor.x + breakerSide.x * 0.84, 2.2, breakerAnchor.z + breakerSide.z * 0.84);
   scene.add(mansionBreakerLight);
   registerMansionObject(mansionBreakerLight);
   applyBreakerVisual(false);
@@ -1306,11 +1343,14 @@ const breakerCandidates = walkableNodes.filter((node) =>
   node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1 &&
   node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1);
 const breakerNode = breakerCandidates[Math.floor(Math.random() * breakerCandidates.length)] || walkableNodes[walkableNodes.length - 1];
-const breakerPosition = new THREE.Vector3(breakerNode.x, 0, breakerNode.z);
 // ブレーカーは選ばれた部屋の入口と反対側の壁へ貼り付ける。床置き・中央置きは禁止。
 const breakerWallSide = breakerRoom?.sign?.side === 'west' ? 1 : -1;
+const breakerWallX = breakerWallSide < 0
+  ? worldFromGrid(breakerRoom.gx0, breakerRoom.gz0).x - CELL / 2 + 0.11
+  : worldFromGrid(breakerRoom.gx1, breakerRoom.gz1).x + CELL / 2 - 0.11;
+const breakerPosition = new THREE.Vector3(breakerWallX, 0, breakerNode.z);
 const breakerPanel = addBox(
-  breakerPosition.x + breakerWallSide * 1.72,
+  breakerPosition.x,
   1.45,
   breakerPosition.z,
   0.18,
@@ -1322,7 +1362,7 @@ const breakerPanel = addBox(
   false,
 );
 const breakerSwitch = addBox(
-  breakerPosition.x + breakerWallSide * 1.58,
+  breakerPosition.x - breakerWallSide * 0.08,
   1.78,
   breakerPosition.z,
   0.05,
@@ -1334,7 +1374,7 @@ const breakerSwitch = addBox(
   false,
 );
 const breakerLight = new THREE.PointLight(0x7dffad, 0.35, 3.6);
-breakerLight.position.set(breakerPosition.x + breakerWallSide * 1.35, 2.2, breakerPosition.z);
+breakerLight.position.set(breakerPosition.x - breakerWallSide * 0.24, 2.2, breakerPosition.z);
 scene.add(breakerLight);
 const breakerPlateSide = breakerWallSide < 0 ? 'west' : 'east';
 
@@ -1344,6 +1384,9 @@ const paperMat = material(0xd8d4bd, 0.92, 0.01);
 const bookMat = material(0x344d70, 0.72, 0.02);
 
 function addDeskSet(x, z, rot = 0) {
+  const hw = Math.abs(Math.cos(rot)) > 0.5 ? 0.68 : 0.48;
+  const hz = Math.abs(Math.cos(rot)) > 0.5 ? 0.48 : 0.68;
+  if (!canPlaceFurnitureAt(x, z, hw, hz, 0.18)) return null;
   const group = new THREE.Group();
   group.rotation.y = rot;
   localBox(group, 0, 0.72, 0, 1.18, 0.1, 0.7, deskTopMat);
@@ -1356,11 +1399,14 @@ function addDeskSet(x, z, rot = 0) {
   localBox(group, 0, 0.76, 0.87, 0.56, 0.62, 0.08, chairMat);
   group.position.set(x, 0, z);
   scene.add(group);
-  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? 0.68 : 0.48, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.48 : 0.68, kind: 'furniture' });
+  colliders.push({ x, z, hw, hz, kind: 'furniture' });
   return group;
 }
 
 function addShelf(x, z, w = 1.8, rot = 0) {
+  const hw = Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.22;
+  const hz = Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : w / 2;
+  if (!canPlaceFurnitureAt(x, z, hw, hz, 0.22)) return null;
   const group = new THREE.Group();
   group.rotation.y = rot;
   localBox(group, 0, 0.92, 0, w, 1.84, 0.34, cabinetMat);
@@ -1368,7 +1414,7 @@ function addShelf(x, z, w = 1.8, rot = 0) {
   for (let i = 0; i < 5; i += 1) localBox(group, -w * 0.34 + i * w * 0.17, 1.05 + (i % 2) * 0.32, 0.21, 0.1, 0.32, 0.08, bookMat);
   group.position.set(x, 0, z);
   scene.add(group);
-  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.22, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : w / 2, kind: 'furniture' });
+  colliders.push({ x, z, hw, hz, kind: 'furniture' });
   return group;
 }
 
@@ -3670,6 +3716,7 @@ function respawnPlayer() {
   state.breakerMiniGameSkip = savedUpgrades.enabled.breakerSkip === true;
   state.hasFullMap = savedUpgrades.enabled.map === true;
   state.hasRadar = savedUpgrades.enabled.radar === true;
+  syncUnlockUI();
   state.ghostLightSeconds = 0;
     state.ghostStunCount = 0;
     state.nextGhostIllusionAt = Infinity;
@@ -4337,6 +4384,13 @@ bindMobileButton('#mobile-flashlight', () => {
   state.flashlight = !state.flashlight;
   $('#mobile-flashlight').classList.toggle('active', state.flashlight);
 });
+bindMobileButton('#mobile-map-button', () => {
+  toggleFullMap();
+});
+$('#pc-map-hint')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  toggleFullMap();
+});
 function bindMobileActionButton() {
   const element = $('#mobile-action');
   if (!element) return;
@@ -4477,7 +4531,7 @@ function isPointInPlayerView(x, z, maxDistance = 22, halfAngle = Math.PI / 3.2) 
 
 const trapMat = new THREE.MeshBasicMaterial({ color: 0xf0cc65, transparent: true, opacity: 0.42, depthWrite: false });
 const trapTriggeredMat = new THREE.MeshBasicMaterial({ color: 0xff5a42, transparent: true, opacity: 0.62, depthWrite: false });
-const waterTrapMat = new THREE.MeshBasicMaterial({ color: 0x5aa7b8, transparent: true, opacity: 0.24, depthWrite: false });
+const waterTrapMat = new THREE.MeshBasicMaterial({ color: 0x5aa7b8, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
 const MAX_MANSION_WATER_TRAPS = 10;
 const WATER_TRAP_RADIUS = 10;
 function scheduleNextTrap(time) {
@@ -4505,9 +4559,10 @@ function canPlaceWaterTrapAt(x, z) {
 }
 
 function createWaterTrap(x, z, time, duration = 180) {
-  const mesh = new THREE.Mesh(new THREE.CircleGeometry(WATER_TRAP_RADIUS, 24), waterTrapMat.clone());
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(WATER_TRAP_RADIUS, 32), waterTrapMat.clone());
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(x, 0.025, z);
+  mesh.renderOrder = 3;
   scene.add(mesh);
   noiseTraps.push({ mesh, x, z, createdAt: time, triggered: true, water: true, waterRadius: WATER_TRAP_RADIUS, removeAt: time + duration });
 }
@@ -4568,7 +4623,7 @@ function updateNoiseTraps(dt, time) {
     const trap = noiseTraps[i];
     const distanceToTrap = horizontalDistance(camera.position, trap);
     const inView = isPointInPlayerView(trap.x, trap.z, state.mapMode === 'mansion' ? 18 : 16, Math.PI / 2.7);
-    if (trap.water && distanceToTrap > 34) {
+    if (trap.water && distanceToTrap > 54) {
       trap.mesh.visible = false;
       if (time >= trap.removeAt) {
         scene.remove(trap.mesh);
@@ -4577,7 +4632,9 @@ function updateNoiseTraps(dt, time) {
       }
       continue;
     }
-    trap.mesh.visible = state.mapMode === 'mansion' ? distanceToTrap < 24 && inView : state.breakerOn && distanceToTrap < 18 && inView;
+    trap.mesh.visible = trap.water
+      ? state.mapMode === 'mansion' && distanceToTrap < 54
+      : state.mapMode === 'mansion' ? distanceToTrap < 24 && inView : state.breakerOn && distanceToTrap < 18 && inView;
     if (trap.mesh.visible) {
       trap.mesh.rotation.z += dt * 0.8;
       trap.mesh.material.opacity = trap.water ? 0.18 + Math.sin(time * 2) * 0.04 : trap.triggered ? 0.38 + Math.sin(time * 9) * 0.12 : 0.32 + Math.sin(time * 3 + i) * 0.08;
@@ -4939,6 +4996,7 @@ function setShopUpgradeActive(type, active) {
   if (type === 'breakerSkip') state.breakerMiniGameSkip = active;
   if (type === 'map') state.hasFullMap = active;
   if (type === 'radar') state.hasRadar = active;
+  syncUnlockUI();
   savePersistentShopUpgrades();
   updateShopButtons();
 }
@@ -6229,6 +6287,7 @@ function updateInteraction() {
 const alertLabels = { UNNOTICED: '未発見', SUSPICIOUS: '警戒中', SUPER_ALERT: '超警戒', HUNTING: '追跡中' };
 const movementLabels = { WALKING: '歩行', RUNNING: '走行', HIDING: '隠れている', SEATED: 'しりもち' };
 function updateHUD() {
+  syncUnlockUI();
   $('#noise-bar').style.width = `${state.noise}%`;
   $('#noise-value').textContent = String(Math.round(state.noise)).padStart(2, '0');
   $('#detect-bar').style.width = `${state.detection}%`;
@@ -6476,28 +6535,14 @@ function drawFullMap() {
 
 function updateRadar(dt, time) {
   if (!state.started || state.loading) return;
+  syncUnlockUI();
+  if (!state.hasRadar) return;
   radar.clearRect(0, 0, minimap.width, minimap.height);
   radar.fillStyle = 'rgba(3,9,6,.92)';
   radar.fillRect(0, 0, minimap.width, minimap.height);
-  $('#radar-panel')?.classList.toggle('locked', !state.hasRadar);
   const centerX = minimap.width / 2;
   const centerY = minimap.height / 2;
   const radarRadius = Math.min(minimap.width, minimap.height) * 0.46;
-  if (!state.hasRadar) {
-    radar.strokeStyle = 'rgba(96,137,110,.22)';
-    radar.lineWidth = 1.2;
-    radar.beginPath();
-    radar.arc(centerX, centerY, radarRadius, 0, Math.PI * 2);
-    radar.stroke();
-    radar.fillStyle = '#8fa89a';
-    radar.font = 'bold 18px sans-serif';
-    radar.textAlign = 'center';
-    radar.textBaseline = 'middle';
-    radar.fillText(state.shopPurchased?.radar ? 'レーダーOFF' : 'レーダー未購入', centerX, centerY - 8);
-    radar.font = '12px sans-serif';
-    radar.fillText(state.shopPurchased?.radar ? 'ショップでONに切替' : 'ショップ：100コイン', centerX, centerY + 18);
-    return;
-  }
   const worldRadius = 14;
   const scale = radarRadius / worldRadius;
   const sweep = time * 1.45;

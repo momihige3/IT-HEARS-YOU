@@ -1110,3 +1110,21 @@ Build:
 - Added selected-map cache bookkeeping:
   - School is treated as prebuilt/cached after initial generation.
   - Mansion is built once on selection, then marked cached so repeated setup uses the existing generated data instead of rebuilding.
+
+## 2026-07-02 Shop UI / Radar Visibility / Placement Follow-up
+
+- Radar UI now hides completely when radar is not unlocked or is toggled OFF.
+- Shop screen layout changed to a two-column grid with scroll safety to avoid vertical clipping.
+- Map unlock UI added:
+  - PC shows an `M マップ` button in the movement panel when map is enabled.
+  - Mobile shows a map button at the bottom center when map is enabled.
+- School breaker room label changed to storage (`倉庫`).
+- School breaker placement now uses the selected room wall coordinate directly instead of offsetting from a random room node, keeping the breaker on the wall.
+- Mansion breaker placement is now randomized from wall-adjacent reachable mansion nodes instead of a fixed anchor.
+- Mansion water trap rendering no longer depends on view direction:
+  - Water is double-sided.
+  - Visible distance increased.
+  - Mansion water visibility uses distance only, avoiding flicker when the camera angle changes.
+- Furniture placement safety improved:
+  - Desks and shelves now check nearby colliders, lockers, shop, and breaker before spawning.
+  - This reduces wall/furniture overlap in school rooms and locker/table overlap in mansion generation.

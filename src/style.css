@@ -41,8 +41,7 @@ body.hidden-in-locker #crosshair { opacity:0; }
 .radar-legend { display:flex; gap:13px; justify-content:flex-end; margin-top:7px; color:#849289; font:10px 'Share Tech Mono'; }
 .radar-legend span { display:flex; align-items:center; gap:3px; }.radar-legend i { width:5px;height:5px;border-radius:50%;display:inline-block; }
 .radar-legend .you { background:#d7e3db; }.radar-legend .enemy-dot { background:#e34a3d;box-shadow:0 0 5px #e34a3d; }.radar-legend .sound-dot { border:1px solid #d2ad56;background:transparent; }
-#radar-panel.locked .radar-legend { opacity:.35; }
-#radar-panel.locked #minimap { filter:saturate(.35) brightness(.65); }
+body.radar-locked #radar-panel { display:none!important; }
 
 #crosshair { position: fixed; z-index: 7; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); opacity: .62; }
 #crosshair i { position:absolute; background:#d8e0db; } #crosshair i:nth-child(1){width:5px;height:1px;left:0;top:10px} #crosshair i:nth-child(2){width:5px;height:1px;right:0;top:10px} #crosshair i:nth-child(3){height:5px;width:1px;top:0;left:10px} #crosshair i:nth-child(4){height:5px;width:1px;bottom:0;left:10px}
@@ -85,6 +84,20 @@ kbd { border:1px solid #657269; padding:5px 8px; font:13px 'Share Tech Mono'; co
 .mobile-right-buttons button { width:126px; min-height:66px; padding:14px 8px; border:2px solid rgba(188,204,194,.42); border-radius:6px; background:rgba(18,27,21,.58); color:#d2dcd6; font:15px 'Share Tech Mono'; touch-action:manipulation; box-shadow:0 5px 18px rgba(0,0,0,.35); }
 #game canvas { touch-action:none; }
 #mobile-run-toggle.running { color:#f0d084; border-color:rgba(225,181,78,.65); background:rgba(100,72,18,.35); }
+#mobile-map-button, #pc-map-hint { display:none; }
+body.game-running.map-unlocked #pc-map-hint { display:block; margin-top:8px; width:100%; padding:7px 9px; border:1px solid rgba(154,180,164,.38); background:rgba(14,24,18,.42); color:#dce7df; font:12px 'Share Tech Mono'; letter-spacing:.08em; cursor:pointer; }
+body.game-running.map-unlocked #mobile-map-button { display:block; }
+@media (hover:none) and (pointer:coarse) {
+  body.game-running.map-unlocked #mobile-map-button {
+    position:fixed;
+    left:50%;
+    bottom:calc(var(--safe-bottom, 5vh) + 18px);
+    transform:translateX(-50%);
+    width:190px;
+    min-height:76px;
+    z-index:16;
+  }
+}
 #rotate-device { position:fixed; inset:0; z-index:40; place-content:center; text-align:center; background:#030504; }
 #rotate-device strong { font-size:22px; letter-spacing:.12em; } #rotate-device span { margin-top:10px; color:#77827b; font:11px 'Share Tech Mono'; }
 
@@ -211,18 +224,24 @@ html, body { touch-action: none; }
 #breaker-hud.off strong { color:#ffb7ad; }
 .shop-screen { z-index: 25; background: rgba(2,4,3,.86); }
 .shop-card {
-  width: min(520px, 88vw);
+  width: min(820px, 92vw);
+  max-height: 86vh;
+  overflow:auto;
   padding: 30px 34px;
   border: 1px solid #406277;
   background: linear-gradient(145deg, rgba(12,21,26,.97), rgba(3,7,8,.98));
   box-shadow: 0 24px 80px #000;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px 12px;
 }
-.shop-card h2 { margin: 0 0 14px; font-size: 48px; letter-spacing: .16em; }
+.shop-card .eyebrow, .shop-card h2, #shop-message, .shop-card #shop-close { grid-column:1 / -1; }
+.shop-card h2 { margin: 0 0 4px; font-size: 48px; letter-spacing: .16em; }
 #shop-message { min-height: 24px; color:#a9d8e8; font: 15px 'Share Tech Mono'; letter-spacing:.08em; }
 .shop-card button {
   display:block;
   width:100%;
-  margin-top:10px;
+  margin-top:0;
   padding:14px 16px;
   border:1px solid #4d758a;
   background: rgba(64,104,126,.18);
