@@ -1153,3 +1153,10 @@ Build:
   - Mansion desk/shelf groups are now registered as mansion runtime objects so they can be cleaned up before regeneration.
 - Verification note:
   - Repeated mansion starts should now rebuild mansion layout and reselect breaker/exit candidates instead of using stale or fallback fixed positions.
+
+## 2026-07-02 Mansion Breaker / Exit Randomization Follow-up
+
+- Further widened mansion breaker/exit placement so candidates can be selected from more wall-facing corridor nodes instead of over-restricting to a small set of far outer-wall candidates.
+- Replaced `sort(() => Math.random() - 0.5)` candidate shuffling for these placements with a Fisher-Yates shuffle using Web Crypto randomness when available.
+- Invalidated the collider spatial cache after mansion runtime cleanup so regenerated mansion wall/object collision checks cannot reuse stale buckets.
+- Fallback positions are now selected from shuffled reachable mansion nodes instead of fixed hardcoded coordinates.

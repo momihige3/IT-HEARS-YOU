@@ -814,6 +814,24 @@ function ensureMinimumSchoolLockers(minCount = 5) {
   }
 }
 
+function gameRandom() {
+  if (globalThis.crypto?.getRandomValues) {
+    const value = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(value);
+    return value[0] / 0x100000000;
+  }
+  return Math.random();
+}
+
+function shuffleCopy(items) {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(gameRandom() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 [
   [1, 4, 'west'], [11, 4, 'east'], [1, 10, 'west'], [11, 12, 'east'],
   [2, 6, 'west'], [10, 6, 'east'], [2, 12, 'west'], [10, 14, 'east'],
@@ -950,6 +968,8 @@ function clearMansionMapRuntime() {
   mansionRuntimeObjects.length = 0;
   mansionNodes.length = 0;
   removeArrayItemsByBounds(colliders, (x, z) => inMansionBounds(x, z));
+  colliderSpatialCount = -1;
+  colliderSpatialBuckets = new Map();
   removeArrayItemsByBounds(lockers, (x, z) => inMansionBounds(x, z));
   removeArrayItemsByBounds(schoolLights, (x, z) => inMansionBounds(x, z));
   keyItems.forEach((item) => {
@@ -1153,20 +1173,17 @@ function buildMansionSecondFloor() {
     { x: 0, z: -1, label: 'north', doorW: 1.55, doorD: 0.16 },
     { x: 0, z: 1, label: 'south', doorW: 1.55, doorD: 0.16 },
   ];
-  const mansionExitCandidates = mansionNodes
-    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 15)
-    .map((node) => {
-      const side = [...mansionExitSides]
-        .sort(() => Math.random() - 0.5)
-        .find((candidate) => !nearestMansionNode(node.x + candidate.x * 2.05, node.z + candidate.z * 2.05, 1.05)
-          && canEnemyMoveTo(node.x - candidate.x * 0.72, node.z - candidate.z * 0.72, 0.48)
-          && !hasNonWallColliderOverlap(node.x + candidate.x * 1.9, node.z + candidate.z * 1.9, 0.2));
-      return side ? { node, side } : null;
-    })
-    .filter(Boolean)
-    .sort(() => Math.random() - 0.5);
+  const isMansionWallFacingSide = (node, side, scale = 2.05) =>
+    !nearestMansionNode(node.x + side.x * scale, node.z + side.z * scale, 1.05);
+  const mansionExitCandidates = shuffleCopy(mansionNodes)
+    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
+    .flatMap((node) => shuffleCopy(mansionExitSides)
+      .filter((side) => isMansionWallFacingSide(node, side, 2.05)
+        && canEnemyMoveTo(node.x - side.x * 0.72, node.z - side.z * 0.72, 0.48)
+        && !hasNonWallColliderOverlap(node.x + side.x * 1.9, node.z + side.z * 1.9, 0.2))
+      .map((side) => ({ node, side })));
   const mansionExitPlacement = mansionExitCandidates[0]
-    || { node: nearestMansionNode(offsetX + 6 * CELL, -12 - 9 * CELL) || { x: offsetX + 6 * CELL, z: -12 - 9 * CELL }, side: mansionExitSides[2] };
+    || { node: shuffleCopy(mansionNodes).find((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 8) || mansionNodes[0], side: shuffleCopy(mansionExitSides)[0] };
   const mansionExitNode = mansionExitPlacement.node;
   const mansionExitSide = mansionExitPlacement.side;
   const exitDoorX = mansionExitNode.x + mansionExitSide.x * 1.92;
@@ -1191,21 +1208,16 @@ function buildMansionSecondFloor() {
     { x: 0, z: -1.86, yaw: 0, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: -1.74 },
     { x: 0, z: 1.86, yaw: Math.PI, panelW: 1.1, panelD: 0.18, switchX: 0, switchZ: 1.74 },
   ];
-  const breakerCandidates = mansionNodes
-    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
+  const breakerCandidates = shuffleCopy(mansionNodes)
+    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 6)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > IMPORTANT_OBJECT_CLEARANCE)
-    .map((node) => {
-      const side = [...mansionWallSideOptions]
-        .sort(() => Math.random() - 0.5)
-        .find((candidate) => !nearestMansionNode(node.x + candidate.x * 1.08, node.z + candidate.z * 1.08, 1.05)
-          && canEnemyMoveTo(node.x - candidate.x * 0.58, node.z - candidate.z * 0.58, 0.44)
-          && !hasNonWallColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.18));
-      return side ? { node, side } : null;
-    })
-    .filter(Boolean)
-    .sort(() => Math.random() - 0.5);
+    .flatMap((node) => shuffleCopy(mansionWallSideOptions)
+      .filter((side) => isMansionWallFacingSide(node, side, 1.08)
+        && canEnemyMoveTo(node.x - Math.sign(side.x) * 0.58, node.z - Math.sign(side.z) * 0.58, 0.44)
+        && !hasNonWallColliderOverlap(node.x + side.x, node.z + side.z, 0.18))
+      .map((side) => ({ node, side })));
   const breakerPlacement = breakerCandidates[0]
-    || { node: nearestMansionNode(offsetX - 24, 24) || { x: offsetX - 24, z: 24 }, side: mansionWallSideOptions[0] };
+    || { node: shuffleCopy(mansionNodes).find((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > IMPORTANT_OBJECT_CLEARANCE) || mansionNodes[0], side: shuffleCopy(mansionWallSideOptions)[0] };
   const breakerAnchor = breakerPlacement.node;
   const breakerSide = breakerPlacement.side;
   mansionBreakerPanel = addBox(breakerAnchor.x + breakerSide.x, 1.45, breakerAnchor.z + breakerSide.z, breakerSide.panelW, 1.35, breakerSide.panelD, material(0x241915, 0.62, 0.32), true, false, false);
