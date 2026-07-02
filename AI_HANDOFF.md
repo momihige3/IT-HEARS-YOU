@@ -1039,3 +1039,10 @@ Build:
   - All 5 mansion positions are regenerated each map placement/continue.
   - Placement relaxes spacing/safety in stages but still prefers reachable mansion nodes away from utilities/start/exit.
   - Near ofuda remain visible even if outside the current view cone, avoiding cases where nearby required items appear missing.
+
+## 2026-07-02 Off-detection Movement Suspicion Fix
+
+- Restored suspicion gain from player movement outside direct detection for both school and mansion.
+- Added `updateAmbientMovementSuspicion()` after enemy/ghost AI updates so the gain is not immediately erased by non-visible calm-down logic.
+- Running now raises detection slowly but reliably outside sight/hearing; walking raises it very gradually.
+- Water trap movement still amplifies the off-detection gain.

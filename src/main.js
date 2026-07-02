@@ -4933,6 +4933,21 @@ function updatePlayer(dt) {
   }
 }
 
+function updateAmbientMovementSuspicion(dt) {
+  if (!state.started || state.ended || state.caught || state.hidden || clock.elapsedTime < state.seatedUntil) return;
+  if (state.noise <= 1) return;
+  const running = state.moveMode === 'RUNNING';
+  const baseGain = running ? 2.4 : 0.55;
+  const memoryScale = 1 + enemyData.alertMemory * 0.5;
+  const waterScale = isPlayerInWaterTrap() ? 1.8 : 1;
+  setDetection(state.detection + dt * baseGain * memoryScale * waterScale);
+  enemyData.alertMemory = THREE.MathUtils.clamp(
+    enemyData.alertMemory + dt * (running ? 0.0024 : 0.0007),
+    0,
+    1,
+  );
+}
+
 function updateLockerView() {
   if (!state.hidden || !state.currentLocker) return;
   state.noise = 0;
@@ -6472,6 +6487,7 @@ function animate() {
     updateWomanEnemy(dt, time);
     updateGhostDouble(dt, time);
     updateGhostIllusions(dt, time);
+    updateAmbientMovementSuspicion(dt);
     updateNoiseTraps(dt, time);
     updateHealItems(dt, time);
     updateCoins(dt, time);
