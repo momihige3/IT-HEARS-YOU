@@ -123,25 +123,60 @@ function savePersistentCoins() {
 function loadPersistentShopUpgrades() {
   try {
     const parsed = JSON.parse(localStorage.getItem(SHOP_UPGRADES_STORAGE_KEY) || '{}');
+    const purchased = parsed.purchased || {};
+    const enabled = parsed.enabled || {};
+    const legacy = (key) => parsed[key] === true;
+    const owned = (key) => purchased[key] === true || legacy(key);
+    const active = (key) => owned(key) && enabled[key] !== false;
     return {
-      noise: parsed.noise === true,
-      breaker: parsed.breaker === true,
-      light: parsed.light === true,
-      stun: parsed.stun === true,
-      breakerSkip: parsed.breakerSkip === true,
+      purchased: {
+        noise: owned('noise'),
+        breaker: owned('breaker'),
+        light: owned('light'),
+        stun: owned('stun'),
+        breakerSkip: owned('breakerSkip'),
+        map: owned('map'),
+        radar: owned('radar'),
+      },
+      enabled: {
+        noise: active('noise'),
+        breaker: active('breaker'),
+        light: active('light'),
+        stun: active('stun'),
+        breakerSkip: active('breakerSkip'),
+        map: active('map'),
+        radar: active('radar'),
+      },
     };
   } catch {
-    return { noise: false, breaker: false, light: false, stun: false, breakerSkip: false };
+    return {
+      purchased: { noise: false, breaker: false, light: false, stun: false, breakerSkip: false, map: false, radar: false },
+      enabled: { noise: false, breaker: false, light: false, stun: false, breakerSkip: false, map: false, radar: false },
+    };
   }
 }
 function savePersistentShopUpgrades() {
   try {
+    const purchased = state.shopPurchased || {};
     localStorage.setItem(SHOP_UPGRADES_STORAGE_KEY, JSON.stringify({
-      noise: state.noiseMultiplier <= 0.5,
-      breaker: state.breakerDurationMultiplier >= 2,
-      light: state.lightRangeMultiplier >= 2,
-      stun: state.ghostStunTimeMultiplier <= 0.5,
-      breakerSkip: state.breakerMiniGameSkip === true,
+      purchased,
+      enabled: {
+        noise: state.noiseMultiplier <= 0.5,
+        breaker: state.breakerDurationMultiplier >= 2,
+        light: state.lightRangeMultiplier >= 2,
+        stun: state.ghostStunTimeMultiplier <= 0.5,
+        breakerSkip: state.breakerMiniGameSkip === true,
+        map: state.hasFullMap === true,
+        radar: state.hasRadar === true,
+      },
+      // Legacy flags are kept for older saves/tools that only inspect booleans.
+      noise: purchased.noise === true,
+      breaker: purchased.breaker === true,
+      light: purchased.light === true,
+      stun: purchased.stun === true,
+      breakerSkip: purchased.breakerSkip === true,
+      map: purchased.map === true,
+      radar: purchased.radar === true,
     }));
   } catch {
     // Storage can be unavailable in private/browser-restricted modes; gameplay still works in-memory.
@@ -164,11 +199,14 @@ const state = {
   nearShop: false,
   shopOpen: false,
   nextCoinAt: 0,
-  noiseMultiplier: savedShopUpgrades.noise ? 0.5 : 1,
-  breakerDurationMultiplier: savedShopUpgrades.breaker ? 2 : 1,
-  lightRangeMultiplier: savedShopUpgrades.light ? 2 : 1,
-  ghostStunTimeMultiplier: savedShopUpgrades.stun ? 0.5 : 1,
-  breakerMiniGameSkip: savedShopUpgrades.breakerSkip === true,
+  shopPurchased: { ...savedShopUpgrades.purchased },
+  noiseMultiplier: savedShopUpgrades.enabled.noise ? 0.5 : 1,
+  breakerDurationMultiplier: savedShopUpgrades.enabled.breaker ? 2 : 1,
+  lightRangeMultiplier: savedShopUpgrades.enabled.light ? 2 : 1,
+  ghostStunTimeMultiplier: savedShopUpgrades.enabled.stun ? 0.5 : 1,
+  breakerMiniGameSkip: savedShopUpgrades.enabled.breakerSkip === true,
+  hasFullMap: savedShopUpgrades.enabled.map === true,
+  hasRadar: savedShopUpgrades.enabled.radar === true,
   mapMode: 'school',
   screenFlashUntil: 0,
   screenFlashColor: 'red',
@@ -230,6 +268,10 @@ const healItems = [];
 const coinItems = [];
 const fakeOfudaItems = [];
 let shop = null;
+const selectedMapCache = {
+  school: { ready: true, generatedAt: performance.now() },
+  mansion: { ready: false, generatedAt: 0 },
+};
 const CELL = 4;
 const GRID_W = 13;
 const GRID_H = 19;
@@ -1255,15 +1297,18 @@ exitLight.position.set(exitPosition.x, 2.75, exitPosition.z);
 scene.add(exitLight);
 schoolLights.push(exitLight);
 
-const breakerRoom = schoolRooms.find((room) => room.id === 'breaker');
+const breakerRoom = schoolRooms
+  .filter((room) => room !== exitRoom)
+  .sort(() => Math.random() - 0.5)[0]
+  || schoolRooms.find((room) => room.id === 'breaker');
 const breakerCandidates = walkableNodes.filter((node) =>
   node.key !== exitNode.key && breakerRoom &&
-  node.gx === breakerRoom.gx0 &&
+  node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1 &&
   node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1);
 const breakerNode = breakerCandidates[Math.floor(Math.random() * breakerCandidates.length)] || walkableNodes[walkableNodes.length - 1];
 const breakerPosition = new THREE.Vector3(breakerNode.x, 0, breakerNode.z);
-// ブレーカーは必ずブレーカー室の西側の壁へ貼り付ける。床置き・中央置きは禁止。
-const breakerWallSide = -1;
+// ブレーカーは選ばれた部屋の入口と反対側の壁へ貼り付ける。床置き・中央置きは禁止。
+const breakerWallSide = breakerRoom?.sign?.side === 'west' ? 1 : -1;
 const breakerPanel = addBox(
   breakerPosition.x + breakerWallSide * 1.72,
   1.45,
@@ -3617,11 +3662,14 @@ function respawnPlayer() {
   state.shopOpen = false;
   state.nextCoinAt = 0;
   const savedUpgrades = loadPersistentShopUpgrades();
-  state.noiseMultiplier = savedUpgrades.noise ? 0.5 : 1;
-  state.breakerDurationMultiplier = savedUpgrades.breaker ? 2 : 1;
-  state.lightRangeMultiplier = savedUpgrades.light ? 2 : 1;
-  state.ghostStunTimeMultiplier = savedUpgrades.stun ? 0.5 : 1;
-  state.breakerMiniGameSkip = savedUpgrades.breakerSkip === true;
+  state.shopPurchased = { ...savedUpgrades.purchased };
+  state.noiseMultiplier = savedUpgrades.enabled.noise ? 0.5 : 1;
+  state.breakerDurationMultiplier = savedUpgrades.enabled.breaker ? 2 : 1;
+  state.lightRangeMultiplier = savedUpgrades.enabled.light ? 2 : 1;
+  state.ghostStunTimeMultiplier = savedUpgrades.enabled.stun ? 0.5 : 1;
+  state.breakerMiniGameSkip = savedUpgrades.enabled.breakerSkip === true;
+  state.hasFullMap = savedUpgrades.enabled.map === true;
+  state.hasRadar = savedUpgrades.enabled.radar === true;
   state.ghostLightSeconds = 0;
     state.ghostStunCount = 0;
     state.nextGhostIllusionAt = Infinity;
@@ -4006,6 +4054,23 @@ function purgeUnselectedMapRuntime(mode) {
   }
 }
 
+async function prepareSelectedMapCache(mode) {
+  const cache = selectedMapCache[mode];
+  if (cache?.ready) {
+    setLoading(true, mode === 'mansion' ? '屋敷マップのキャッシュを読み込んでいます...' : '学校マップのキャッシュを読み込んでいます...');
+    await nextFrame();
+    return;
+  }
+  setLoading(true, mode === 'mansion' ? '屋敷マップをランダム生成しています...' : '学校マップをランダム生成しています...');
+  await nextFrame();
+  if (mode === 'mansion') buildMansionSecondFloor();
+  if (cache) {
+    cache.ready = true;
+    cache.generatedAt = performance.now();
+  }
+  await nextFrame();
+}
+
 async function startGame(mode = 'school') {
   if (state.loading || state.started) return;
   tuneInitialResolutionForViewport();
@@ -4013,8 +4078,8 @@ async function startGame(mode = 'school') {
   await nextFrame();
   state.mapMode = mode;
   state.floorLevel = mode === 'mansion' ? 2 : 1;
+  await prepareSelectedMapCache(mode);
   if (mode === 'mansion') {
-    buildMansionSecondFloor();
     await nextFrame();
     purgeUnselectedMapRuntime(mode);
     enemy.visible = false;
@@ -4640,7 +4705,7 @@ const shopAccentMat = new THREE.MeshBasicMaterial({ color: 0x9fe7ff });
 const MAX_ACTIVE_COINS = 10;
 
 function scheduleNextCoin(time) {
-  state.nextCoinAt = time + 10;
+  state.nextCoinAt = time + 20;
 }
 
 function removeCoinAt(index) {
@@ -4808,13 +4873,11 @@ function setShopMessage(text) {
 function updateShopButtons() {
   document.querySelectorAll('[data-shop-buy]').forEach((button) => {
     const type = button.dataset.shopBuy;
-    const purchased = (type === 'noise' && state.noiseMultiplier <= 0.5)
-      || (type === 'breaker' && state.breakerDurationMultiplier >= 2)
-      || (type === 'light' && state.lightRangeMultiplier >= 2)
-      || (type === 'stun' && state.ghostStunTimeMultiplier <= 0.5)
-      || (type === 'breakerSkip' && state.breakerMiniGameSkip);
+    const purchased = state.shopPurchased?.[type] === true;
+    const active = isShopUpgradeActive(type);
     button.classList.toggle('purchased', purchased);
-    button.setAttribute('aria-pressed', purchased ? 'true' : 'false');
+    button.classList.toggle('inactive', purchased && !active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
 }
 
@@ -4847,9 +4910,69 @@ const SHOP_PRICES = {
   light: 10,
   stun: 20,
   breakerSkip: 50,
+  map: 50,
+  radar: 100,
 };
 
+function isShopUpgradeActive(type) {
+  if (type === 'noise') return state.noiseMultiplier <= 0.5;
+  if (type === 'breaker') return state.breakerDurationMultiplier >= 2;
+  if (type === 'light') return state.lightRangeMultiplier >= 2;
+  if (type === 'stun') return state.ghostStunTimeMultiplier <= 0.5;
+  if (type === 'breakerSkip') return state.breakerMiniGameSkip === true;
+  if (type === 'map') return state.hasFullMap === true;
+  if (type === 'radar') return state.hasRadar === true;
+  return false;
+}
+
+function setShopUpgradeActive(type, active) {
+  if (type === 'noise') state.noiseMultiplier = active ? 0.5 : 1;
+  if (type === 'breaker') {
+    if (state.breakerOn && Number.isFinite(state.breakerOutAt)) {
+      const remaining = Math.max(0, state.breakerOutAt - clock.elapsedTime);
+      state.breakerOutAt = clock.elapsedTime + remaining * (active ? 2 : 0.5);
+    }
+    state.breakerDurationMultiplier = active ? 2 : 1;
+  }
+  if (type === 'light') state.lightRangeMultiplier = active ? 2 : 1;
+  if (type === 'stun') state.ghostStunTimeMultiplier = active ? 0.5 : 1;
+  if (type === 'breakerSkip') state.breakerMiniGameSkip = active;
+  if (type === 'map') state.hasFullMap = active;
+  if (type === 'radar') state.hasRadar = active;
+  savePersistentShopUpgrades();
+  updateShopButtons();
+}
+
+function shopUpgradeLabel(type) {
+  return {
+    noise: 'ノイズ半減',
+    breaker: 'ブレーカーON時間2倍',
+    light: 'ライト範囲2倍',
+    stun: 'ライトスタン時間半減',
+    breakerSkip: 'ブレーカーミニゲームスキップ',
+    map: '全体マップ',
+    radar: 'レーダー',
+  }[type] || type;
+}
+
+function buyOrToggleShopUpgrade(type) {
+  const label = shopUpgradeLabel(type);
+  if (state.shopPurchased?.[type]) {
+    const nextActive = !isShopUpgradeActive(type);
+    setShopUpgradeActive(type, nextActive);
+    return setShopMessage(`${label}を${nextActive ? 'ON' : 'OFF'}にした / 所持コイン：${state.coins}`);
+  }
+  const price = SHOP_PRICES[type];
+  if (!spendCoins(price)) return setShopMessage(`コインが足りない（${label}：${price}コイン）`);
+  state.shopPurchased[type] = true;
+  setShopUpgradeActive(type, true);
+  return setShopMessage(`${label}を購入してONにした / 所持コイン：${state.coins}`);
+}
+
 function buyShopItem(type) {
+  if (['noise', 'breaker', 'light', 'stun', 'breakerSkip', 'map', 'radar'].includes(type)) {
+    return buyOrToggleShopUpgrade(type);
+  }
   if (type === 'breakerSkip') {
     if (state.breakerMiniGameSkip) return setShopMessage('ブレーカーミニゲームスキップは購入済み');
     if (!spendCoins(SHOP_PRICES.breakerSkip)) return setShopMessage(`コインが足りない（ミニゲームスキップ：${SHOP_PRICES.breakerSkip}コイン）`);
@@ -6211,6 +6334,10 @@ function toggleFullMap(force = null) {
     return;
   }
   if (!state.started || state.loading || state.ended || state.caught || state.settingsOpen || state.shopOpen || state.breakerGameOpen) return;
+  if (!state.hasFullMap) {
+    showToast(state.shopPurchased?.map ? '全体マップはショップでONにすると使える' : '全体マップはショップで購入すると使える');
+    return;
+  }
   state.fullMapOpen = force === null ? !state.fullMapOpen : force;
   $('#full-map-screen')?.classList.toggle('visible', state.fullMapOpen);
   if (state.fullMapOpen) {
@@ -6352,9 +6479,25 @@ function updateRadar(dt, time) {
   radar.clearRect(0, 0, minimap.width, minimap.height);
   radar.fillStyle = 'rgba(3,9,6,.92)';
   radar.fillRect(0, 0, minimap.width, minimap.height);
+  $('#radar-panel')?.classList.toggle('locked', !state.hasRadar);
   const centerX = minimap.width / 2;
   const centerY = minimap.height / 2;
   const radarRadius = Math.min(minimap.width, minimap.height) * 0.46;
+  if (!state.hasRadar) {
+    radar.strokeStyle = 'rgba(96,137,110,.22)';
+    radar.lineWidth = 1.2;
+    radar.beginPath();
+    radar.arc(centerX, centerY, radarRadius, 0, Math.PI * 2);
+    radar.stroke();
+    radar.fillStyle = '#8fa89a';
+    radar.font = 'bold 18px sans-serif';
+    radar.textAlign = 'center';
+    radar.textBaseline = 'middle';
+    radar.fillText(state.shopPurchased?.radar ? 'レーダーOFF' : 'レーダー未購入', centerX, centerY - 8);
+    radar.font = '12px sans-serif';
+    radar.fillText(state.shopPurchased?.radar ? 'ショップでONに切替' : 'ショップ：100コイン', centerX, centerY + 18);
+    return;
+  }
   const worldRadius = 14;
   const scale = radarRadius / worldRadius;
   const sweep = time * 1.45;

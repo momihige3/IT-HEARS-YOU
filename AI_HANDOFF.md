@@ -1089,3 +1089,24 @@ Build:
 - Reduced ghost patrol ping-pong:
   - Mansion ghost AI updates every frame again while mansion mode is active.
   - Free-roam targets now avoid recently visited nodes and prefer farther map nodes, making repeated short back-and-forth movement less likely.
+
+## 2026-07-02 Shop Map/Radar and Map Cache Update
+
+- Added new shop items:
+  - Full map unlock: 50 coins.
+  - Radar unlock: 100 coins.
+- Shop upgrades now track ownership separately from ON/OFF state:
+  - Purchased upgrades can be toggled ON/OFF from the shop.
+  - Older save data is migrated by treating legacy true flags as purchased and enabled.
+- Radar is locked until purchased:
+  - The minimap shows a lightweight locked display instead of enemy/sound/utility tracking.
+  - This also skips the heavier radar drawing while locked.
+- Full map is locked until purchased:
+  - M key / mobile radar tap shows a toast until the map item is bought and enabled.
+- Coin spawn interval changed from 10 seconds to 20 seconds.
+- School utility placement is more random:
+  - Breaker room is now selected from a random non-exit room instead of always using the fixed breaker room.
+  - Existing random shop/exit placement remains active.
+- Added selected-map cache bookkeeping:
+  - School is treated as prebuilt/cached after initial generation.
+  - Mansion is built once on selection, then marked cached so repeated setup uses the existing generated data instead of rebuilding.

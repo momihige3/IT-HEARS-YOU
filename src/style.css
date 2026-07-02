@@ -41,6 +41,8 @@ body.hidden-in-locker #crosshair { opacity:0; }
 .radar-legend { display:flex; gap:13px; justify-content:flex-end; margin-top:7px; color:#849289; font:10px 'Share Tech Mono'; }
 .radar-legend span { display:flex; align-items:center; gap:3px; }.radar-legend i { width:5px;height:5px;border-radius:50%;display:inline-block; }
 .radar-legend .you { background:#d7e3db; }.radar-legend .enemy-dot { background:#e34a3d;box-shadow:0 0 5px #e34a3d; }.radar-legend .sound-dot { border:1px solid #d2ad56;background:transparent; }
+#radar-panel.locked .radar-legend { opacity:.35; }
+#radar-panel.locked #minimap { filter:saturate(.35) brightness(.65); }
 
 #crosshair { position: fixed; z-index: 7; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); opacity: .62; }
 #crosshair i { position:absolute; background:#d8e0db; } #crosshair i:nth-child(1){width:5px;height:1px;left:0;top:10px} #crosshair i:nth-child(2){width:5px;height:1px;right:0;top:10px} #crosshair i:nth-child(3){height:5px;width:1px;top:0;left:10px} #crosshair i:nth-child(4){height:5px;width:1px;bottom:0;left:10px}
@@ -443,7 +445,7 @@ html, body { touch-action: none; }
     min-height: min(104px, 12vmax);
     font-size: min(24px, 2.8vmax);
   }
-  body.mobile-portrait-landscape #radar-panel {
+body.mobile-portrait-landscape #radar-panel {
     right: calc(var(--safe-right) + 188px);
     top: calc(var(--safe-top) + 8px);
     width: min(168px, 18vmax);
@@ -468,4 +470,14 @@ html, body { touch-action: none; }
     min-height: min(88px, 10vmax);
     font-size: min(21px, 2.4vmax);
   }
+}
+
+.shop-card button.purchased.inactive {
+  border-color:#7b7b66;
+  background:linear-gradient(90deg,rgba(76,71,42,.34),rgba(22,22,16,.72));
+  color:#d8d2a7;
+}
+.shop-card button.purchased.inactive::after {
+  content:'OFF';
+  color:#e4d36c;
 }
