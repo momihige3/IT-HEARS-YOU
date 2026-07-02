@@ -1128,3 +1128,15 @@ Build:
 - Furniture placement safety improved:
   - Desks and shelves now check nearby colliders, lockers, shop, and breaker before spawning.
   - This reduces wall/furniture overlap in school rooms and locker/table overlap in mansion generation.
+
+## 2026-07-02 Mansion Exit Randomization / Fake Ofuda Visual Tuning
+
+- Mansion exit placement is now randomized:
+  - Exit candidates are selected from reachable mansion nodes that have a wall-adjacent outward side.
+  - Door mesh, sign, and glow are placed according to the selected wall direction instead of the previous fixed south-east outer-loop location.
+- Mansion breaker remains randomly selected from wall-adjacent reachable nodes and now avoids the randomized exit position.
+- Fake ofuda visuals were made less obvious:
+  - Fake paper size is closer to the real ofuda.
+  - Red curse overlay opacity reduced substantially.
+  - Fake border/edge geometry is thinner and closer to the real ofuda color.
+  - Seal red is darker and less saturated.

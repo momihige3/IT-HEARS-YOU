@@ -1115,16 +1115,39 @@ function buildMansionSecondFloor() {
     }
   }
   mansionStartPoint = { x: offsetX, z: 28 };
-  const mansionExitNode = { x: offsetX + 6 * CELL, z: -12 - 9 * CELL };
+  const mansionExitSides = [
+    { x: -1, z: 0, label: 'west', doorW: 0.16, doorD: 1.55 },
+    { x: 1, z: 0, label: 'east', doorW: 0.16, doorD: 1.55 },
+    { x: 0, z: -1, label: 'north', doorW: 1.55, doorD: 0.16 },
+    { x: 0, z: 1, label: 'south', doorW: 1.55, doorD: 0.16 },
+  ];
+  const mansionExitCandidates = mansionNodes
+    .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 15)
+    .map((node) => {
+      const side = [...mansionExitSides]
+        .sort(() => Math.random() - 0.5)
+        .find((candidate) => !nearestMansionNode(node.x + candidate.x * 2.05, node.z + candidate.z * 2.05, 1.05)
+          && canEnemyMoveTo(node.x - candidate.x * 0.72, node.z - candidate.z * 0.72, 0.48)
+          && !hasColliderOverlap(node.x + candidate.x * 1.9, node.z + candidate.z * 1.9, 0.2));
+      return side ? { node, side } : null;
+    })
+    .filter(Boolean)
+    .sort(() => Math.random() - 0.5);
+  const mansionExitPlacement = mansionExitCandidates[0]
+    || { node: nearestMansionNode(offsetX + 6 * CELL, -12 - 9 * CELL) || { x: offsetX + 6 * CELL, z: -12 - 9 * CELL }, side: mansionExitSides[2] };
+  const mansionExitNode = mansionExitPlacement.node;
+  const mansionExitSide = mansionExitPlacement.side;
+  const exitDoorX = mansionExitNode.x + mansionExitSide.x * 1.92;
+  const exitDoorZ = mansionExitNode.z + mansionExitSide.z * 1.92;
   mansionExit = {
-    mesh: addBox(mansionExitNode.x, 1.45, mansionExitNode.z - 1.92, 1.55, 2.35, 0.16, doorMat, false, false, false),
+    mesh: addBox(exitDoorX, 1.45, exitDoorZ, mansionExitSide.doorW, 2.35, mansionExitSide.doorD, doorMat, false, false, false),
     x: mansionExitNode.x,
     z: mansionExitNode.z,
   };
-  addBox(mansionExit.x, 2.85, mansionExit.z - 1.84, 1.65, 0.34, 0.08, material(0x123f2a, 0.32, 0.02), false, false, false);
-  addBox(mansionExit.x, 1.48, mansionExit.z - 1.78, 1.2, 1.7, 0.05, material(0x1f1712, 0.72, 0.08), false, false, false);
-  addBox(mansionExit.x, 1.48, mansionExit.z - 1.74, 0.82, 1.2, 0.04, material(0x0b0d0c, 0.5, 0.08), false, false, false);
-  makeWallTextPlate('出口', mansionExit.x, 3.08, mansionExit.z - 1.68, 'south', 1.35, 0.34, 'rgba(18,70,46,.96)', '#d9ffe8');
+  addBox(exitDoorX + mansionExitSide.x * -0.08, 2.85, exitDoorZ + mansionExitSide.z * -0.08, mansionExitSide.doorW === 0.16 ? 0.08 : 1.65, 0.34, mansionExitSide.doorD === 0.16 ? 0.08 : 1.65, material(0x123f2a, 0.32, 0.02), false, false, false);
+  addBox(exitDoorX + mansionExitSide.x * -0.14, 1.48, exitDoorZ + mansionExitSide.z * -0.14, mansionExitSide.doorW === 0.16 ? 0.05 : 1.2, 1.7, mansionExitSide.doorD === 0.16 ? 0.05 : 1.2, material(0x1f1712, 0.72, 0.08), false, false, false);
+  addBox(exitDoorX + mansionExitSide.x * -0.18, 1.48, exitDoorZ + mansionExitSide.z * -0.18, mansionExitSide.doorW === 0.16 ? 0.04 : 0.82, 1.2, mansionExitSide.doorD === 0.16 ? 0.04 : 0.82, material(0x0b0d0c, 0.5, 0.08), false, false, false);
+  makeWallTextPlate('出口', exitDoorX + mansionExitSide.x * -0.24, 3.08, exitDoorZ + mansionExitSide.z * -0.24, mansionExitSide.label, 1.35, 0.34, 'rgba(18,70,46,.96)', '#d9ffe8');
   const exitGlow = new THREE.PointLight(0xa6d7ff, 2.8, 6);
   exitGlow.position.set(mansionExit.x, 2.6, mansionExit.z);
   scene.add(exitGlow);
@@ -1660,16 +1683,16 @@ const ofudaSealMat = new THREE.MeshBasicMaterial({ color: 0x8f1e18 });
 function createOfudaModel(fake = false) {
   const group = new THREE.Group();
   const paper = new THREE.Mesh(
-    new THREE.BoxGeometry(fake ? 0.42 : 0.38, 0.014, fake ? 0.84 : 0.78),
-    fake ? new THREE.MeshBasicMaterial({ color: 0xffe8ba, side: THREE.DoubleSide }) : ofudaMat,
+    new THREE.BoxGeometry(fake ? 0.395 : 0.38, 0.014, fake ? 0.805 : 0.78),
+    fake ? new THREE.MeshBasicMaterial({ color: 0xf3e1ba, side: THREE.DoubleSide }) : ofudaMat,
   );
   group.add(paper);
-  const edgeMat = new THREE.MeshBasicMaterial({ color: fake ? 0xd8b16e : 0xb69b6f });
+  const edgeMat = new THREE.MeshBasicMaterial({ color: fake ? 0xbfa171 : 0xb69b6f });
   for (const [x, z, w, d] of [
-    [0, -0.395, 0.36, 0.018],
-    [0, 0.395, 0.34, 0.018],
-    [-0.195, 0, 0.016, 0.74],
-    [0.195, 0, 0.016, 0.72],
+    [0, -0.395, fake ? 0.34 : 0.36, fake ? 0.009 : 0.018],
+    [0, 0.395, fake ? 0.32 : 0.34, fake ? 0.009 : 0.018],
+    [-0.195, 0, fake ? 0.008 : 0.016, fake ? 0.7 : 0.74],
+    [0.195, 0, fake ? 0.008 : 0.016, fake ? 0.68 : 0.72],
   ]) {
     const edge = new THREE.Mesh(new THREE.BoxGeometry(w, 0.018, d), edgeMat);
     edge.position.set(x, 0.004, z);
@@ -1677,7 +1700,7 @@ function createOfudaModel(fake = false) {
   }
   const topSeal = new THREE.Mesh(
     new THREE.BoxGeometry(0.25, 0.02, 0.14),
-    fake ? new THREE.MeshBasicMaterial({ color: 0xb7251d }) : ofudaSealMat,
+    fake ? new THREE.MeshBasicMaterial({ color: 0x9f2c25 }) : ofudaSealMat,
   );
   topSeal.position.z = -0.25;
   topSeal.position.y = 0.012;
@@ -1707,8 +1730,8 @@ function createOfudaModel(fake = false) {
   }
   if (fake) {
     const curseGlow = new THREE.Mesh(
-      new THREE.BoxGeometry(0.52, 0.006, 0.94),
-      new THREE.MeshBasicMaterial({ color: 0xff2b24, transparent: true, opacity: 0.18, side: THREE.DoubleSide }),
+      new THREE.BoxGeometry(0.43, 0.006, 0.83),
+      new THREE.MeshBasicMaterial({ color: 0x8f211e, transparent: true, opacity: 0.045, side: THREE.DoubleSide }),
     );
     curseGlow.position.y = -0.006;
     group.add(curseGlow);
