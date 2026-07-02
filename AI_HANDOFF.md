@@ -1046,3 +1046,33 @@ Build:
 - Added `updateAmbientMovementSuspicion()` after enemy/ghost AI updates so the gain is not immediately erased by non-visible calm-down logic.
 - Running now raises detection slowly but reliably outside sight/hearing; walking raises it very gradually.
 - Water trap movement still amplifies the off-detection gain.
+
+## 2026-07-02 Runtime Performance Optimization Pass
+
+- Added school-side chunk-style render culling:
+  - Static school meshes created through `addBox()` are registered in `schoolRuntimeObjects`.
+  - `updateSchoolDistanceCulling()` hides school static meshes outside the near radius or behind the player, while keeping collision data active.
+  - Mansion distance culling remains active and is still called on the same 0.25s cadence.
+- Reduced far enemy AI update frequency:
+  - School enemy AI now updates every frame only when close, hunting, or detection is high.
+  - If the school enemy is farther than 20m and not urgent, updates are reduced to 0.5s or 1.0s intervals.
+  - Mansion ghost AI uses the same 20m/34m distance thresholds unless hunting, seeing the player, stunned, or high detection.
+  - Ghost doppelganger/illusion updates are skipped while inactive and throttled while waiting.
+- Collision/raycast optimization status:
+  - Existing collider spatial buckets remain in use for movement, enemy movement, line-of-sight, and vision rays.
+  - Ray checks already query nearby AABB buckets instead of scanning every collider.
+- Audio detection status:
+  - Sound detection remains event-driven through `emitWorldSound()` / `reactToSoundEvent()` / `reactWomanToSoundEvent()`.
+  - Player footstep sound events are emitted at step intervals from `updateAudio()`, not every frame.
+- Dynamic light policy:
+  - No new non-flashlight dynamic lights were added in this pass.
+  - Existing static/item lights continue to be distance/view culled.
+- Runtime performance metrics:
+  - Added `recordPerformanceSnapshot()` every 5 seconds.
+  - Latest sample is available at `window.__IT_HEARS_YOU_PERF__` and localStorage key `it-hears-you-last-perf`.
+  - Snapshot fields: `fps`, `drawCalls`, `triangles`, `points`, `lines`, `geometries`, `textures`, `resolution`, `map`, `time`.
+  - Codex environment did not have a browser automation dependency installed, so a reliable before/after FPS/CPU measurement could not be captured here.
+  - CPU usage is not directly available from browser JavaScript; use browser Task Manager/DevTools Performance for CPU comparison.
+- Deferred/high-risk items:
+  - Full `THREE.InstancedMesh` conversion for walls/floors/lockers/desks and long-wall mesh merging were not applied in this pass because current code often expects concrete mesh/group references for collision, visibility, cleanup, and interactions.
+  - Recommended future safe path: introduce an instanced static-prop layer for non-interactive repeated furniture first, then move wall/floor generation after collision generation has been decoupled from render meshes.

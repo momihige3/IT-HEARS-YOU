@@ -221,6 +221,7 @@ const colliders = [];
 const COLLIDER_BUCKET_SIZE = 6;
 let colliderSpatialCount = -1;
 let colliderSpatialBuckets = new Map();
+const schoolRuntimeObjects = [];
 const lockers = [];
 const soundEvents = [];
 const sonarReveals = [];
@@ -563,6 +564,7 @@ function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow
   mesh.receiveShadow = false;
   scene.add(mesh);
   if (mansionBuilt && inMansionBounds(x, z)) registerMansionObject(mesh);
+  else if (inSchoolBounds(x, z)) schoolRuntimeObjects.push(mesh);
   if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2, wall });
   return mesh;
 }
@@ -3400,6 +3402,40 @@ function updateMansionDistanceCulling() {
     const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, MANSION_RENDER_RADIUS, Math.PI / 2.1);
     item.group.visible = inView;
     item.light.visible = inView && item.light.position.distanceToSquared(camera.position) < 18 * 18;
+  }
+}
+
+function updateSchoolDistanceCulling() {
+  if (state.mapMode !== 'school') {
+    for (const object of schoolRuntimeObjects) {
+      if (object) object.visible = false;
+    }
+    return;
+  }
+  const nearRadiusSq = 34 * 34;
+  const farVisibleRadiusSq = 46 * 46;
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+  for (let i = schoolRuntimeObjects.length - 1; i >= 0; i -= 1) {
+    const object = schoolRuntimeObjects[i];
+    if (!object?.parent) {
+      schoolRuntimeObjects.splice(i, 1);
+      continue;
+    }
+    const dx = object.position.x - camera.position.x;
+    const dz = object.position.z - camera.position.z;
+    const distanceSq = dx * dx + dz * dz;
+    if (distanceSq <= nearRadiusSq) {
+      object.visible = true;
+      continue;
+    }
+    if (distanceSq > farVisibleRadiusSq) {
+      object.visible = false;
+      continue;
+    }
+    const inv = 1 / Math.max(0.001, Math.sqrt(distanceSq));
+    object.visible = forward.x * dx * inv + forward.z * dz * inv > -0.18;
   }
 }
 
@@ -6419,6 +6455,10 @@ let radarAccumulator = 1;
 let hudAccumulator = 1;
 let interactionAccumulator = 1;
 let cullingAccumulator = 1;
+let schoolEnemyAccumulator = 1;
+let mansionEnemyAccumulator = 1;
+let ghostEffectAccumulator = 1;
+let perfSampleAccumulator = 0;
 function updateScreenShake(time) {
   const app = $('#app');
   if (!app) return;
@@ -6469,6 +6509,64 @@ function adjustDynamicResolution(now) {
   }
 }
 
+function shouldUpdateSchoolEnemy(dt) {
+  if (state.mapMode !== 'school') return false;
+  const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
+  const urgent = state.alert === 'HUNTING' || state.detection > 55 || enemyData.mode === 'HUNTING' || distance < 20;
+  const interval = urgent ? 0 : distance > 34 ? 1.0 : 0.5;
+  if (interval <= 0) return true;
+  schoolEnemyAccumulator += dt;
+  if (schoolEnemyAccumulator < interval) return false;
+  schoolEnemyAccumulator = 0;
+  return true;
+}
+
+function shouldUpdateMansionEnemy(dt) {
+  if (state.mapMode !== 'mansion') return false;
+  const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
+  const urgent = state.alert === 'HUNTING' || state.detection > 55 || womanEnemy.cachedSeesPlayer || distance < 20 || clock.elapsedTime < womanEnemy.stunnedUntil;
+  const interval = urgent ? 0 : distance > 34 ? 1.0 : 0.5;
+  if (interval <= 0) return true;
+  mansionEnemyAccumulator += dt;
+  if (mansionEnemyAccumulator < interval) return false;
+  mansionEnemyAccumulator = 0;
+  return true;
+}
+
+function shouldUpdateGhostEffects(dt) {
+  if (state.mapMode !== 'mansion') return false;
+  const activeIllusion = ghostIllusions.some((illusion) => illusion.active);
+  const urgent = ghostDouble.active || activeIllusion || state.ghostIllusionQueue > 0 || state.ghostStunCount >= 2;
+  const interval = urgent ? 0 : 0.75;
+  if (interval <= 0) return true;
+  ghostEffectAccumulator += dt;
+  if (ghostEffectAccumulator < interval) return false;
+  ghostEffectAccumulator = 0;
+  return true;
+}
+
+function recordPerformanceSnapshot() {
+  const info = renderer.info;
+  const snapshot = {
+    fps: perfFps,
+    drawCalls: info.render.calls,
+    triangles: info.render.triangles,
+    points: info.render.points,
+    lines: info.render.lines,
+    geometries: info.memory.geometries,
+    textures: info.memory.textures,
+    resolution: renderer.domElement.dataset.renderCap || '',
+    map: state.mapMode,
+    time: Math.round(clock.elapsedTime),
+  };
+  try {
+    localStorage.setItem('it-hears-you-last-perf', JSON.stringify(snapshot));
+  } catch {
+    // Ignore storage errors; this is diagnostic only.
+  }
+  window.__IT_HEARS_YOU_PERF__ = snapshot;
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.04);
@@ -6483,10 +6581,12 @@ function animate() {
     updateSonarRoar(time);
     updatePlayer(dt);
     updateLockerView();
-    updateEnemy(dt, time);
-    updateWomanEnemy(dt, time);
-    updateGhostDouble(dt, time);
-    updateGhostIllusions(dt, time);
+    if (shouldUpdateSchoolEnemy(dt)) updateEnemy(dt, time);
+    if (shouldUpdateMansionEnemy(dt)) updateWomanEnemy(dt, time);
+    if (shouldUpdateGhostEffects(dt)) {
+      updateGhostDouble(dt, time);
+      updateGhostIllusions(dt, time);
+    }
     updateAmbientMovementSuspicion(dt);
     updateNoiseTraps(dt, time);
     updateHealItems(dt, time);
@@ -6509,6 +6609,7 @@ function animate() {
     updateLight(time);
     cullingAccumulator += dt;
     if (cullingAccumulator >= 0.25) {
+      updateSchoolDistanceCulling();
       updateMansionDistanceCulling();
       cullingAccumulator = 0;
     }
@@ -6531,6 +6632,11 @@ function animate() {
     perfFrames = 0;
     perfLast = now;
     adjustDynamicResolution(now);
+  }
+  perfSampleAccumulator += dt;
+  if (perfSampleAccumulator >= 5) {
+    recordPerformanceSnapshot();
+    perfSampleAccumulator = 0;
   }
 }
 
