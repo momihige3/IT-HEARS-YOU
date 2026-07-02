@@ -890,6 +890,13 @@ function hasColliderOverlap(x, z, padding = 0.42) {
     Math.abs(x - collider.x) < collider.hw + padding && Math.abs(z - collider.z) < collider.hz + padding);
 }
 
+function hasNonWallColliderOverlap(x, z, padding = 0.42) {
+  return colliders.some((collider) =>
+    !collider.wall
+    && Math.abs(x - collider.x) < collider.hw + padding
+    && Math.abs(z - collider.z) < collider.hz + padding);
+}
+
 function hasFurnitureOverlap(x, z, padding = 0.42) {
   return colliders.some((collider) =>
     collider.kind === 'furniture'
@@ -936,6 +943,31 @@ const MANSION_RENDER_RADIUS = 30;
 function registerMansionObject(object) {
   if (object) mansionRuntimeObjects.push(object);
   return object;
+}
+
+function clearMansionMapRuntime() {
+  for (const object of [...new Set(mansionRuntimeObjects)]) removeSceneObject(object);
+  mansionRuntimeObjects.length = 0;
+  mansionNodes.length = 0;
+  removeArrayItemsByBounds(colliders, (x, z) => inMansionBounds(x, z));
+  removeArrayItemsByBounds(lockers, (x, z) => inMansionBounds(x, z));
+  removeArrayItemsByBounds(schoolLights, (x, z) => inMansionBounds(x, z));
+  keyItems.forEach((item) => {
+    item.mansionPosition = null;
+  });
+  fakeOfudaItems.forEach((item) => {
+    item.mansionPosition = null;
+  });
+  mansionStartPoint = null;
+  mansionExit = null;
+  mansionBreakerPanel = null;
+  mansionBreakerSwitch = null;
+  mansionBreakerLight = null;
+  mansionShop = null;
+  mansionPathGraphCount = -1;
+  mansionPathNodeByKey = new Map();
+  mansionPathNeighbors = new Map();
+  mansionBuilt = false;
 }
 
 function addStairMarker(x, z, label = '2F') {
@@ -1128,7 +1160,7 @@ function buildMansionSecondFloor() {
         .sort(() => Math.random() - 0.5)
         .find((candidate) => !nearestMansionNode(node.x + candidate.x * 2.05, node.z + candidate.z * 2.05, 1.05)
           && canEnemyMoveTo(node.x - candidate.x * 0.72, node.z - candidate.z * 0.72, 0.48)
-          && !hasColliderOverlap(node.x + candidate.x * 1.9, node.z + candidate.z * 1.9, 0.2));
+          && !hasNonWallColliderOverlap(node.x + candidate.x * 1.9, node.z + candidate.z * 1.9, 0.2));
       return side ? { node, side } : null;
     })
     .filter(Boolean)
@@ -1167,7 +1199,7 @@ function buildMansionSecondFloor() {
         .sort(() => Math.random() - 0.5)
         .find((candidate) => !nearestMansionNode(node.x + candidate.x * 1.08, node.z + candidate.z * 1.08, 1.05)
           && canEnemyMoveTo(node.x - candidate.x * 0.58, node.z - candidate.z * 0.58, 0.44)
-          && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.18));
+          && !hasNonWallColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.18));
       return side ? { node, side } : null;
     })
     .filter(Boolean)
@@ -1422,6 +1454,7 @@ function addDeskSet(x, z, rot = 0) {
   localBox(group, 0, 0.76, 0.87, 0.56, 0.62, 0.08, chairMat);
   group.position.set(x, 0, z);
   scene.add(group);
+  if (inMansionBounds(x, z)) registerMansionObject(group);
   colliders.push({ x, z, hw, hz, kind: 'furniture' });
   return group;
 }
@@ -1437,6 +1470,7 @@ function addShelf(x, z, w = 1.8, rot = 0) {
   for (let i = 0; i < 5; i += 1) localBox(group, -w * 0.34 + i * w * 0.17, 1.05 + (i % 2) * 0.32, 0.21, 0.1, 0.32, 0.08, bookMat);
   group.position.set(x, 0, z);
   scene.add(group);
+  if (inMansionBounds(x, z)) registerMansionObject(group);
   colliders.push({ x, z, hw, hz, kind: 'furniture' });
   return group;
 }
@@ -4125,6 +4159,16 @@ function purgeUnselectedMapRuntime(mode) {
 }
 
 async function prepareSelectedMapCache(mode) {
+  if (mode === 'mansion') {
+    setLoading(true, '屋敷マップをランダム生成しています...');
+    await nextFrame();
+    clearMansionMapRuntime();
+    buildMansionSecondFloor();
+    selectedMapCache.mansion.ready = true;
+    selectedMapCache.mansion.generatedAt = performance.now();
+    await nextFrame();
+    return;
+  }
   const cache = selectedMapCache[mode];
   if (cache?.ready) {
     setLoading(true, mode === 'mansion' ? '屋敷マップのキャッシュを読み込んでいます...' : '学校マップのキャッシュを読み込んでいます...');

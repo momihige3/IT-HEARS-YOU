@@ -1140,3 +1140,16 @@ Build:
   - Red curse overlay opacity reduced substantially.
   - Fake border/edge geometry is thinner and closer to the real ofuda color.
   - Seal red is darker and less saturated.
+
+## 2026-07-02 Mansion Placement Fixed-Position Root Cause Fix
+
+- Investigated why mansion breaker/exit still appeared fixed.
+- Root causes found:
+  - Mansion selection reused the existing `mansionBuilt` / selected-map cache, so a generated mansion could be reused instead of regenerated.
+  - Wall-mounted breaker/exit candidates were rejected by the normal collider overlap check because the wall collider itself counted as an obstruction, causing fallback fixed coordinates to be used.
+- Fixes:
+  - Mansion selection now clears prior mansion runtime objects, mansion colliders, mansion lockers/lights, cached key/ofuda mansion positions, and path cache before rebuilding.
+  - Added a non-wall collider overlap check for wall-mounted mansion breaker/exit candidates.
+  - Mansion desk/shelf groups are now registered as mansion runtime objects so they can be cleaned up before regeneration.
+- Verification note:
+  - Repeated mansion starts should now rebuild mansion layout and reselect breaker/exit candidates instead of using stale or fallback fixed positions.
