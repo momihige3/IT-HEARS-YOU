@@ -1076,3 +1076,16 @@ Build:
 - Deferred/high-risk items:
   - Full `THREE.InstancedMesh` conversion for walls/floors/lockers/desks and long-wall mesh merging were not applied in this pass because current code often expects concrete mesh/group references for collision, visibility, cleanup, and interactions.
   - Recommended future safe path: introduce an instanced static-prop layer for non-interactive repeated furniture first, then move wall/floor generation after collision generation has been decoupled from render meshes.
+
+## 2026-07-02 Mansion Locker / Ghost Patrol / School Flicker Follow-up
+
+- Fixed mansion locker regression:
+  - Existing mansion locker groups are now tagged as lockers.
+  - Mansion locker objects are kept visible while mansion mode is active.
+  - Added a final guaranteed placement pass so mansion generation produces at least 8 lockers even when strict wall-side placement fails.
+- Fixed school periodic black flicker regression:
+  - Disabled school static mesh distance/view culling because the periodic visibility pass could hide floor/wall meshes during active play.
+  - School runtime objects are now simply shown in school mode and hidden outside school mode.
+- Reduced ghost patrol ping-pong:
+  - Mansion ghost AI updates every frame again while mansion mode is active.
+  - Free-roam targets now avoid recently visited nodes and prefer farther map nodes, making repeated short back-and-forth movement less likely.

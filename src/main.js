@@ -659,6 +659,23 @@ function addLockerSpotlight(x, z, yaw, mansion = false) {
   return light;
 }
 
+function createMansionLockerAt(x, z, yaw) {
+  const group = new THREE.Group();
+  localBox(group, 0, 1.2, -0.34, 1.15, 2.4, 0.14, mansionTrimMat);
+  localBox(group, -0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
+  localBox(group, 0.55, 1.2, 0, 0.12, 2.4, 0.8, mansionTrimMat);
+  localBox(group, 0, 2.42, 0, 1.15, 0.12, 0.86, mansionTrimMat);
+  group.position.set(x, 0, z);
+  group.rotation.y = yaw;
+  group.userData.locker = true;
+  scene.add(group);
+  registerMansionObject(group);
+  lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
+  colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
+  addLockerSpotlight(x, z, yaw, true);
+  return group;
+}
+
 function makeLocker(gx, gz, wallSide) {
   const cell = worldFromGrid(gx, gz);
   const group = new THREE.Group();
@@ -1147,6 +1164,7 @@ function buildMansionSecondFloor() {
     localBox(group, 0, 2.42, 0, 1.15, 0.12, 0.86, mansionTrimMat);
     group.position.set(x, 0, z);
     group.rotation.y = yaw;
+    group.userData.locker = true;
     scene.add(group);
     registerMansionObject(group);
     lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
@@ -1187,11 +1205,36 @@ function buildMansionSecondFloor() {
       localBox(group, 0, 2.42, 0, 1.15, 0.12, 0.86, mansionTrimMat);
       group.position.set(x, 0, z);
       group.rotation.y = yaw;
+      group.userData.locker = true;
       scene.add(group);
       registerMansionObject(group);
       lockers.push({ group, x, z, yaw, insideLocalY: 1.46, outsideLocalY: 1.68 });
       colliders.push({ x, z, hw: Math.abs(Math.sin(yaw)) > 0.5 ? 0.46 : 0.62, hz: Math.abs(Math.sin(yaw)) > 0.5 ? 0.62 : 0.46 });
       addLockerSpotlight(x, z, yaw, true);
+      placedMansionLockers += 1;
+    }
+  }
+  if (placedMansionLockers < 8) {
+    const forcedLockerNodes = mansionNodes
+      .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 4.5)
+      .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 5)
+      .sort(() => Math.random() - 0.5);
+    for (const node of forcedLockerNodes) {
+      if (placedMansionLockers >= 8) break;
+      if (lockers.some((locker) => inMansionBounds(locker.x, locker.z) && Math.hypot(locker.x - node.x, locker.z - node.z) < 4.5)) continue;
+      const side = [
+        { x: -1.22, z: 0, yaw: Math.PI / 2 },
+        { x: 1.22, z: 0, yaw: -Math.PI / 2 },
+        { x: 0, z: -1.22, yaw: 0 },
+        { x: 0, z: 1.22, yaw: Math.PI },
+      ].find((candidate) => {
+        const exitX = node.x - candidate.x * 0.8;
+        const exitZ = node.z - candidate.z * 0.8;
+        return !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.22)
+          && canEnemyMoveTo(exitX, exitZ, 0.48);
+      });
+      if (!side) continue;
+      createMansionLockerAt(node.x + side.x, node.z + side.z, side.yaw);
       placedMansionLockers += 1;
     }
   }
@@ -3377,6 +3420,10 @@ function updateMansionDistanceCulling() {
   renderer.toneMappingExposure = THREE.MathUtils.lerp(0.86, 1.72, power);
   for (const object of mansionRuntimeObjects) {
     if (!object) continue;
+    if (object.userData?.locker) {
+      object.visible = true;
+      continue;
+    }
     const pos = getWorldXZ(object);
     object.visible = ((pos.x - camera.position.x) ** 2 + (pos.z - camera.position.z) ** 2) <= radiusSq;
     if (object.isLight) {
@@ -3406,36 +3453,14 @@ function updateMansionDistanceCulling() {
 }
 
 function updateSchoolDistanceCulling() {
-  if (state.mapMode !== 'school') {
-    for (const object of schoolRuntimeObjects) {
-      if (object) object.visible = false;
-    }
-    return;
-  }
-  const nearRadiusSq = 34 * 34;
-  const farVisibleRadiusSq = 46 * 46;
-  camera.getWorldDirection(forward);
-  forward.y = 0;
-  forward.normalize();
+  const visible = state.mapMode === 'school';
   for (let i = schoolRuntimeObjects.length - 1; i >= 0; i -= 1) {
     const object = schoolRuntimeObjects[i];
     if (!object?.parent) {
       schoolRuntimeObjects.splice(i, 1);
       continue;
     }
-    const dx = object.position.x - camera.position.x;
-    const dz = object.position.z - camera.position.z;
-    const distanceSq = dx * dx + dz * dz;
-    if (distanceSq <= nearRadiusSq) {
-      object.visible = true;
-      continue;
-    }
-    if (distanceSq > farVisibleRadiusSq) {
-      object.visible = false;
-      continue;
-    }
-    const inv = 1 / Math.max(0.001, Math.sqrt(distanceSq));
-    object.visible = forward.x * dx * inv + forward.z * dz * inv > -0.18;
+    object.visible = visible;
   }
 }
 
@@ -5973,10 +5998,18 @@ function updateWomanEnemy(dt, time) {
     setWomanRoutedTarget(camera.position.x, camera.position.z, time, phasing || ghostSeesPlayer);
     womanEnemy.speed = phasing ? 6.4 : 4.1;
   } else if (!womanEnemy.target || time >= womanEnemy.repathAt || Math.hypot(womanEnemy.group.position.x - womanEnemy.target.x, womanEnemy.group.position.z - womanEnemy.target.z) < 0.7) {
-    const node = nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 8);
-    if (node) womanEnemy.target = { x: node.x, z: node.z };
+    const recentTargets = womanEnemy.recentTargets || [];
+    const roamNode = mansionNodes
+      .filter((node) => Math.hypot(node.x - womanEnemy.group.position.x, node.z - womanEnemy.group.position.z) > 10)
+      .filter((node) => !recentTargets.some((target) => Math.hypot(target.x - node.x, target.z - node.z) < 6))
+      .sort(() => Math.random() - 0.5)[0]
+      || nearestMansionNode(womanEnemy.group.position.x, womanEnemy.group.position.z, 8);
+    if (roamNode) {
+      womanEnemy.target = { x: roamNode.x, z: roamNode.z };
+      womanEnemy.recentTargets = [...recentTargets, { x: roamNode.x, z: roamNode.z }].slice(-5);
+    }
     womanEnemy.path = [];
-    womanEnemy.repathAt = time + 3 + Math.random() * 3;
+    womanEnemy.repathAt = time + 5 + Math.random() * 4;
     womanEnemy.speed = phasing ? 4.8 : 2.5;
   }
   if (flashlightHit) {
@@ -6522,15 +6555,7 @@ function shouldUpdateSchoolEnemy(dt) {
 }
 
 function shouldUpdateMansionEnemy(dt) {
-  if (state.mapMode !== 'mansion') return false;
-  const distance = Math.hypot(womanEnemy.group.position.x - camera.position.x, womanEnemy.group.position.z - camera.position.z);
-  const urgent = state.alert === 'HUNTING' || state.detection > 55 || womanEnemy.cachedSeesPlayer || distance < 20 || clock.elapsedTime < womanEnemy.stunnedUntil;
-  const interval = urgent ? 0 : distance > 34 ? 1.0 : 0.5;
-  if (interval <= 0) return true;
-  mansionEnemyAccumulator += dt;
-  if (mansionEnemyAccumulator < interval) return false;
-  mansionEnemyAccumulator = 0;
-  return true;
+  return state.mapMode === 'mansion';
 }
 
 function shouldUpdateGhostEffects(dt) {
