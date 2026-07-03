@@ -1211,11 +1211,11 @@ function buildMansionSecondFloor() {
     x: node.x + side.x * wallMountOffset(side, thickness),
     z: node.z + side.z * wallMountOffset(side, thickness),
   });
-  const isMansionWallFacingSide = (node, side, scale = 2.05) =>
-    !nearestMansionNode(node.x + side.x * scale, node.z + side.z * scale, 1.05);
+  const isMansionWallFacingSide = (node, side) =>
+    !nearestMansionNode(node.x + side.x * CELL, node.z + side.z * CELL, 0.55);
   const wallExitFallbacks = shuffleCopy(mansionNodes)
     .flatMap((node) => shuffleCopy(mansionExitSides)
-      .filter((side) => isMansionWallFacingSide(node, side, 2.05)
+      .filter((side) => isMansionWallFacingSide(node, side)
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
@@ -1225,7 +1225,7 @@ function buildMansionSecondFloor() {
   const mansionExitCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
     .flatMap((node) => shuffleCopy(mansionExitSides)
-      .filter((side) => isMansionWallFacingSide(node, side, 2.05)
+      .filter((side) => isMansionWallFacingSide(node, side)
         && canEnemyMoveTo(node.x - side.x * 0.72, node.z - side.z * 0.72, 0.48)
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
@@ -1266,7 +1266,7 @@ function buildMansionSecondFloor() {
   const wallBreakerFallbacks = shuffleCopy(mansionNodes)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
-      .filter((side) => isMansionWallFacingSide(node, side, 1.08)
+      .filter((side) => isMansionWallFacingSide(node, side)
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
@@ -1277,7 +1277,7 @@ function buildMansionSecondFloor() {
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 6)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
-      .filter((side) => isMansionWallFacingSide(node, side, 1.08)
+      .filter((side) => isMansionWallFacingSide(node, side)
         && canEnemyMoveTo(node.x - Math.sign(side.x) * 0.58, node.z - Math.sign(side.z) * 0.58, 0.44)
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
@@ -1341,9 +1341,9 @@ function buildMansionSecondFloor() {
   for (const node of mansionLockerNodes) {
     if (placedMansionLockers >= 10) break;
     const hasWallBehindLocker = (side) => {
-      const probeX = node.x + side.x * 2.05;
-      const probeZ = node.z + side.z * 2.05;
-      return !nearestMansionNode(probeX, probeZ, 1.05);
+      const probeX = node.x + Math.sign(side.x) * CELL;
+      const probeZ = node.z + Math.sign(side.z) * CELL;
+      return !nearestMansionNode(probeX, probeZ, 0.55);
     };
     const canUseMansionLockerSide = (side) => {
       const x = node.x + side.x;
@@ -1705,9 +1705,9 @@ function makeWallTextPlate(text, x, y, z, side, width = 1.35, height = 0.38, bg 
   tex.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
   if (side === 'north' || side === 'south') {
-    const offset = side === 'south' ? 0.108 : -0.108;
+    const offset = side === 'north' ? 0.108 : -0.108;
     mesh.position.set(x, y, z + offset);
-    mesh.rotation.y = side === 'south' ? 0 : Math.PI;
+    mesh.rotation.y = side === 'north' ? 0 : Math.PI;
   } else {
     const offset = side === 'west' ? 0.108 : -0.108;
     mesh.position.set(x + offset, y, z);

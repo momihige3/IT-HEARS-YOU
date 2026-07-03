@@ -1182,3 +1182,11 @@ Build:
 - Exit door and breaker panel centers are now calculated from wall inner surface minus half the object thickness.
 - Breaker switch and light are offset back toward the corridor side after the panel is wall-mounted.
 - Emergency mansion utility fallbacks no longer use arbitrary shuffled sides first; wall-facing candidates remain preferred to avoid corridor-center placement.
+
+## 2026-07-03 Mansion Wall Candidate Probe Fix
+
+- Fixed the mansion wall-facing candidate test:
+  - Previous logic probed about 2m from the current cell, which is still inside the same 4m cell span and could incorrectly treat open corridor directions as walls.
+  - New logic probes one full `CELL` away, so only directions without an adjacent mansion node are treated as real walls.
+- Applied the same full-cell wall probe to mansion locker wall checks.
+- Fixed north/south `makeWallTextPlate` orientation and offset so exit signs face the corridor instead of the wall/back side.
