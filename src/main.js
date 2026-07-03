@@ -1211,8 +1211,29 @@ function buildMansionSecondFloor() {
     x: node.x + side.x * wallMountOffset(side, thickness),
     z: node.z + side.z * wallMountOffset(side, thickness),
   });
+  const hasMansionNodeNear = (x, z, radius = 0.55) =>
+    mansionNodes.some((node) => Math.hypot(node.x - x, node.z - z) <= radius);
   const isMansionWallFacingSide = (node, side) =>
-    !nearestMansionNode(node.x + side.x * CELL, node.z + side.z * CELL, 0.55);
+    !hasMansionNodeNear(node.x + side.x * CELL, node.z + side.z * CELL, 0.55);
+  const isInteriorMansionNode = (node) => {
+    const ix = Math.round((node.x - offsetX) / CELL);
+    const iz = Math.round((node.z + 12) / CELL);
+    return Math.abs(ix) <= 4 && iz >= -7 && iz <= 8;
+  };
+  const choosePlacement = (placements, preferInterior = true) => {
+    const shuffled = shuffleCopy(placements);
+    if (!preferInterior) return shuffled[0] || null;
+    const interior = shuffled.filter((placement) => isInteriorMansionNode(placement.node));
+    return (interior.length >= 4 ? interior : shuffled)[0] || null;
+  };
+  const randomWallPlacement = (nodes, sides, avoid = () => true, preferInterior = true) => {
+    const placements = shuffleCopy(nodes)
+      .filter(avoid)
+      .flatMap((node) => shuffleCopy(sides)
+        .filter((side) => isMansionWallFacingSide(node, side))
+        .map((side) => ({ node, side })));
+    return choosePlacement(placements, preferInterior);
+  };
   const wallExitFallbacks = shuffleCopy(mansionNodes)
     .flatMap((node) => shuffleCopy(mansionExitSides)
       .filter((side) => isMansionWallFacingSide(node, side)
@@ -1233,9 +1254,10 @@ function buildMansionSecondFloor() {
           0.2,
         ))
       .map((side) => ({ node, side })));
-  const mansionExitPlacement = mansionExitCandidates[0]
-    || wallExitFallbacks[0]
-    || { node: mansionNodes[0], side: mansionExitSides[0] };
+  const mansionExitPlacement = choosePlacement(mansionExitCandidates)
+    || choosePlacement(wallExitFallbacks)
+    || randomWallPlacement(mansionNodes, mansionExitSides, (node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 8)
+    || { node: shuffleCopy(mansionNodes)[0], side: shuffleCopy(mansionExitSides)[0] };
   const mansionExitNode = mansionExitPlacement.node;
   const mansionExitSide = mansionExitPlacement.side;
   const exitDoorMount = wallMountPoint(mansionExitNode, mansionExitSide, mansionExitSide.x ? mansionExitSide.doorW : mansionExitSide.doorD);
@@ -1285,9 +1307,14 @@ function buildMansionSecondFloor() {
           0.18,
         ))
       .map((side) => ({ node, side })));
-  const breakerPlacement = breakerCandidates[0]
-    || wallBreakerFallbacks[0]
-    || { node: mansionNodes[0], side: mansionWallSideOptions[0] };
+  const breakerPlacement = choosePlacement(breakerCandidates)
+    || choosePlacement(wallBreakerFallbacks)
+    || randomWallPlacement(
+      mansionNodes,
+      mansionWallSideOptions,
+      (node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > Math.max(IMPORTANT_OBJECT_CLEARANCE, 8),
+    )
+    || { node: shuffleCopy(mansionNodes).find((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > Math.max(IMPORTANT_OBJECT_CLEARANCE, 8)) || shuffleCopy(mansionNodes)[0], side: shuffleCopy(mansionWallSideOptions)[0] };
   const breakerAnchor = breakerPlacement.node;
   const breakerSide = breakerPlacement.side;
   const breakerMount = wallMountPoint(breakerAnchor, breakerSide, breakerSide.x ? breakerSide.panelW : breakerSide.panelD);
@@ -1343,7 +1370,7 @@ function buildMansionSecondFloor() {
     const hasWallBehindLocker = (side) => {
       const probeX = node.x + Math.sign(side.x) * CELL;
       const probeZ = node.z + Math.sign(side.z) * CELL;
-      return !nearestMansionNode(probeX, probeZ, 0.55);
+      return !hasMansionNodeNear(probeX, probeZ, 0.55);
     };
     const canUseMansionLockerSide = (side) => {
       const x = node.x + side.x;

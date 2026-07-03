@@ -1190,3 +1190,15 @@ Build:
   - New logic probes one full `CELL` away, so only directions without an adjacent mansion node are treated as real walls.
 - Applied the same full-cell wall probe to mansion locker wall checks.
 - Fixed north/south `makeWallTextPlate` orientation and offset so exit signs face the corridor instead of the wall/back side.
+
+## 2026-07-03 Mansion Utility Fixed-Position Regression Fix
+
+- Root cause found for repeated left/top fixed placement:
+  - `nearestMansionNode()` intentionally falls back to `mansionNodes[0]` when no node is found, so it was unsafe for wall-existence checks.
+  - Wall checks using it could report a node even when no adjacent node existed, emptying placement candidates and forcing fallback behavior.
+- Added `hasMansionNodeNear()` for exact wall-neighbor checks without fallback.
+- Exit/breaker placement now uses `choosePlacement()` and `randomWallPlacement()`:
+  - Randomized wall placements are selected from valid wall candidates.
+  - Interior maze-wall candidates are preferred when enough exist, avoiding repeated map-edge placement.
+  - Final fallbacks are randomized instead of fixed `mansionNodes[0]`.
+- Breaker fallback now also requires distance from the exit approach cell where possible, preventing breaker and exit from spawning together.
