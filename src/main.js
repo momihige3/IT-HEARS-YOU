@@ -857,9 +857,16 @@ function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
   const center = roomCenter(room);
   const awayX = Math.sign(cell.x - center.x) || Math.sign(offsetX);
   const awayZ = Math.sign(cell.z - center.z) || Math.sign(offsetZ);
-  const x = cell.x + (awayX ? awayX * Math.max(1.18, Math.abs(offsetX)) : offsetX);
-  const z = cell.z + (awayZ ? awayZ * Math.max(1.18, Math.abs(offsetZ)) : offsetZ);
-  if (isInSchoolEntranceClearZone(x, z, 2.75)) return;
+  let x = cell.x + (awayX ? awayX * Math.max(1.18, Math.abs(offsetX)) : offsetX);
+  let z = cell.z + (awayZ ? awayZ * Math.max(1.18, Math.abs(offsetZ)) : offsetZ);
+  if (isInSchoolEntranceClearZone(x, z, 2.75)) {
+    const sign = worldFromGrid(room.sign.gx, room.sign.gz);
+    const awayFromDoorX = center.x - sign.x;
+    const awayFromDoorZ = center.z - sign.z;
+    const len = Math.hypot(awayFromDoorX, awayFromDoorZ) || 1;
+    x = sign.x + (awayFromDoorX / len) * 3.25;
+    z = sign.z + (awayFromDoorZ / len) * 3.25;
+  }
   if (type === 'cabinet') {
     addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true, false, true, 'furniture');
     addBox(x, 1.55, z + 0.425, 0.72, 0.06, 0.025, darkMat);
@@ -1628,9 +1635,8 @@ const bookMat = material(0x344d70, 0.72, 0.02);
 
 function addDeskSet(x, z, rot = 0) {
   const sideways = Math.abs(Math.cos(rot)) <= 0.5;
-  const hw = sideways ? 1.05 : 0.68;
-  const hz = sideways ? 0.68 : 1.05;
-  if (!canPlaceFurnitureAt(x, z, hw, hz, 0.18)) return null;
+  const hw = sideways ? 0.88 : 0.58;
+  const hz = sideways ? 0.58 : 0.88;
   const group = new THREE.Group();
   group.rotation.y = rot;
   localBox(group, 0, 0.72, 0, 1.18, 0.1, 0.7, deskTopMat);
@@ -1649,9 +1655,8 @@ function addDeskSet(x, z, rot = 0) {
 }
 
 function addShelf(x, z, w = 1.8, rot = 0) {
-  const hw = Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.22;
-  const hz = Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : w / 2;
-  if (!canPlaceFurnitureAt(x, z, hw, hz, 0.22)) return null;
+  const hw = Math.abs(Math.cos(rot)) > 0.5 ? w / 2 : 0.18;
+  const hz = Math.abs(Math.cos(rot)) > 0.5 ? 0.18 : w / 2;
   const group = new THREE.Group();
   group.rotation.y = rot;
   localBox(group, 0, 0.92, 0, w, 1.84, 0.34, cabinetMat);

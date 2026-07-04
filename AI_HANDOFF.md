@@ -1283,3 +1283,11 @@ Build:
 - Furniture placement no longer uses oversized circular spacing; it now uses actual object half-width/half-depth spacing to preserve object density.
 - Enemy collision against furniture was loosened while wall collision remains strict, allowing the enemy to pass between tighter object gaps.
 - Entrance clear zones remain explicit and localized so objects avoid doorways without deleting most room props.
+
+## 2026-07-05 Object Generation Density Restore
+
+- Removed the remaining hard placement rejection from school desk and shelf generation.
+- Desks and shelves now always render instead of disappearing when close to walls/furniture.
+- Desk and shelf collider footprints were reduced slightly rather than enlarging object spacing.
+- Cover objects near a doorway are moved deeper into the room instead of being skipped, preserving object count while keeping entrances clear.
+- This keeps room prop density high while relying on looser enemy-vs-furniture collision for navigation.
