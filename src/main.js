@@ -2694,6 +2694,7 @@ const enemyData = {
   oscillationAnchorX: enemy.position.x,
   oscillationAnchorZ: enemy.position.z,
   lastRoomJumpAt: -Infinity,
+  recoveryJump: null,
 };
 
 function nearestNode(x, z) {
@@ -2735,6 +2736,64 @@ function enemyGridPosition() {
   };
 }
 
+function resetEnemyNavigationAfterRelocation(x, z, time) {
+  enemyData.path = [];
+  enemyData.stuckSince = 0;
+  enemyData.wallSlideAttempts = 0;
+  enemyData.oscillationSince = 0;
+  enemyData.oscillationAnchorX = x;
+  enemyData.oscillationAnchorZ = z;
+  enemyData.lastTargetDistance = Infinity;
+  enemyData.lastRoomJumpAt = time;
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.12);
+}
+
+function startEnemyRecoveryJump(target, time, after = 'resume') {
+  if (!target || time - enemyData.lastRoomJumpAt < 3.0) return false;
+  if (!canEnemyMoveIgnoringFurniture(target.x, target.z, 0.2)) return false;
+  if (hasWallBetweenPoints(enemy.position.x, enemy.position.z, target.x, target.z, 0.1)) return false;
+  enemyData.recoveryJump = {
+    fromX: enemy.position.x,
+    fromZ: enemy.position.z,
+    toX: target.x,
+    toZ: target.z,
+    startedAt: time,
+    duration: THREE.MathUtils.clamp(Math.hypot(target.x - enemy.position.x, target.z - enemy.position.z) / 7.5, 0.45, 1.15),
+    after,
+  };
+  enemyData.path = [];
+  enemyData.isMoving = true;
+  enemyData.pauseUntil = 0;
+  enemyData.lookAroundUntil = 0;
+  enemy.rotation.y = Math.atan2(target.x - enemy.position.x, target.z - enemy.position.z);
+  return true;
+}
+
+function updateEnemyRecoveryJump(time) {
+  const jump = enemyData.recoveryJump;
+  if (!jump) return false;
+  const progress = THREE.MathUtils.clamp((time - jump.startedAt) / jump.duration, 0, 1);
+  const eased = progress < 0.5
+    ? 2 * progress * progress
+    : 1 - ((-2 * progress + 2) ** 2) / 2;
+  enemy.position.x = THREE.MathUtils.lerp(jump.fromX, jump.toX, eased);
+  enemy.position.z = THREE.MathUtils.lerp(jump.fromZ, jump.toZ, eased);
+  enemy.position.y = Math.sin(progress * Math.PI) * 0.55;
+  enemyData.isMoving = true;
+  if (progress < 1) return true;
+  enemy.position.set(jump.toX, 0, jump.toZ);
+  enemyData.recoveryJump = null;
+  resetEnemyNavigationAfterRelocation(jump.toX, jump.toZ, time);
+  if (jump.after === 'player' && !state.hidden && state.detection > 62) {
+    setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'SEARCHING', true);
+  } else if (jump.after === 'sound' && enemyData.lastHeardPosition) {
+    setEnemyDestinationToSoundSource(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'INVESTIGATING');
+  } else {
+    chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
+  }
+  return true;
+}
+
 function jumpEnemyToRoomEntrance(time) {
   if (time - enemyData.lastRoomJumpAt < 3.0) return false;
   const { gx, gz } = enemyGridPosition();
@@ -2750,22 +2809,7 @@ function jumpEnemyToRoomEntrance(time) {
       - Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z));
   const entrance = connectorPoints[0];
   if (!entrance) return false;
-  enemy.position.set(entrance.x, 0, entrance.z);
-  enemyData.path = [];
-  enemyData.stuckSince = 0;
-  enemyData.wallSlideAttempts = 0;
-  enemyData.oscillationSince = 0;
-  enemyData.oscillationAnchorX = entrance.x;
-  enemyData.oscillationAnchorZ = entrance.z;
-  enemyData.lastTargetDistance = Infinity;
-  enemyData.lastRoomJumpAt = time;
-  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.12);
-  if (!state.hidden && state.detection > 62) {
-    setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'SEARCHING', true);
-  } else {
-    chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
-  }
-  return true;
+  return startEnemyRecoveryJump(entrance, time, !state.hidden && state.detection > 62 ? 'player' : 'random');
 }
 
 function schoolNodeDegree(node) {
@@ -2793,22 +2837,7 @@ function jumpEnemyToCorridorEscape(time) {
     .sort((a, b) => a.score - b.score);
   const escape = candidates[0]?.node;
   if (!escape) return false;
-  enemy.position.set(escape.x, 0, escape.z);
-  enemyData.path = [];
-  enemyData.stuckSince = 0;
-  enemyData.wallSlideAttempts = 0;
-  enemyData.oscillationSince = 0;
-  enemyData.oscillationAnchorX = escape.x;
-  enemyData.oscillationAnchorZ = escape.z;
-  enemyData.lastTargetDistance = Infinity;
-  enemyData.lastRoomJumpAt = time;
-  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.12);
-  if (!state.hidden && state.detection > 62) {
-    setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'SEARCHING', true);
-  } else {
-    chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
-  }
-  return true;
+  return startEnemyRecoveryJump(escape, time, !state.hidden && state.detection > 62 ? 'player' : 'random');
 }
 
 function recoverEnemyFromOscillation(time) {
@@ -2833,7 +2862,7 @@ function findPath(startKey, targetKey) {
         nextKey !== targetKey
         && nextKey !== startKey
         && nextNode
-        && !canEnemyMoveTo(nextNode.x, nextNode.z, 0.18)
+        && !canEnemyMoveIgnoringFurniture(nextNode.x, nextNode.z, 0.18)
       ) continue;
       previous.set(nextKey, current);
       queue.push(nextKey);
@@ -2846,7 +2875,7 @@ function findPath(startKey, targetKey) {
     result.unshift(navNodes.get(cursor));
     cursor = previous.get(cursor);
   }
-  return result.filter((node) => node === targetNode || node === startNode || canEnemyMoveTo(node.x, node.z, 0.18) || canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18));
+  return result.filter((node) => node === targetNode || node === startNode || canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18));
 }
 
 function reachableSchoolNodesFrom(startKey) {
@@ -2863,7 +2892,7 @@ function reachableSchoolNodesFrom(startKey) {
       const nextKey = gridKey(node.gx + dx, node.gz + dz);
       if (!walkable.has(nextKey) || seen.has(nextKey)) continue;
       const nextNode = navNodes.get(nextKey);
-      if (!nextNode || !canEnemyMoveTo(nextNode.x, nextNode.z, 0.18)) continue;
+      if (!nextNode || !canEnemyMoveIgnoringFurniture(nextNode.x, nextNode.z, 0.18)) continue;
       seen.add(nextKey);
       queue.push(nextKey);
     }
@@ -2931,6 +2960,27 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
   }
   setEnemyDestination(x, z, mode);
   return enemyData.mode === mode;
+}
+
+function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING') {
+  const start = nearestReachableNode(enemy.position.x, enemy.position.z);
+  if (!start) return false;
+  const soundProbe = new THREE.Vector3(x, 1.1, z);
+  const candidates = [...navNodes.values()]
+    .filter((node) => canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18))
+    .map((node) => {
+      const path = findPath(start.key, node.key);
+      if (!path.length && start.key !== node.key) return null;
+      const distanceToSound = Math.hypot(node.x - x, node.z - z);
+      const lineBonus = hasLineOfSight(new THREE.Vector3(node.x, 1.1, node.z), soundProbe) ? -2.5 : 0;
+      return { node, path, score: distanceToSound * 3.2 + path.length * 0.72 + lineBonus };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+  if (!best) return setEnemyDestinationViaCorridor(x, z, mode, true);
+  commitEnemyPath(best.path, best.node, mode);
+  return true;
 }
 
 function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING', forceCenterRoute = false) {
@@ -3067,8 +3117,10 @@ function choosePassByRoute(time) {
 function recoverEnemyNavigation(time) {
   const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 10) || nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
   if (anchor && Math.hypot(enemy.position.x - anchor.x, enemy.position.z - anchor.z) < 2.8) {
-    enemy.position.x = anchor.x;
-    enemy.position.z = anchor.z;
+    const after = enemyData.lastHeardPosition && time < enemyData.wallSoundRepathUntil
+      ? 'sound'
+      : (!state.hidden && state.detection > 70 ? 'player' : 'random');
+    if (startEnemyRecoveryJump(anchor, time, after)) return;
   }
   enemyData.path = [];
   enemyData.stuckSince = 0;
@@ -3501,6 +3553,15 @@ function reactToSoundEvent(event, now) {
     enemyData.passByUntil = 0;
     return;
   }
+  if (state.detection >= 100 || enemyData.alertMemory >= 0.95) {
+    setEnemyDestinationToSoundSource(event.x, event.z, 'HUNTING');
+    enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 10 : enemyData.wallSoundRepathUntil;
+    enemyData.investigateUntil = now + 12;
+    enemyData.searchUntil = now + 18;
+    enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, 6.0);
+    enemyData.pauseUntil = 0;
+    return;
+  }
   if (state.alert === 'HUNTING' && state.detection > 70) {
     setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING', wallBlockedSound);
     enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
@@ -3555,7 +3616,7 @@ function updateAudio(time) {
   if (moving && time > audio.nextStep) {
     const inWater = isPlayerInWaterTrap();
     const settings = state.moveMode === 'RUNNING'
-      ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 21 * state.noiseMultiplier }
+      ? { volume: 0.72, pitch: 1.2, interval: 0.27, radius: 31.5 * state.noiseMultiplier }
       : { volume: 0.46, pitch: 1, interval: 0.44, radius: 3 * state.noiseMultiplier };
     playFootstep(settings.volume * (inWater ? 3 : 1), settings.pitch * (inWater ? 0.86 : 1), 0);
     emitPlayerSound(state.noise * (inWater ? 3 : 1), settings.radius * (inWater ? 2 : 1));
@@ -3647,8 +3708,8 @@ function canEnemyMoveTo(x, z, padding = 0.16) {
   if (!isInsidePlayableBounds(x, z)) return false;
   const candidates = colliderCandidatesInAabb(x - padding - 0.08, x + padding + 0.08, z - padding - 0.08, z + padding + 0.08);
   return !candidates.some((collider) =>
-    Math.abs(x - collider.x) < collider.hw + padding + (collider.kind === 'furniture' ? 0.18 : 0)
-    && Math.abs(z - collider.z) < collider.hz + padding + (collider.kind === 'furniture' ? 0.18 : 0));
+    Math.abs(x - collider.x) < collider.hw + padding + (collider.kind === 'furniture' ? 0.08 : 0)
+    && Math.abs(z - collider.z) < collider.hz + padding + (collider.kind === 'furniture' ? 0.08 : 0));
 }
 
 function canEnemyMoveIgnoringFurniture(x, z, padding = 0.16) {
@@ -4193,6 +4254,7 @@ function respawnPlayer() {
     lastMoveZ: enemyStart.z,
     lastTargetDistance: Infinity,
     recentTargetKeys: [],
+    recoveryJump: null,
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
@@ -5646,11 +5708,14 @@ function updateEnemyPounce(time) {
 function updateEnemy(dt, time) {
   if (state.mapMode === 'mansion') return;
   if (state.ended) return;
+  if (updateEnemyRecoveryJump(time)) return;
   const roaring = time < state.roarUntil;
   if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18)) {
     const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
-    enemy.position.set(safe.x, 0, safe.z);
-    enemyData.path = [];
+    if (!startEnemyRecoveryJump(safe, time, state.detection > 70 ? 'player' : 'random')) {
+      enemy.position.set(safe.x, 0, safe.z);
+      enemyData.path = [];
+    }
   }
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
@@ -5912,7 +5977,10 @@ function updateEnemy(dt, time) {
           const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
           if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18) || enemyData.wallSlideAttempts > 3) {
             const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 10) || safe;
-            enemy.position.set(anchor.x, 0, anchor.z);
+            const after = enemyData.lastHeardPosition && time < enemyData.wallSoundRepathUntil
+              ? 'sound'
+              : (!state.hidden && state.detection > 70 ? 'player' : 'random');
+            if (startEnemyRecoveryJump(anchor, time, after)) return;
           }
           if (!recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
         }

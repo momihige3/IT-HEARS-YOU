@@ -1241,3 +1241,14 @@ Build:
   - Title screen appears.
   - School start enters gameplay.
 - Note: port `5173` was serving a different Vite app during debugging, so use a strict/open port when validating this project locally.
+
+## 2026-07-05 School Enemy Science Room / Sound Chase Fix
+
+- Loosened school enemy furniture padding while keeping wall collision strict, so the enemy can enter furniture-heavy rooms such as the science room more reliably.
+- Pathfinding now treats furniture-blocked-but-wall-clear nodes as usable for the school enemy, relying on short furniture hops during movement.
+- Replaced instant enemy relocation used by stuck/oscillation recovery with a visible recovery jump:
+  - Enemy follows a short arc from current position to the recovery point.
+  - The jump is blocked by walls and only helps escape furniture/narrow-object traps.
+- Running player footstep hearing radius increased from 21m to 31.5m.
+- Added precise sound-source routing for max-alert school enemy behavior:
+  - When detection is 100% or alert memory is maxed, heard noise routes to the reachable node closest to the emitted sound source.
