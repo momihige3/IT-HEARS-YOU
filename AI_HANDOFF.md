@@ -1252,3 +1252,14 @@ Build:
 - Running player footstep hearing radius increased from 21m to 31.5m.
 - Added precise sound-source routing for max-alert school enemy behavior:
   - When detection is 100% or alert memory is maxed, heard noise routes to the reachable node closest to the emitted sound source.
+
+## 2026-07-05 Science Room Door / Source Chase Follow-up
+
+- Added school doorway/connector clearance checks for furniture and cover objects.
+- Prevented cover objects from spawning in room entrances; this specifically targets the science-room entrance blockage case.
+- Moved science-room fixtures toward room edges and reduced central clutter so the school enemy has enough width to enter and pass between objects.
+- Removed extra furniture padding from school enemy movement checks while preserving wall collision.
+- School breaker placement now avoids school lockers, doorway connectors, and existing non-wall objects more aggressively.
+- Mansion locker utility clearance was widened so lockers are less likely to appear in front of/behind breaker panels.
+- Sound-source chasing now stores the original emitted sound point and appends an exact final target when wall-clear.
+- At high detection, sound chase speed ramps up gradually up to roughly double speed instead of staying at normal investigate speed.

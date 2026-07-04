@@ -605,7 +605,7 @@ for (let i = 0; i < 3; i += 1) {
   if (a && b && a !== b) carvePath(a.gx, a.gz, b.gx, b.gz);
 }
 
-function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true) {
+function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true, kind = null) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
   mesh.castShadow = false;
@@ -613,7 +613,7 @@ function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow
   scene.add(mesh);
   if (mansionBuilt && inMansionBounds(x, z)) registerMansionObject(mesh);
   else if (inSchoolBounds(x, z)) schoolRuntimeObjects.push(mesh);
-  if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2, wall });
+  if (collide) colliders.push({ x, z, hw: w / 2, hz: d / 2, wall, kind });
   return mesh;
 }
 
@@ -853,11 +853,13 @@ function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
   const x = cell.x + (awayX ? awayX * Math.max(1.18, Math.abs(offsetX)) : offsetX);
   const z = cell.z + (awayZ ? awayZ * Math.max(1.18, Math.abs(offsetZ)) : offsetZ);
   if (type === 'cabinet') {
-    addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true);
+    if (!canPlaceFurnitureAt(x, z, 0.58, 0.46, 0.72)) return;
+    addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true, false, true, 'furniture');
     addBox(x, 1.55, z + 0.425, 0.72, 0.06, 0.025, darkMat);
     addBox(x, 1.38, z + 0.425, 0.72, 0.06, 0.025, darkMat);
   } else {
-    addBox(x, 0.58, z, 1.2, 1.16, 1.05, crateMat, true);
+    if (!canPlaceFurnitureAt(x, z, 0.68, 0.62, 0.72)) return;
+    addBox(x, 0.58, z, 1.2, 1.16, 1.05, crateMat, true, false, true, 'furniture');
     addBox(x + 0.12, 1.42, z - 0.05, 0.86, 0.56, 0.82, crateMat);
   }
   coverPoints.push({ x, z });
@@ -939,6 +941,17 @@ function isAnyLockerFrontBlockedByObject(x, z, hw = 0, hz = 0, padding = 0.22) {
   return lockers.some((locker) => isObjectInLockerFrontZone(locker, x, z, hw, hz, padding));
 }
 
+function isNearSchoolDoorOrConnector(x, z, minDistance = 2.35) {
+  return schoolRooms.some((room) => {
+    const sign = worldFromGrid(room.sign.gx, room.sign.gz);
+    if (Math.hypot(x - sign.x, z - sign.z) < minDistance + 0.55) return true;
+    return room.connector.some(([gx, gz]) => {
+      const pos = worldFromGrid(gx, gz);
+      return Math.hypot(x - pos.x, z - pos.z) < minDistance;
+    });
+  });
+}
+
 function isLockerFrontClear(x, z, yaw, padding = 0.24) {
   const virtualLocker = { x, z, yaw };
   return !colliders.some((collider) =>
@@ -955,6 +968,7 @@ function isClearOfMansionUtilities(x, z, minDistance = 3.2) {
 
 function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.34) {
   if (hasColliderOverlap(x, z, Math.max(hw, hz) + padding)) return false;
+  if (inSchoolBounds(x, z) && isNearSchoolDoorOrConnector(x, z, 2.8 + Math.max(hw, hz) * 0.35)) return false;
   if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 2.1 + padding)) return false;
   if (isAnyLockerFrontBlockedByObject(x, z, hw, hz, padding)) return false;
   if (shop && horizontalDistance({ x, z }, shop) < 2.4 + padding) return false;
@@ -1361,7 +1375,7 @@ function buildMansionSecondFloor() {
   const mansionLockerNodes = mansionNodes
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 7)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 7)
-    .filter((node) => isClearOfMansionUtilities(node.x, node.z, 4.2))
+    .filter((node) => isClearOfMansionUtilities(node.x, node.z, 6.2))
     .sort(() => Math.random() - 0.5)
     .slice(0, 28);
   let placedMansionLockers = 0;
@@ -1387,8 +1401,8 @@ function buildMansionSecondFloor() {
       ];
       return !hasColliderOverlap(x, z, 0.34)
         && hasWallBehindLocker(side)
-        && isClearOfMansionUtilities(x, z, 4.2)
-        && isClearOfMansionUtilities(exitX, exitZ, 3.2)
+        && isClearOfMansionUtilities(x, z, 6.2)
+        && isClearOfMansionUtilities(exitX, exitZ, 5.4)
         && isLockerFrontClear(x, z, side.yaw, 0.38)
         && clearancePoints.every(([px, pz, padding]) => !hasFurnitureOverlap(px, pz, padding))
         && canEnemyMoveTo(exitX, exitZ, 0.8)
@@ -1426,7 +1440,7 @@ function buildMansionSecondFloor() {
     const fallbackNodes = mansionNodes
       .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 5.5)
       .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 6)
-      .filter((node) => isClearOfMansionUtilities(node.x, node.z, 4.2))
+      .filter((node) => isClearOfMansionUtilities(node.x, node.z, 6.2))
       .sort(() => Math.random() - 0.5);
     for (const node of fallbackNodes) {
       if (placedMansionLockers >= 6) break;
@@ -1443,8 +1457,8 @@ function buildMansionSecondFloor() {
         const exitZ = node.z - candidate.z * 0.7;
         return !nearestMansionNode(behindX, behindZ, 1.05)
           && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.32)
-          && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 4.2)
-          && isClearOfMansionUtilities(exitX, exitZ, 3.2)
+          && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 6.2)
+          && isClearOfMansionUtilities(exitX, exitZ, 5.4)
           && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
           && canEnemyMoveTo(exitX, exitZ, 0.62);
       });
@@ -1472,7 +1486,7 @@ function buildMansionSecondFloor() {
     const forcedLockerNodes = mansionNodes
       .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 4.5)
       .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.x, node.z - mansionExit.z) > 5)
-      .filter((node) => isClearOfMansionUtilities(node.x, node.z, 4.2))
+      .filter((node) => isClearOfMansionUtilities(node.x, node.z, 6.2))
       .sort(() => Math.random() - 0.5);
     for (const node of forcedLockerNodes) {
       if (placedMansionLockers >= 8) break;
@@ -1486,8 +1500,8 @@ function buildMansionSecondFloor() {
         const exitX = node.x - candidate.x * 0.8;
         const exitZ = node.z - candidate.z * 0.8;
         return !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.22)
-          && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 4.2)
-          && isClearOfMansionUtilities(exitX, exitZ, 3.2)
+          && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 6.2)
+          && isClearOfMansionUtilities(exitX, exitZ, 5.4)
           && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
           && canEnemyMoveTo(exitX, exitZ, 0.48);
       });
@@ -1517,16 +1531,35 @@ const breakerRoom = schoolRooms
   .filter((room) => room !== exitRoom)
   .sort(() => Math.random() - 0.5)[0]
   || schoolRooms.find((room) => room.id === 'breaker');
-const breakerCandidates = walkableNodes.filter((node) =>
-  node.key !== exitNode.key && breakerRoom &&
-  node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1 &&
-  node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1);
-const breakerNode = breakerCandidates[Math.floor(Math.random() * breakerCandidates.length)] || walkableNodes[walkableNodes.length - 1];
 // ブレーカーは選ばれた部屋の入口と反対側の壁へ貼り付ける。床置き・中央置きは禁止。
 const breakerWallSide = breakerRoom?.sign?.side === 'west' ? 1 : -1;
 const breakerWallX = breakerWallSide < 0
   ? worldFromGrid(breakerRoom.gx0, breakerRoom.gz0).x - CELL / 2 + 0.11
   : worldFromGrid(breakerRoom.gx1, breakerRoom.gz1).x + CELL / 2 - 0.11;
+const schoolBreakerCandidateScore = (node) => {
+  const x = breakerWallX;
+  const z = node.z;
+  const lockerPenalty = lockers
+    .filter((locker) => !inMansionBounds(locker.x, locker.z))
+    .reduce((score, locker) => score + Math.max(0, 7 - Math.hypot(locker.x - x, locker.z - z)) * 12, 0);
+  const doorPenalty = isNearSchoolDoorOrConnector(x, z, 3.4) ? 80 : 0;
+  const objectPenalty = hasNonWallColliderOverlap(x, z, 1.2) ? 60 : 0;
+  return lockerPenalty + doorPenalty + objectPenalty + Math.random();
+};
+const breakerCandidates = walkableNodes
+  .filter((node) => node.key !== exitNode.key && breakerRoom)
+  .filter((node) => node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1)
+  .filter((node) => node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1)
+  .filter((node) => !isNearSchoolDoorOrConnector(breakerWallX, node.z, 3.0))
+  .filter((node) => !lockers.some((locker) => !inMansionBounds(locker.x, locker.z) && Math.hypot(locker.x - breakerWallX, locker.z - node.z) < 5.5))
+  .filter((node) => !hasNonWallColliderOverlap(breakerWallX, node.z, 1.0))
+  .sort((a, b) => schoolBreakerCandidateScore(a) - schoolBreakerCandidateScore(b));
+const breakerFallbackCandidates = walkableNodes
+  .filter((node) => node.key !== exitNode.key && breakerRoom)
+  .filter((node) => node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1)
+  .filter((node) => node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1)
+  .sort((a, b) => schoolBreakerCandidateScore(a) - schoolBreakerCandidateScore(b));
+const breakerNode = breakerCandidates[0] || breakerFallbackCandidates[0] || walkableNodes[walkableNodes.length - 1];
 const breakerPosition = new THREE.Vector3(breakerWallX, 0, breakerNode.z);
 const breakerPanel = addBox(
   breakerPosition.x,
@@ -1601,6 +1634,9 @@ function addShelf(x, z, w = 1.8, rot = 0) {
 }
 
 function addSinkRow(x, z, rot = 0) {
+  const hw = Math.abs(Math.cos(rot)) > 0.5 ? 1.16 : 0.28;
+  const hz = Math.abs(Math.cos(rot)) > 0.5 ? 0.28 : 1.16;
+  if (!canPlaceFurnitureAt(x, z, hw, hz, 0.52)) return null;
   const group = new THREE.Group();
   group.rotation.y = rot;
   localBox(group, 0, 0.78, 0, 2.2, 0.18, 0.48, material(0x707a73, 0.45, 0.28), false);
@@ -1612,7 +1648,7 @@ function addSinkRow(x, z, rot = 0) {
   }
   group.position.set(x, 0, z);
   scene.add(group);
-  colliders.push({ x, z, hw: Math.abs(Math.cos(rot)) > 0.5 ? 1.16 : 0.28, hz: Math.abs(Math.cos(rot)) > 0.5 ? 0.28 : 1.16 });
+  colliders.push({ x, z, hw, hz, kind: 'furniture' });
   return group;
 }
 
@@ -1636,22 +1672,26 @@ function addRoomFixtures(room) {
   const center = roomCenter(room);
   const backZ = worldFromGrid(room.gx0, room.gz0).z - CELL / 2 + 0.24;
   const frontZ = worldFromGrid(room.gx0, room.gz1).z + CELL / 2 - 0.28;
+  const leftX = worldFromGrid(room.gx0, room.gz0).x - CELL / 2 + 1.15;
+  const rightX = worldFromGrid(room.gx1, room.gz1).x + CELL / 2 - 1.15;
   if (room.id !== 'breaker') {
-    addDeskSet(center.x - 1.05, center.z - 1.08, Math.random() < 0.5 ? 0 : Math.PI);
-    addDeskSet(center.x + 1.05, center.z - 1.08, Math.random() < 0.5 ? 0 : Math.PI);
-    if (room.gx1 - room.gx0 >= 3) addDeskSet(center.x, center.z + 0.5, Math.PI / 2);
+    addDeskSet(leftX, center.z - 1.15, Math.random() < 0.5 ? 0 : Math.PI);
+    addDeskSet(rightX, center.z - 1.15, Math.random() < 0.5 ? 0 : Math.PI);
+    if (room.gx1 - room.gx0 >= 3 && room.id !== 'science') addDeskSet(center.x, center.z + 1.15, Math.PI / 2);
     // Furniture is kept near room edges so entrances and walking routes stay playable.
     addBox(center.x, 1.55, backZ, 2.6, 1.05, 0.08, signMat, false, false, false);
     addShelf(center.x, frontZ, 1.7, 0);
     if (room.id === 'science') {
-      addBox(center.x, 0.95, center.z + 1.05, 1.75, 0.14, 0.72, metalMat, true, false, false);
-      addBox(center.x - 0.45, 1.14, center.z + 1.05, 0.22, 0.22, 0.22, material(0x355f72, 0.28, 0.02), false, false, false);
-      addSinkRow(center.x + 0.95, center.z + 1.18, Math.PI / 2);
+      if (canPlaceFurnitureAt(leftX, center.z + 1.35, 0.9, 0.42, 0.62)) {
+        addBox(leftX, 0.95, center.z + 1.35, 1.75, 0.14, 0.72, metalMat, true, false, false, 'furniture');
+        addBox(leftX - 0.45, 1.14, center.z + 1.35, 0.22, 0.22, 0.22, material(0x355f72, 0.28, 0.02), false, false, false);
+      }
+      addSinkRow(rightX, center.z + 1.3, Math.PI / 2);
     } else if (room.id === 'nurse') {
-      addBox(center.x + 0.78, 0.62, center.z + 1.18, 1.65, 0.32, 0.74, material(0xd8d8cf, 0.68, 0.02), true, false, false);
+      if (canPlaceFurnitureAt(rightX, center.z + 1.18, 0.86, 0.44, 0.52)) addBox(rightX, 0.62, center.z + 1.18, 1.65, 0.32, 0.74, material(0xd8d8cf, 0.68, 0.02), true, false, false, 'furniture');
       addBox(center.x + 0.18, 0.95, center.z + 1.18, 0.42, 0.35, 0.68, paperMat, false, false, false);
     } else if (room.id === 'music') {
-      addBox(center.x - 0.95, 0.78, center.z + 1.1, 1.15, 1.15, 0.28, material(0x3d2a1d, 0.7, 0.04), true, false, false);
+      if (canPlaceFurnitureAt(leftX, center.z + 1.1, 0.64, 0.24, 0.5)) addBox(leftX, 0.78, center.z + 1.1, 1.15, 1.15, 0.28, material(0x3d2a1d, 0.7, 0.04), true, false, false, 'furniture');
       for (let i = 0; i < 4; i += 1) addBox(center.x - 1.25 + i * 0.2, 1.47, center.z + 1.26, 0.055, 0.38, 0.035, paperMat, false, false, false);
     }
     const sideX = room.sign.side === 'east'
@@ -2678,6 +2718,8 @@ const enemyData = {
   lookBackYaw: 0,
   lastSawPlayerAt: -Infinity,
   lastSeenPlayerPosition: null,
+  soundSourceTarget: null,
+  soundChaseStartedAt: -Infinity,
   pounceUntil: 0,
   pounceStartedAt: 0,
   pounceFrom: null,
@@ -2965,6 +3007,8 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
 function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING') {
   const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   if (!start) return false;
+  enemyData.soundSourceTarget = { x, z };
+  enemyData.soundChaseStartedAt = clock.elapsedTime;
   const soundProbe = new THREE.Vector3(x, 1.1, z);
   const candidates = [...navNodes.values()]
     .filter((node) => canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18))
@@ -2979,7 +3023,10 @@ function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING') {
     .sort((a, b) => a.score - b.score);
   const best = candidates[0];
   if (!best) return setEnemyDestinationViaCorridor(x, z, mode, true);
-  commitEnemyPath(best.path, best.node, mode);
+  const exactTarget = !hasWallBetweenPoints(best.node.x, best.node.z, x, z, 0.08)
+    ? { x, z, key: 'sound-source' }
+    : null;
+  commitEnemyPath(exactTarget ? [...best.path, exactTarget] : best.path, best.node, mode);
   return true;
 }
 
@@ -3563,7 +3610,8 @@ function reactToSoundEvent(event, now) {
     return;
   }
   if (state.alert === 'HUNTING' && state.detection > 70) {
-    setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING', wallBlockedSound);
+    if (state.detection > 92 || wallBlockedSound) setEnemyDestinationToSoundSource(event.x, event.z, 'HUNTING');
+    else setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING', wallBlockedSound);
     enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
     enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, wallBlockedSound ? 5.8 : 3.4);
     return;
@@ -3708,8 +3756,8 @@ function canEnemyMoveTo(x, z, padding = 0.16) {
   if (!isInsidePlayableBounds(x, z)) return false;
   const candidates = colliderCandidatesInAabb(x - padding - 0.08, x + padding + 0.08, z - padding - 0.08, z + padding + 0.08);
   return !candidates.some((collider) =>
-    Math.abs(x - collider.x) < collider.hw + padding + (collider.kind === 'furniture' ? 0.08 : 0)
-    && Math.abs(z - collider.z) < collider.hz + padding + (collider.kind === 'furniture' ? 0.08 : 0));
+    Math.abs(x - collider.x) < collider.hw + padding
+    && Math.abs(z - collider.z) < collider.hz + padding);
 }
 
 function canEnemyMoveIgnoringFurniture(x, z, padding = 0.16) {
@@ -4243,6 +4291,8 @@ function respawnPlayer() {
     lookBackYaw: 0,
     lastSawPlayerAt: -Infinity,
     lastSeenPlayerPosition: null,
+    soundSourceTarget: null,
+    soundChaseStartedAt: -Infinity,
     pounceUntil: 0,
     pounceStartedAt: 0,
     pounceFrom: null,
@@ -5898,6 +5948,11 @@ function updateEnemy(dt, time) {
     state.alert = state.detection > 25 ? 'SUSPICIOUS' : 'UNNOTICED';
     enemyData.speed = state.alert === 'SUSPICIOUS' ? 2.75 : 1.3;
   }
+  if (enemyData.soundSourceTarget && !state.hidden && (state.detection > 92 || enemyData.mode === 'HUNTING')) {
+    const soundChaseTime = Math.max(0, time - enemyData.soundChaseStartedAt);
+    const accel = THREE.MathUtils.clamp(1 + soundChaseTime * 0.28, 1, 2);
+    enemyData.speed = Math.min(enemyData.speed * accel, 11.2);
+  }
 
   enemyData.isMoving = false;
   if (!roaring && enemyData.path.length === 0) {
@@ -5918,7 +5973,8 @@ function updateEnemy(dt, time) {
   if (!roaring && target && time >= enemyData.pauseUntil && time >= enemyData.lookAroundUntil) {
     const direction = new THREE.Vector3(target.x - enemy.position.x, 0, target.z - enemy.position.z);
     const distanceToPathTarget = direction.length();
-    if (distanceToPathTarget < 0.18) {
+    if (distanceToPathTarget < (target.key === 'sound-source' ? 0.34 : 0.18)) {
+      if (target.key === 'sound-source') enemyData.soundSourceTarget = null;
       enemyData.path.shift();
       enemyData.stuckSince = 0;
       enemyData.wallSlideAttempts = 0;
