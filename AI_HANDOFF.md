@@ -1231,3 +1231,13 @@ Build:
 - Pathfinding now uses a passable connected-area check:
   - BFS skips nodes the enemy cannot actually stand on.
   - If the requested target is not connected, destination is replaced by the closest reachable node in the same passable component.
+
+## 2026-07-04 Startup Regression Fix
+
+- Fixed a startup/runtime regression caused by the previous pathing helper patch being inserted into the wrong function.
+- `colliderCandidatesInAabb()` was accidentally returning filtered path-node data instead of collider candidates; restored it to return collider data.
+- Moved `reachableSchoolNodesFrom()` to the pathfinding section after `findPath()`.
+- Verified locally on a clean strict dev port:
+  - Title screen appears.
+  - School start enters gameplay.
+- Note: port `5173` was serving a different Vite app during debugging, so use a strict/open port when validating this project locally.

@@ -2846,6 +2846,28 @@ function findPath(startKey, targetKey) {
     result.unshift(navNodes.get(cursor));
     cursor = previous.get(cursor);
   }
+  return result.filter((node) => node === targetNode || node === startNode || canEnemyMoveTo(node.x, node.z, 0.18) || canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18));
+}
+
+function reachableSchoolNodesFrom(startKey) {
+  if (!startKey) return [];
+  const queue = [startKey];
+  const seen = new Set([startKey]);
+  const result = [];
+  while (queue.length) {
+    const current = queue.shift();
+    const node = navNodes.get(current);
+    if (!node) continue;
+    result.push(node);
+    for (const [dx, dz] of directions) {
+      const nextKey = gridKey(node.gx + dx, node.gz + dz);
+      if (!walkable.has(nextKey) || seen.has(nextKey)) continue;
+      const nextNode = navNodes.get(nextKey);
+      if (!nextNode || !canEnemyMoveTo(nextNode.x, nextNode.z, 0.18)) continue;
+      seen.add(nextKey);
+      queue.push(nextKey);
+    }
+  }
   return result;
 }
 
@@ -3609,28 +3631,6 @@ function colliderCandidatesInAabb(minX, maxX, minZ, maxZ) {
         seen.add(collider);
         result.push(collider);
       }
-    }
-  }
-  return result.filter((node) => node === targetNode || node === startNode || canEnemyMoveTo(node.x, node.z, 0.18) || canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18));
-}
-
-function reachableSchoolNodesFrom(startKey) {
-  if (!startKey) return [];
-  const queue = [startKey];
-  const seen = new Set([startKey]);
-  const result = [];
-  while (queue.length) {
-    const current = queue.shift();
-    const node = navNodes.get(current);
-    if (!node) continue;
-    result.push(node);
-    for (const [dx, dz] of directions) {
-      const nextKey = gridKey(node.gx + dx, node.gz + dz);
-      if (!walkable.has(nextKey) || seen.has(nextKey)) continue;
-      const nextNode = navNodes.get(nextKey);
-      if (!nextNode || !canEnemyMoveTo(nextNode.x, nextNode.z, 0.18)) continue;
-      seen.add(nextKey);
-      queue.push(nextKey);
     }
   }
   return result;
