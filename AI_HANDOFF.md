@@ -1202,3 +1202,15 @@ Build:
   - Interior maze-wall candidates are preferred when enough exist, avoiding repeated map-edge placement.
   - Final fallbacks are randomized instead of fixed `mansionNodes[0]`.
 - Breaker fallback now also requires distance from the exit approach cell where possible, preventing breaker and exit from spawning together.
+
+## 2026-07-04 School Enemy Anti-Stuck / Player Bob Removal
+
+- Removed walk/run camera bob from `updatePlayer()` so movement no longer adds vertical sway.
+- School enemy destination selection now prefers pathable nodes that `canEnemyMoveTo()`.
+- Added `nearestPathableNodeTo()` to avoid routing toward furniture/wall-blocked node centers.
+- Strengthened school enemy wall recovery:
+  - Added diagonal, side, and back-side wall-slide options.
+  - Increased minimum slide step to avoid tiny wall-edge jitter.
+  - Added `wallSlideAttempts` tracking and earlier recovery when sliding is not improving.
+  - Recovery now snaps to a reachable nearby node if the enemy is stuck/inside collision.
+- School enemy AI updates more frequently at non-urgent distances to reduce large-step collision/stuck behavior.

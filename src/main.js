@@ -2688,6 +2688,7 @@ const enemyData = {
   lastMoveZ: enemy.position.z,
   lastTargetDistance: Infinity,
   recentTargetKeys: [],
+  wallSlideAttempts: 0,
 };
 
 function nearestNode(x, z) {
@@ -2713,6 +2714,13 @@ function nearestReachableNode(x, z, maxProbeDistance = 8) {
     && canEnemyMoveTo(node.x, node.z)
     && hasLineOfSight(probe, new THREE.Vector3(node.x, 1.1, node.z)));
   return visible || sorted.find((node) => canEnemyMoveTo(node.x, node.z)) || sorted[0] || null;
+}
+
+function nearestPathableNodeTo(x, z) {
+  return [...navNodes.values()]
+    .filter((node) => canEnemyMoveTo(node.x, node.z, 0.18))
+    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0]
+    || nearestNode(x, z);
 }
 
 function findPath(startKey, targetKey) {
@@ -2754,12 +2762,13 @@ function commitEnemyPath(path, target, mode) {
 
 function setEnemyDestination(x, z, mode = 'ROAMING') {
   const start = nearestReachableNode(enemy.position.x, enemy.position.z);
-  const target = nearestNode(x, z);
+  const target = nearestPathableNodeTo(x, z);
   if (!start || !target) return;
   let path = findPath(start.key, target.key);
   let finalTarget = target;
   if (!path.length && start.key !== target.key) {
     const alternatives = [...navNodes.values()]
+      .filter((node) => canEnemyMoveTo(node.x, node.z, 0.18))
       .filter((node) => node.key !== start.key)
       .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
     for (const candidate of alternatives) {
@@ -2778,6 +2787,7 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
   if (!start) return false;
   const soundProbe = new THREE.Vector3(x, 1.1, z);
   const candidates = [...navNodes.values()]
+    .filter((node) => canEnemyMoveTo(node.x, node.z, 0.18))
     .filter((node) => Math.hypot(node.x - x, node.z - z) <= radius + 2.4)
     .map((node) => {
       const path = findPath(start.key, node.key);
@@ -2938,6 +2948,7 @@ function recoverEnemyNavigation(time) {
   }
   enemyData.path = [];
   enemyData.stuckSince = 0;
+  enemyData.wallSlideAttempts = 0;
   enemyData.lastTargetDistance = Infinity;
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.18);
   if (!state.hidden && state.detection > 70) {
@@ -5353,10 +5364,7 @@ function updatePlayer(dt) {
   if (canMoveTo(nextX, camera.position.z)) camera.position.x = nextX;
   if (canMoveTo(camera.position.x, nextZ)) camera.position.z = nextZ;
   camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.68, dt * 9);
-  if (active) {
-    state.bob += dt * speed * (running ? 2.1 : 1.65);
-    camera.position.y += Math.sin(state.bob * 3.6) * (running ? 0.038 : 0.022);
-  }
+  if (!active) state.bob = 0;
   if (state.flashlight) {
     const ghostDrain = isFlashlightHittingWoman() ? 10 : 1;
     state.battery = Math.max(0, state.battery - dt * 0.18 * ghostDrain);
@@ -5691,6 +5699,7 @@ function updateEnemy(dt, time) {
     if (distanceToPathTarget < 0.18) {
       enemyData.path.shift();
       enemyData.stuckSince = 0;
+      enemyData.wallSlideAttempts = 0;
       enemyData.lastTargetDistance = Infinity;
       if (enemyData.path.length === 0 && enemyData.mode === 'SEARCHING') {
         enemyData.lookBaseYaw = enemyData.coverLookYaw || enemy.rotation.y;
@@ -5707,12 +5716,21 @@ function updateEnemy(dt, time) {
         enemy.position.z = nextZ;
         enemy.rotation.y = Math.atan2(direction.x, direction.z);
         enemyData.isMoving = true;
+        enemyData.wallSlideAttempts = 0;
         movedThisFrame = true;
       } else {
-        const slideStep = enemyData.speed * dt * 0.82;
+        const slideStep = Math.max(enemyData.speed * dt, 0.18);
+        const rotateDir = (angle) => ({
+          x: direction.x * Math.cos(angle) - direction.z * Math.sin(angle),
+          z: direction.x * Math.sin(angle) + direction.z * Math.cos(angle),
+        });
         const slideOptions = [
-          { x: direction.z, z: -direction.x },
-          { x: -direction.z, z: direction.x },
+          rotateDir(Math.PI / 4),
+          rotateDir(-Math.PI / 4),
+          rotateDir(Math.PI / 2),
+          rotateDir(-Math.PI / 2),
+          rotateDir((Math.PI * 3) / 4),
+          rotateDir((-Math.PI * 3) / 4),
         ].sort((a, b) =>
           Math.hypot(enemy.position.x + a.x * slideStep - target.x, enemy.position.z + a.z * slideStep - target.z)
           - Math.hypot(enemy.position.x + b.x * slideStep - target.x, enemy.position.z + b.z * slideStep - target.z));
@@ -5723,10 +5741,14 @@ function updateEnemy(dt, time) {
           enemy.position.z += slide.z * slideStep;
           enemy.rotation.y = Math.atan2(slide.x, slide.z);
           enemyData.isMoving = true;
+          enemyData.wallSlideAttempts += 1;
           movedThisFrame = true;
         } else {
           const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
-          if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18)) enemy.position.set(safe.x, 0, safe.z);
+          if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18) || enemyData.wallSlideAttempts > 3) {
+            const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 10) || safe;
+            enemy.position.set(anchor.x, 0, anchor.z);
+          }
           recoverEnemyNavigation(time);
         }
       }
@@ -5739,7 +5761,7 @@ function updateEnemy(dt, time) {
           enemyData.lastTargetDistance = newDistanceToPathTarget;
         } else {
           if (!enemyData.stuckSince) enemyData.stuckSince = time;
-          if (time - enemyData.stuckSince > 1.25) recoverEnemyNavigation(time);
+          if (time - enemyData.stuckSince > 0.85 || enemyData.wallSlideAttempts > 5) recoverEnemyNavigation(time);
         }
         enemyData.lastMoveX = enemy.position.x;
         enemyData.lastMoveZ = enemy.position.z;
@@ -6927,7 +6949,7 @@ function shouldUpdateSchoolEnemy(dt) {
   if (state.mapMode !== 'school') return false;
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const urgent = state.alert === 'HUNTING' || state.detection > 55 || enemyData.mode === 'HUNTING' || distance < 20;
-  const interval = urgent ? 0 : distance > 34 ? 1.0 : 0.5;
+  const interval = urgent ? 0 : distance > 34 ? 0.65 : 0.22;
   if (interval <= 0) return true;
   schoolEnemyAccumulator += dt;
   if (schoolEnemyAccumulator < interval) return false;
