@@ -1263,3 +1263,13 @@ Build:
 - Mansion locker utility clearance was widened so lockers are less likely to appear in front of/behind breaker panels.
 - Sound-source chasing now stores the original emitted sound point and appends an exact final target when wall-clear.
 - At high detection, sound chase speed ramps up gradually up to roughly double speed instead of staying at normal investigate speed.
+
+## 2026-07-05 Object Restore / Room Sound Pursuit Fix
+
+- Reverted the overly broad school furniture doorway/connector exclusion that caused many room objects to disappear.
+- Cover objects now only avoid the immediate room-door sign area instead of all room connector path cells.
+- Restored science/nurse/music room special objects to always render while keeping the newer wall-side placement.
+- Restored sink rows so they render and keep furniture collision.
+- Sound-source routing now detects the room containing the emitted sound and prioritizes path nodes inside that same room.
+- Sound-source pursuit now retries routing while the enemy has not reached the original source point, instead of ending at a nearby wall-side node.
+- Sound pursuit acceleration now applies during investigating/searching too, not only full hunting.
