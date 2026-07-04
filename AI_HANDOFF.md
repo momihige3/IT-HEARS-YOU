@@ -1224,3 +1224,10 @@ Build:
   - Tracks when the enemy remains in a tiny area while moving.
   - If stuck oscillating in a room, jumps the enemy to that room's connector/entrance node.
   - The jump has a cooldown and then resumes chasing/searching/roaming depending on alert state.
+- Added narrow-space handling:
+  - School enemy can perform a short furniture-hop that ignores furniture collision only.
+  - Furniture-hop is blocked by wall collision and by a wall line test, so it cannot pass through walls.
+  - Corridor oscillation can now escape to a nearby junction/farther pathable node.
+- Pathfinding now uses a passable connected-area check:
+  - BFS skips nodes the enemy cannot actually stand on.
+  - If the requested target is not connected, destination is replaced by the closest reachable node in the same passable component.

@@ -2768,8 +2768,57 @@ function jumpEnemyToRoomEntrance(time) {
   return true;
 }
 
+function schoolNodeDegree(node) {
+  return directions.reduce((count, [dx, dz]) =>
+    count + (walkable.has(gridKey(node.gx + dx, node.gz + dz)) ? 1 : 0), 0);
+}
+
+function jumpEnemyToCorridorEscape(time) {
+  if (time - enemyData.lastRoomJumpAt < 3.0) return false;
+  const current = nearestReachableNode(enemy.position.x, enemy.position.z, 8) || nearestNode(enemy.position.x, enemy.position.z);
+  if (!current) return false;
+  const candidates = [...navNodes.values()]
+    .filter((node) => node.key !== current.key && node.key !== enemyData.targetKey)
+    .filter((node) => !enemyData.recentTargetKeys.slice(0, 4).includes(node.key))
+    .filter((node) => canEnemyMoveTo(node.x, node.z, 0.22))
+    .map((node) => {
+      const path = findPath(current.key, node.key);
+      if (!path.length && current.key !== node.key) return null;
+      const distance = Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z);
+      const degreeBonus = schoolNodeDegree(node) >= 3 ? -8 : 0;
+      const roomPenalty = getRoomAt(node.gx, node.gz) ? 4 : 0;
+      return { node, score: Math.abs(distance - 9) + path.length * 0.4 + degreeBonus + roomPenalty };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score);
+  const escape = candidates[0]?.node;
+  if (!escape) return false;
+  enemy.position.set(escape.x, 0, escape.z);
+  enemyData.path = [];
+  enemyData.stuckSince = 0;
+  enemyData.wallSlideAttempts = 0;
+  enemyData.oscillationSince = 0;
+  enemyData.oscillationAnchorX = escape.x;
+  enemyData.oscillationAnchorZ = escape.z;
+  enemyData.lastTargetDistance = Infinity;
+  enemyData.lastRoomJumpAt = time;
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.12);
+  if (!state.hidden && state.detection > 62) {
+    setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'SEARCHING', true);
+  } else {
+    chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
+  }
+  return true;
+}
+
+function recoverEnemyFromOscillation(time) {
+  return jumpEnemyToRoomEntrance(time) || jumpEnemyToCorridorEscape(time);
+}
+
 function findPath(startKey, targetKey) {
   if (!startKey || !targetKey || startKey === targetKey) return [];
+  const startNode = navNodes.get(startKey);
+  const targetNode = navNodes.get(targetKey);
   const queue = [startKey];
   const previous = new Map([[startKey, null]]);
   while (queue.length) {
@@ -2779,6 +2828,13 @@ function findPath(startKey, targetKey) {
     for (const [dx, dz] of directions) {
       const nextKey = gridKey(node.gx + dx, node.gz + dz);
       if (!walkable.has(nextKey) || previous.has(nextKey)) continue;
+      const nextNode = navNodes.get(nextKey);
+      if (
+        nextKey !== targetKey
+        && nextKey !== startKey
+        && nextNode
+        && !canEnemyMoveTo(nextNode.x, nextNode.z, 0.18)
+      ) continue;
       previous.set(nextKey, current);
       queue.push(nextKey);
     }
@@ -2812,8 +2868,9 @@ function setEnemyDestination(x, z, mode = 'ROAMING') {
   let path = findPath(start.key, target.key);
   let finalTarget = target;
   if (!path.length && start.key !== target.key) {
-    const alternatives = [...navNodes.values()]
-      .filter((node) => canEnemyMoveTo(node.x, node.z, 0.18))
+    const connected = reachableSchoolNodesFrom(start.key);
+    const alternatives = (connected.length ? connected : [...navNodes.values()])
+      .filter((node) => node.key === target.key || canEnemyMoveTo(node.x, node.z, 0.18))
       .filter((node) => node.key !== start.key)
       .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
     for (const candidate of alternatives) {
@@ -3554,6 +3611,28 @@ function colliderCandidatesInAabb(minX, maxX, minZ, maxZ) {
       }
     }
   }
+  return result.filter((node) => node === targetNode || node === startNode || canEnemyMoveTo(node.x, node.z, 0.18) || canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18));
+}
+
+function reachableSchoolNodesFrom(startKey) {
+  if (!startKey) return [];
+  const queue = [startKey];
+  const seen = new Set([startKey]);
+  const result = [];
+  while (queue.length) {
+    const current = queue.shift();
+    const node = navNodes.get(current);
+    if (!node) continue;
+    result.push(node);
+    for (const [dx, dz] of directions) {
+      const nextKey = gridKey(node.gx + dx, node.gz + dz);
+      if (!walkable.has(nextKey) || seen.has(nextKey)) continue;
+      const nextNode = navNodes.get(nextKey);
+      if (!nextNode || !canEnemyMoveTo(nextNode.x, nextNode.z, 0.18)) continue;
+      seen.add(nextKey);
+      queue.push(nextKey);
+    }
+  }
   return result;
 }
 
@@ -3570,6 +3649,35 @@ function canEnemyMoveTo(x, z, padding = 0.16) {
   return !candidates.some((collider) =>
     Math.abs(x - collider.x) < collider.hw + padding + (collider.kind === 'furniture' ? 0.18 : 0)
     && Math.abs(z - collider.z) < collider.hz + padding + (collider.kind === 'furniture' ? 0.18 : 0));
+}
+
+function canEnemyMoveIgnoringFurniture(x, z, padding = 0.16) {
+  if (!isInsidePlayableBounds(x, z)) return false;
+  const candidates = colliderCandidatesInAabb(x - padding - 0.08, x + padding + 0.08, z - padding - 0.08, z + padding + 0.08);
+  return !candidates.some((collider) =>
+    collider.wall
+    && Math.abs(x - collider.x) < collider.hw + padding
+    && Math.abs(z - collider.z) < collider.hz + padding);
+}
+
+function hasWallBetweenPoints(fromX, fromZ, toX, toZ, padding = 0.06) {
+  const distance = Math.hypot(toX - fromX, toZ - fromZ);
+  if (distance < 0.001) return false;
+  const dx = (toX - fromX) / distance;
+  const dz = (toZ - fromZ) / distance;
+  const minX = Math.min(fromX, toX) - 0.25;
+  const maxX = Math.max(fromX, toX) + 0.25;
+  const minZ = Math.min(fromZ, toZ) - 0.25;
+  const maxZ = Math.max(fromZ, toZ) + 0.25;
+  return colliderCandidatesInAabb(minX, maxX, minZ, maxZ)
+    .some((collider) => collider.wall && rayColliderEntry(fromX, fromZ, dx, dz, collider, distance, padding) < distance);
+}
+
+function canEnemyFurnitureHopTo(x, z, maxDistance = 1.65) {
+  const distance = Math.hypot(x - enemy.position.x, z - enemy.position.z);
+  return distance <= maxDistance
+    && canEnemyMoveIgnoringFurniture(x, z, 0.18)
+    && !hasWallBetweenPoints(enemy.position.x, enemy.position.z, x, z, 0.08);
 }
 
 function hasLineOfSight(from, to) {
@@ -5767,6 +5875,13 @@ function updateEnemy(dt, time) {
         enemyData.isMoving = true;
         enemyData.wallSlideAttempts = 0;
         movedThisFrame = true;
+      } else if (canEnemyFurnitureHopTo(nextX, nextZ, 1.4)) {
+        enemy.position.x = nextX;
+        enemy.position.z = nextZ;
+        enemy.rotation.y = Math.atan2(direction.x, direction.z);
+        enemyData.isMoving = true;
+        enemyData.wallSlideAttempts = Math.max(0, enemyData.wallSlideAttempts - 1);
+        movedThisFrame = true;
       } else {
         const slideStep = Math.max(enemyData.speed * dt, 0.18);
         const rotateDir = (angle) => ({
@@ -5784,7 +5899,8 @@ function updateEnemy(dt, time) {
           Math.hypot(enemy.position.x + a.x * slideStep - target.x, enemy.position.z + a.z * slideStep - target.z)
           - Math.hypot(enemy.position.x + b.x * slideStep - target.x, enemy.position.z + b.z * slideStep - target.z));
         const slide = slideOptions.find((option) =>
-          canEnemyMoveTo(enemy.position.x + option.x * slideStep, enemy.position.z + option.z * slideStep));
+          canEnemyMoveTo(enemy.position.x + option.x * slideStep, enemy.position.z + option.z * slideStep)
+          || canEnemyFurnitureHopTo(enemy.position.x + option.x * slideStep, enemy.position.z + option.z * slideStep));
         if (slide) {
           enemy.position.x += slide.x * slideStep;
           enemy.position.z += slide.z * slideStep;
@@ -5798,7 +5914,7 @@ function updateEnemy(dt, time) {
             const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 10) || safe;
             enemy.position.set(anchor.x, 0, anchor.z);
           }
-          if (!jumpEnemyToRoomEntrance(time)) recoverEnemyNavigation(time);
+          if (!recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
         }
       }
       if (movedThisFrame) {
@@ -5811,7 +5927,7 @@ function updateEnemy(dt, time) {
           enemyData.oscillationAnchorX = enemy.position.x;
           enemyData.oscillationAnchorZ = enemy.position.z;
         }
-        if (enemyData.oscillationSince && time - enemyData.oscillationSince > 1.35 && jumpEnemyToRoomEntrance(time)) return;
+        if (enemyData.oscillationSince && time - enemyData.oscillationSince > 1.35 && recoverEnemyFromOscillation(time)) return;
         const improving = !Number.isFinite(enemyData.lastTargetDistance)
           || newDistanceToPathTarget < enemyData.lastTargetDistance - 0.035;
         if (improving) {
@@ -5820,7 +5936,7 @@ function updateEnemy(dt, time) {
         } else {
           if (!enemyData.stuckSince) enemyData.stuckSince = time;
           if (time - enemyData.stuckSince > 0.85 || enemyData.wallSlideAttempts > 5) {
-            if (!jumpEnemyToRoomEntrance(time)) recoverEnemyNavigation(time);
+            if (!recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
           }
         }
         enemyData.lastMoveX = enemy.position.x;
@@ -5828,7 +5944,7 @@ function updateEnemy(dt, time) {
       } else if (!enemyData.stuckSince) {
         enemyData.stuckSince = time;
       } else if (time - enemyData.stuckSince > 0.55) {
-        if (!jumpEnemyToRoomEntrance(time)) recoverEnemyNavigation(time);
+        if (!recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
       }
     }
   }
