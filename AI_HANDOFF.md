@@ -1273,3 +1273,13 @@ Build:
 - Sound-source routing now detects the room containing the emitted sound and prioritizes path nodes inside that same room.
 - Sound-source pursuit now retries routing while the enemy has not reached the original source point, instead of ending at a nearby wall-side node.
 - Sound pursuit acceleration now applies during investigating/searching too, not only full hunting.
+
+## 2026-07-05 Room-Aware Sound Pursuit / Object Density Fix
+
+- Sound events now include the school room ID where the sound was emitted.
+- School enemy sound pursuit uses the emitted room ID and prioritizes nodes inside that room, preventing wall-side/outside nodes from satisfying the pursuit.
+- Sound pursuit now disables the blocked-wall give-up logic while an original sound source is active.
+- Re-routing preserves the sound room ID so repeated path attempts still target the room interior.
+- Furniture placement no longer uses oversized circular spacing; it now uses actual object half-width/half-depth spacing to preserve object density.
+- Enemy collision against furniture was loosened while wall collision remains strict, allowing the enemy to pass between tighter object gaps.
+- Entrance clear zones remain explicit and localized so objects avoid doorways without deleting most room props.

@@ -859,7 +859,7 @@ function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
   const awayZ = Math.sign(cell.z - center.z) || Math.sign(offsetZ);
   const x = cell.x + (awayX ? awayX * Math.max(1.18, Math.abs(offsetX)) : offsetX);
   const z = cell.z + (awayZ ? awayZ * Math.max(1.18, Math.abs(offsetZ)) : offsetZ);
-  if (isNearSchoolDoorOrConnector(x, z, 1.9, false)) return;
+  if (isInSchoolEntranceClearZone(x, z, 2.75)) return;
   if (type === 'cabinet') {
     addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true, false, true, 'furniture');
     addBox(x, 1.55, z + 0.425, 0.72, 0.06, 0.025, darkMat);
@@ -959,6 +959,28 @@ function isNearSchoolDoorOrConnector(x, z, minDistance = 2.35, includeConnectors
   });
 }
 
+function schoolRoomById(id) {
+  return schoolRooms.find((room) => room.id === id) || null;
+}
+
+function schoolRoomAtWorld(x, z) {
+  const { gx, gz } = gridFromWorld(x, z);
+  return getRoomAt(gx, gz);
+}
+
+function isInSchoolEntranceClearZone(x, z, radius = 2.65) {
+  return schoolRooms.some((room) => {
+    const sign = worldFromGrid(room.sign.gx, room.sign.gz);
+    if (Math.hypot(x - sign.x, z - sign.z) < radius) return true;
+    const doorCell = room.connector[0];
+    if (doorCell) {
+      const door = worldFromGrid(doorCell[0], doorCell[1]);
+      if (Math.hypot(x - door.x, z - door.z) < radius * 0.82) return true;
+    }
+    return false;
+  });
+}
+
 function isLockerFrontClear(x, z, yaw, padding = 0.24) {
   const virtualLocker = { x, z, yaw };
   return !colliders.some((collider) =>
@@ -974,7 +996,10 @@ function isClearOfMansionUtilities(x, z, minDistance = 3.2) {
 }
 
 function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.34) {
-  if (hasColliderOverlap(x, z, Math.max(hw, hz) + padding)) return false;
+  if (colliders.some((collider) =>
+    Math.abs(x - collider.x) < collider.hw + hw + padding
+    && Math.abs(z - collider.z) < collider.hz + hz + padding)) return false;
+  if (inSchoolBounds(x, z) && isInSchoolEntranceClearZone(x, z, 2.2 + Math.max(hw, hz) * 0.32)) return false;
   if (lockers.some((locker) => Math.hypot(locker.x - x, locker.z - z) < 2.1 + padding)) return false;
   if (isAnyLockerFrontBlockedByObject(x, z, hw, hz, padding)) return false;
   if (shop && horizontalDistance({ x, z }, shop) < 2.4 + padding) return false;
@@ -2832,7 +2857,7 @@ function updateEnemyRecoveryJump(time) {
   if (jump.after === 'player' && !state.hidden && state.detection > 62) {
     setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'SEARCHING', true);
   } else if (jump.after === 'sound' && enemyData.lastHeardPosition) {
-    setEnemyDestinationToSoundSource(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'INVESTIGATING');
+    setEnemyDestinationToSoundSource(enemyData.lastHeardPosition.x, enemyData.lastHeardPosition.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'INVESTIGATING', enemyData.lastHeardPosition.roomId);
   } else {
     chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
   }
@@ -3007,14 +3032,15 @@ function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
   return enemyData.mode === mode;
 }
 
-function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING') {
+function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING', roomId = null) {
   const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   if (!start) return false;
-  enemyData.soundSourceTarget = { x, z };
+  enemyData.soundSourceTarget = { x, z, roomId };
   enemyData.soundChaseStartedAt = clock.elapsedTime;
   const soundProbe = new THREE.Vector3(x, 1.1, z);
   const soundGrid = gridFromWorld(x, z);
-  const soundRoom = getRoomAt(soundGrid.gx, soundGrid.gz);
+  const soundRoom = schoolRoomById(roomId) || getRoomAt(soundGrid.gx, soundGrid.gz);
+  const roomCenterPoint = soundRoom ? roomCenter(soundRoom) : null;
   const allCandidates = [...navNodes.values()]
     .filter((node) => canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18))
     .map((node) => {
@@ -3024,12 +3050,15 @@ function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING') {
       const nodeRoom = getRoomAt(node.gx, node.gz);
       const sameRoomBonus = soundRoom && nodeRoom?.id === soundRoom.id ? -85 : 0;
       const wrongSidePenalty = soundRoom && nodeRoom?.id !== soundRoom.id ? 75 : 0;
+      const roomDepthBonus = soundRoom && nodeRoom?.id === soundRoom.id && roomCenterPoint
+        ? -Math.max(0, 8 - Math.hypot(node.x - roomCenterPoint.x, node.z - roomCenterPoint.z)) * 1.8
+        : 0;
       const lineBonus = hasLineOfSight(new THREE.Vector3(node.x, 1.1, node.z), soundProbe) ? -2.5 : 0;
       return {
         node,
         path,
         sameRoom: Boolean(soundRoom && nodeRoom?.id === soundRoom.id),
-        score: distanceToSound * 3.2 + path.length * 0.72 + lineBonus + sameRoomBonus + wrongSidePenalty,
+        score: distanceToSound * 3.2 + path.length * 0.72 + lineBonus + sameRoomBonus + wrongSidePenalty + roomDepthBonus,
       };
     })
     .filter(Boolean)
@@ -3043,7 +3072,10 @@ function setEnemyDestinationToSoundSource(x, z, mode = 'INVESTIGATING') {
     && !hasWallBetweenPoints(best.node.x, best.node.z, x, z, 0.08)
     ? { x, z, key: 'sound-source' }
     : null;
-  commitEnemyPath(exactTarget ? [...best.path, exactTarget] : best.path, best.node, mode);
+  const roomInteriorTarget = soundRoom && !exactTarget
+    ? { x: best.node.x, z: best.node.z, key: `sound-room-${soundRoom.id}` }
+    : null;
+  commitEnemyPath(exactTarget ? [...best.path, exactTarget] : roomInteriorTarget ? [...best.path, roomInteriorTarget] : best.path, best.node, mode);
   return true;
 }
 
@@ -3589,7 +3621,7 @@ function reactToSoundEvent(event, now) {
   }
   if (!forceTrapResponse && enemyData.mode === 'PASSING_BY' && now < enemyData.passByUntil) return;
   enemyData.lastHeardAt = now;
-  enemyData.lastHeardPosition = { x: event.x, z: event.z };
+  enemyData.lastHeardPosition = { x: event.x, z: event.z, roomId: event.roomId || null };
   const wallBlockedSound = !hasLineOfSight(
     enemy.position.clone().add(new THREE.Vector3(0, 1.4, 0)),
     new THREE.Vector3(event.x, 1.4, event.z),
@@ -3618,7 +3650,7 @@ function reactToSoundEvent(event, now) {
     return;
   }
   if (state.detection >= 100 || enemyData.alertMemory >= 0.95) {
-    setEnemyDestinationToSoundSource(event.x, event.z, 'HUNTING');
+    setEnemyDestinationToSoundSource(event.x, event.z, 'HUNTING', event.roomId);
     enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 10 : enemyData.wallSoundRepathUntil;
     enemyData.investigateUntil = now + 12;
     enemyData.searchUntil = now + 18;
@@ -3627,14 +3659,15 @@ function reactToSoundEvent(event, now) {
     return;
   }
   if (state.alert === 'HUNTING' && state.detection > 70) {
-    if (state.detection > 92 || wallBlockedSound) setEnemyDestinationToSoundSource(event.x, event.z, 'HUNTING');
+    if (state.detection > 92 || wallBlockedSound) setEnemyDestinationToSoundSource(event.x, event.z, 'HUNTING', event.roomId);
     else setEnemyDestinationViaCorridor(event.x, event.z, 'HUNTING', wallBlockedSound);
     enemyData.wallSoundRepathUntil = wallBlockedSound ? now + 8 : enemyData.wallSoundRepathUntil;
     enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, wallBlockedSound ? 5.8 : 3.4);
     return;
   }
   const firstReaction = enemyData.mode !== 'INVESTIGATING';
-  setEnemyDestinationViaCorridor(event.x, event.z, 'INVESTIGATING', wallBlockedSound);
+  if (wallBlockedSound || event.roomId) setEnemyDestinationToSoundSource(event.x, event.z, 'INVESTIGATING', event.roomId);
+  else setEnemyDestinationViaCorridor(event.x, event.z, 'INVESTIGATING', false);
   enemyData.investigateUntil = now + 3.5 + strength * 0.025 + (wallBlockedSound ? 4 : 0);
   enemyData.searchUntil = now + 16 + (wallBlockedSound ? 8 : 0);
   enemyData.investigateSpeed = wallBlockedSound ? 5.4 : strength > 70 ? 3.15 : strength > 30 ? 2.35 : 1.8;
@@ -3645,7 +3678,8 @@ function reactToSoundEvent(event, now) {
 function emitWorldSound(x, z, strength, baseHearingRadius, forceRipple = false, options = {}) {
   const hearingRadius = baseHearingRadius * (1 + enemyData.alertMemory * 0.28);
   const now = clock.elapsedTime;
-  const event = { x, z, strength, hearingRadius, age: 0, life: 2.4, ...options };
+  const soundRoom = state.mapMode === 'school' ? schoolRoomAtWorld(x, z) : null;
+  const event = { x, z, strength, hearingRadius, age: 0, life: 2.4, roomId: soundRoom?.id || null, ...options };
   if (forceRipple || now >= state.nextSoundRippleAt) {
     soundEvents.push(event);
     state.nextSoundRippleAt = now + 2.6;
@@ -3772,9 +3806,11 @@ function canMoveTo(x, z) {
 function canEnemyMoveTo(x, z, padding = 0.16) {
   if (!isInsidePlayableBounds(x, z)) return false;
   const candidates = colliderCandidatesInAabb(x - padding - 0.08, x + padding + 0.08, z - padding - 0.08, z + padding + 0.08);
-  return !candidates.some((collider) =>
-    Math.abs(x - collider.x) < collider.hw + padding
-    && Math.abs(z - collider.z) < collider.hz + padding);
+  return !candidates.some((collider) => {
+    const effectivePadding = collider.kind === 'furniture' ? padding * 0.35 : padding;
+    return Math.abs(x - collider.x) < collider.hw + effectivePadding
+      && Math.abs(z - collider.z) < collider.hz + effectivePadding;
+  });
 }
 
 function canEnemyMoveIgnoringFurniture(x, z, padding = 0.16) {
@@ -5824,6 +5860,7 @@ function updateEnemy(dt, time) {
   }
   const blockedChase = !state.hidden
     && !exitGraceActive
+    && !enemyData.soundSourceTarget
     && (state.alert === 'HUNTING' || enemyData.mode === 'HUNTING' || state.detection > 70 || recentSightActive)
     && ['HUNTING', 'SEARCHING', 'INVESTIGATING'].includes(enemyData.mode)
     && distance < 5.4
@@ -5978,7 +6015,7 @@ function updateEnemy(dt, time) {
       && ['HUNTING', 'INVESTIGATING', 'SEARCHING'].includes(enemyData.mode)
       && Math.hypot(enemy.position.x - enemyData.soundSourceTarget.x, enemy.position.z - enemyData.soundSourceTarget.z) > 1.1
       && time > enemyData.repathAt) {
-      setEnemyDestinationToSoundSource(enemyData.soundSourceTarget.x, enemyData.soundSourceTarget.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'INVESTIGATING');
+      setEnemyDestinationToSoundSource(enemyData.soundSourceTarget.x, enemyData.soundSourceTarget.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'INVESTIGATING', enemyData.soundSourceTarget.roomId);
       enemyData.repathAt = time + 0.75;
       enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 10);
       enemyData.investigateUntil = Math.max(enemyData.investigateUntil, time + 8);
