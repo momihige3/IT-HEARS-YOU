@@ -2690,6 +2690,10 @@ const enemyData = {
   lastTargetDistance: Infinity,
   recentTargetKeys: [],
   wallSlideAttempts: 0,
+  oscillationSince: 0,
+  oscillationAnchorX: enemy.position.x,
+  oscillationAnchorZ: enemy.position.z,
+  lastRoomJumpAt: -Infinity,
 };
 
 function nearestNode(x, z) {
@@ -2722,6 +2726,46 @@ function nearestPathableNodeTo(x, z) {
     .filter((node) => canEnemyMoveTo(node.x, node.z, 0.18))
     .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0]
     || nearestNode(x, z);
+}
+
+function enemyGridPosition() {
+  return {
+    gx: Math.round(enemy.position.x / CELL + GRID_HALF_W),
+    gz: Math.round(enemy.position.z / CELL + GRID_HALF_H),
+  };
+}
+
+function jumpEnemyToRoomEntrance(time) {
+  if (time - enemyData.lastRoomJumpAt < 3.0) return false;
+  const { gx, gz } = enemyGridPosition();
+  const room = getRoomAt(gx, gz);
+  if (!room) return false;
+  const connectorPoints = room.connector
+    .map(([cgx, cgz]) => {
+      const pos = worldFromGrid(cgx, cgz);
+      return { x: pos.x, z: pos.z };
+    })
+    .filter((pos) => canEnemyMoveTo(pos.x, pos.z, 0.22))
+    .sort((a, b) => Math.hypot(a.x - enemy.position.x, a.z - enemy.position.z)
+      - Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z));
+  const entrance = connectorPoints[0];
+  if (!entrance) return false;
+  enemy.position.set(entrance.x, 0, entrance.z);
+  enemyData.path = [];
+  enemyData.stuckSince = 0;
+  enemyData.wallSlideAttempts = 0;
+  enemyData.oscillationSince = 0;
+  enemyData.oscillationAnchorX = entrance.x;
+  enemyData.oscillationAnchorZ = entrance.z;
+  enemyData.lastTargetDistance = Infinity;
+  enemyData.lastRoomJumpAt = time;
+  enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.12);
+  if (!state.hidden && state.detection > 62) {
+    setEnemyDestinationViaCorridor(camera.position.x, camera.position.z, enemyData.mode === 'HUNTING' ? 'HUNTING' : 'SEARCHING', true);
+  } else {
+    chooseRandomEnemyRoute(enemyData.mode === 'SEARCHING' ? 'SEARCHING' : 'ROAMING');
+  }
+  return true;
 }
 
 function findPath(startKey, targetKey) {
@@ -2950,6 +2994,9 @@ function recoverEnemyNavigation(time) {
   enemyData.path = [];
   enemyData.stuckSince = 0;
   enemyData.wallSlideAttempts = 0;
+  enemyData.oscillationSince = 0;
+  enemyData.oscillationAnchorX = enemy.position.x;
+  enemyData.oscillationAnchorZ = enemy.position.z;
   enemyData.lastTargetDistance = Infinity;
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.18);
   if (!state.hidden && state.detection > 70) {
@@ -5751,11 +5798,20 @@ function updateEnemy(dt, time) {
             const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 10) || safe;
             enemy.position.set(anchor.x, 0, anchor.z);
           }
-          recoverEnemyNavigation(time);
+          if (!jumpEnemyToRoomEntrance(time)) recoverEnemyNavigation(time);
         }
       }
       if (movedThisFrame) {
         const newDistanceToPathTarget = Math.hypot(target.x - enemy.position.x, target.z - enemy.position.z);
+        const anchorDrift = Math.hypot(enemy.position.x - enemyData.oscillationAnchorX, enemy.position.z - enemyData.oscillationAnchorZ);
+        if (anchorDrift < 0.42) {
+          if (!enemyData.oscillationSince) enemyData.oscillationSince = time;
+        } else {
+          enemyData.oscillationSince = 0;
+          enemyData.oscillationAnchorX = enemy.position.x;
+          enemyData.oscillationAnchorZ = enemy.position.z;
+        }
+        if (enemyData.oscillationSince && time - enemyData.oscillationSince > 1.35 && jumpEnemyToRoomEntrance(time)) return;
         const improving = !Number.isFinite(enemyData.lastTargetDistance)
           || newDistanceToPathTarget < enemyData.lastTargetDistance - 0.035;
         if (improving) {
@@ -5763,14 +5819,16 @@ function updateEnemy(dt, time) {
           enemyData.lastTargetDistance = newDistanceToPathTarget;
         } else {
           if (!enemyData.stuckSince) enemyData.stuckSince = time;
-          if (time - enemyData.stuckSince > 0.85 || enemyData.wallSlideAttempts > 5) recoverEnemyNavigation(time);
+          if (time - enemyData.stuckSince > 0.85 || enemyData.wallSlideAttempts > 5) {
+            if (!jumpEnemyToRoomEntrance(time)) recoverEnemyNavigation(time);
+          }
         }
         enemyData.lastMoveX = enemy.position.x;
         enemyData.lastMoveZ = enemy.position.z;
       } else if (!enemyData.stuckSince) {
         enemyData.stuckSince = time;
       } else if (time - enemyData.stuckSince > 0.55) {
-        recoverEnemyNavigation(time);
+        if (!jumpEnemyToRoomEntrance(time)) recoverEnemyNavigation(time);
       }
     }
   }

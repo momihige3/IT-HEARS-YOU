@@ -1220,3 +1220,7 @@ Build:
 - Increased desk-set collider footprint to include the chair/desk group rather than only the tabletop area.
 - Enemy movement collision now adds extra safety padding around furniture colliders.
 - This is intended to stop the school enemy from routing into narrow desk-to-desk gaps and getting stuck there.
+- Added oscillation recovery for school enemy:
+  - Tracks when the enemy remains in a tiny area while moving.
+  - If stuck oscillating in a room, jumps the enemy to that room's connector/entrance node.
+  - The jump has a cooldown and then resumes chasing/searching/roaming depending on alert state.
