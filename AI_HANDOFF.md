@@ -1214,3 +1214,9 @@ Build:
   - Added `wallSlideAttempts` tracking and earlier recovery when sliding is not improving.
   - Recovery now snaps to a reachable nearby node if the enemy is stuck/inside collision.
 - School enemy AI updates more frequently at non-urgent distances to reduce large-step collision/stuck behavior.
+
+## 2026-07-04 School Enemy Desk Gap Fix
+
+- Increased desk-set collider footprint to include the chair/desk group rather than only the tabletop area.
+- Enemy movement collision now adds extra safety padding around furniture colliders.
+- This is intended to stop the school enemy from routing into narrow desk-to-desk gaps and getting stuck there.

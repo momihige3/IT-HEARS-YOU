@@ -1563,8 +1563,9 @@ const paperMat = material(0xd8d4bd, 0.92, 0.01);
 const bookMat = material(0x344d70, 0.72, 0.02);
 
 function addDeskSet(x, z, rot = 0) {
-  const hw = Math.abs(Math.cos(rot)) > 0.5 ? 0.68 : 0.48;
-  const hz = Math.abs(Math.cos(rot)) > 0.5 ? 0.48 : 0.68;
+  const sideways = Math.abs(Math.cos(rot)) <= 0.5;
+  const hw = sideways ? 1.05 : 0.68;
+  const hz = sideways ? 0.68 : 1.05;
   if (!canPlaceFurnitureAt(x, z, hw, hz, 0.18)) return null;
   const group = new THREE.Group();
   group.rotation.y = rot;
@@ -3520,7 +3521,8 @@ function canEnemyMoveTo(x, z, padding = 0.16) {
   if (!isInsidePlayableBounds(x, z)) return false;
   const candidates = colliderCandidatesInAabb(x - padding - 0.08, x + padding + 0.08, z - padding - 0.08, z + padding + 0.08);
   return !candidates.some((collider) =>
-    Math.abs(x - collider.x) < collider.hw + padding && Math.abs(z - collider.z) < collider.hz + padding);
+    Math.abs(x - collider.x) < collider.hw + padding + (collider.kind === 'furniture' ? 0.18 : 0)
+    && Math.abs(z - collider.z) < collider.hz + padding + (collider.kind === 'furniture' ? 0.18 : 0));
 }
 
 function hasLineOfSight(from, to) {
