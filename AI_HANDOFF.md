@@ -1303,3 +1303,14 @@ Build:
 - Blackboard/shelf props are skipped on room edges that have been opened as passages so they do not visually block new openings.
 - School enemy detects repeated local oscillation sooner and switches to an outer/perimeter route instead of staying in the same spot.
 - Flashlight battery drain increased 3x.
+
+## 2026-07-05 Room Wall / AI Route Regression Fix
+
+- Fixed room walls being removed too broadly:
+  - Rooms now register only 2-3 explicit openings.
+  - All non-opening room edges are walled again.
+- Added right-side school rooms to make the wider horizontal map actually populated.
+- Expanded school width by increasing `GRID_W`.
+- Enemy corridor routing now considers multiple vertical lanes (`gx` 6/12/18), not only the old left-side lane.
+- Desk chair backs were removed/flattened to eliminate the bright white vertical stick artifact.
+- Blackboard/shelf removal now only happens on actual registered room openings, not merely adjacent walkable cells.

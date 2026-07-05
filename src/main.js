@@ -279,7 +279,7 @@ const selectedMapCache = {
   mansion: { ready: false, generatedAt: 0 },
 };
 const CELL = 5.6;
-const GRID_W = 13;
+const GRID_W = 25;
 const GRID_H = 19;
 const GRID_HALF_W = (GRID_W - 1) / 2;
 const GRID_HALF_H = (GRID_H - 1) / 2;
@@ -494,6 +494,9 @@ const schoolRooms = [
   { id: 'nurse', name: '保健室', gx0: 9, gx1: 11, gz0: 1, gz1: 3, connector: [[8, 2], [7, 2], [6, 2]], sign: { gx: 8.45, gz: 2, side: 'west' } },
   { id: 'staff', name: '職員室', gx0: 1, gx1: 4, gz0: 8, gz1: 10, connector: [[5, 9], [6, 9]], sign: { gx: 4.55, gz: 9, side: 'east' } },
   { id: 'music', name: '音楽室', gx0: 8, gx1: 11, gz0: 8, gz1: 10, connector: [[7, 9], [6, 9]], sign: { gx: 7.45, gz: 9, side: 'west' } },
+  { id: 'classroom-b', name: '2年B組', gx0: 17, gx1: 22, gz0: 14, gz1: 17, connector: [[16, 16], [15, 16], [14, 16]], sign: { gx: 16.45, gz: 16, side: 'west' } },
+  { id: 'art', name: '美術室', gx0: 17, gx1: 22, gz0: 8, gz1: 10, connector: [[16, 9], [15, 9], [14, 9]], sign: { gx: 16.45, gz: 9, side: 'west' } },
+  { id: 'library', name: '図書室', gx0: 17, gx1: 22, gz0: 1, gz1: 3, connector: [[16, 2], [15, 2], [14, 2]], sign: { gx: 16.45, gz: 2, side: 'west' } },
 ];
 
 function getRoomAt(gx, gz) {
@@ -606,11 +609,47 @@ const roomAnchors = schoolRooms.map((room) => ({
 for (let i = 0; i < roomAnchors.length - 1; i += 1) {
   if (Math.random() < 0.92) carvePath(roomAnchors[i].gx, roomAnchors[i].gz, roomAnchors[i + 1].gx, roomAnchors[i + 1].gz);
 }
+
+function roomOpeningKey(room, side, index) {
+  return `${room.id}:${side}:${index}`;
+}
+
+const roomOpenings = new Set();
+
+function addRoomOpening(room, side, index) {
+  roomOpenings.add(roomOpeningKey(room, side, index));
+}
+
+function registerRoomOpenings() {
+  for (const room of schoolRooms) {
+    const side = room.sign.side;
+    const doorIndex = Math.round(side === 'east' || side === 'west' ? room.sign.gz : room.sign.gx);
+    addRoomOpening(room, side, doorIndex);
+    const candidates = [];
+    for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
+      if (walkable.has(gridKey(room.gx0 - 1, gz))) candidates.push({ side: 'west', index: gz, score: Math.abs(gz - doorIndex) + 0.1 });
+      if (walkable.has(gridKey(room.gx1 + 1, gz))) candidates.push({ side: 'east', index: gz, score: Math.abs(gz - doorIndex) + 0.1 });
+    }
+    for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
+      if (walkable.has(gridKey(gx, room.gz0 - 1))) candidates.push({ side: 'north', index: gx, score: Math.abs(gx - ((room.gx0 + room.gx1) / 2)) + 0.35 });
+      if (walkable.has(gridKey(gx, room.gz1 + 1))) candidates.push({ side: 'south', index: gx, score: Math.abs(gx - ((room.gx0 + room.gx1) / 2)) + 0.35 });
+    }
+    const unique = candidates
+      .filter((candidate) => roomOpeningKey(room, candidate.side, candidate.index) !== roomOpeningKey(room, side, doorIndex))
+      .sort((a, b) => a.score - b.score);
+    for (const candidate of unique.slice(0, 2)) addRoomOpening(room, candidate.side, candidate.index);
+  }
+}
+
+function isRoomOpening(room, side, index) {
+  return roomOpenings.has(roomOpeningKey(room, side, index));
+}
 for (let i = 0; i < 8; i += 1) {
   const a = roomAnchors[Math.floor(Math.random() * roomAnchors.length)];
   const b = roomAnchors[Math.floor(Math.random() * roomAnchors.length)];
   if (a && b && a !== b) carvePath(a.gx, a.gz, b.gx, b.gz);
 }
+registerRoomOpenings();
 
 function addBox(x, y, z, w, h, d, mat, collide = false, wall = false, castShadow = true, kind = null) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -635,20 +674,20 @@ function addRoomBoundaryWalls(room) {
   for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
     const west = worldFromGrid(room.gx0, gz);
     const east = worldFromGrid(room.gx1, gz);
-    if (!(doorOnWest && gz === doorZ) && !walkable.has(gridKey(room.gx0 - 1, gz))) {
+    if (!(doorOnWest && gz === doorZ) && !isRoomOpening(room, 'west', gz)) {
       addBox(west.x - CELL / 2, 2.05, west.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true, false);
     }
-    if (!(doorOnEast && gz === doorZ) && !walkable.has(gridKey(room.gx1 + 1, gz))) {
+    if (!(doorOnEast && gz === doorZ) && !isRoomOpening(room, 'east', gz)) {
       addBox(east.x + CELL / 2, 2.05, east.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true, false);
     }
   }
   for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
     const north = worldFromGrid(gx, room.gz0);
     const south = worldFromGrid(gx, room.gz1);
-    if (!walkable.has(gridKey(gx, room.gz0 - 1))) {
+    if (!isRoomOpening(room, 'north', gx)) {
       addBox(north.x, 2.05, north.z - CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
     }
-    if (!walkable.has(gridKey(gx, room.gz1 + 1))) {
+    if (!isRoomOpening(room, 'south', gx)) {
       addBox(south.x, 2.05, south.z + CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
     }
   }
@@ -1649,8 +1688,7 @@ function addDeskSet(x, z, rot = 0) {
   }
   localBox(group, -0.22, 0.8, -0.12, 0.32, 0.025, 0.22, paperMat);
   localBox(group, 0.26, 0.83, 0.16, 0.26, 0.06, 0.18, bookMat);
-  localBox(group, 0, 0.43, 0.72, 0.56, 0.1, 0.42, chairMat);
-  localBox(group, 0, 0.76, 0.87, 0.56, 0.62, 0.08, chairMat);
+  localBox(group, 0, 0.34, 0.68, 0.54, 0.1, 0.4, darkMat);
   group.position.set(x, 0, z);
   scene.add(group);
   if (inMansionBounds(x, z)) registerMansionObject(group);
@@ -1719,9 +1757,9 @@ function addRoomFixtures(room) {
     if (room.gx1 - room.gx0 >= 3 && room.id !== 'science') addDeskSet(center.x, center.z + 1.15, Math.PI / 2);
     // Furniture is kept near room edges so entrances and walking routes stay playable.
     const northOpen = Array.from({ length: room.gx1 - room.gx0 + 1 }, (_, i) => room.gx0 + i)
-      .some((gx) => walkable.has(gridKey(gx, room.gz0 - 1)));
+      .some((gx) => isRoomOpening(room, 'north', gx));
     const southOpen = Array.from({ length: room.gx1 - room.gx0 + 1 }, (_, i) => room.gx0 + i)
-      .some((gx) => walkable.has(gridKey(gx, room.gz1 + 1)));
+      .some((gx) => isRoomOpening(room, 'south', gx));
     if (!northOpen) addBox(center.x, 1.55, backZ, 2.6, 1.05, 0.08, signMat, false, false, false);
     if (!southOpen) addShelf(center.x, frontZ, 1.7, 0);
     if (room.id === 'science') {
@@ -2999,7 +3037,7 @@ function commitEnemyPath(path, target, mode) {
 function setEnemyDestination(x, z, mode = 'ROAMING') {
   const start = nearestReachableNode(enemy.position.x, enemy.position.z);
   const target = nearestPathableNodeTo(x, z);
-  if (!start || !target) return;
+  if (!start || !target) return false;
   let path = findPath(start.key, target.key);
   let finalTarget = target;
   if (!path.length && start.key !== target.key) {
@@ -3017,6 +3055,7 @@ function setEnemyDestination(x, z, mode = 'ROAMING') {
     }
   }
   commitEnemyPath(path, finalTarget, mode);
+  return path.length > 0 || start.key === finalTarget.key;
 }
 
 function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
@@ -3110,7 +3149,7 @@ function setEnemyDestinationViaCorridor(x, z, mode = 'INVESTIGATING', forceCente
         - (Math.hypot(b.x - x, b.z - z) + bRoom + bSight);
     });
   const centerCandidates = [...navNodes.values()]
-    .filter((node) => node.gx === 6 && node.key !== start.key)
+    .filter((node) => [6, 12, 18].includes(node.gx) && node.key !== start.key)
     .filter((node) => canEnemyMoveTo(node.x, node.z))
     .sort((a, b) => Math.hypot(a.x - enemy.position.x, a.z - enemy.position.z)
       - Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z));
@@ -3149,7 +3188,12 @@ function chooseRandomEnemyRoute(mode = 'ROAMING') {
   }
   if (!choices.length) choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
   const target = choices[Math.floor(Math.random() * choices.length)];
-  setEnemyDestination(target.x, target.z, mode);
+  if (!target || !setEnemyDestination(target.x, target.z, mode)) {
+    const fallback = [...navNodes.values()]
+      .filter((node) => node.key !== enemyData.targetKey)
+      .sort((a, b) => Math.random() - 0.5)[0];
+    if (fallback) setEnemyDestination(fallback.x, fallback.z, mode);
+  }
 }
 
 function chooseOuterLoopRoute(time, mode = 'SEARCHING') {
@@ -3164,13 +3208,14 @@ function chooseOuterLoopRoute(time, mode = 'SEARCHING') {
       const bScore = edgeScore(b) * 4 - Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z) * 0.35 + Math.random() * 6;
       return aScore - bScore;
     });
-  const target = choices[0];
-  if (!target) return false;
-  setEnemyDestination(target.x, target.z, mode);
-  enemyData.loopEscapeUntil = time + 8;
-  enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 10);
-  enemyData.repathAt = time + 1.4;
-  return true;
+  for (const target of choices.slice(0, 8)) {
+    if (!setEnemyDestination(target.x, target.z, mode)) continue;
+    enemyData.loopEscapeUntil = time + 8;
+    enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 10);
+    enemyData.repathAt = time + 1.4;
+    return true;
+  }
+  return false;
 }
 
 function chooseSuperAlertRoute(time) {
