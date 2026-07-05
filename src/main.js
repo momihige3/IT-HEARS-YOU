@@ -1112,7 +1112,7 @@ function isClearOfMansionUtilities(x, z, minDistance = 3.2) {
   return true;
 }
 
-function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.34) {
+function canPlaceFurnitureAt(x, z, hw = 0.72, hz = 0.72, padding = 0.56) {
   if (colliders.some((collider) =>
     Math.abs(x - collider.x) < collider.hw + hw + padding
     && Math.abs(z - collider.z) < collider.hz + hz + padding)) return false;
@@ -1365,7 +1365,7 @@ function buildMansionSecondFloor() {
       const rot = Math.random() < 0.5 ? 0 : Math.PI / 2;
       const fx = cell.x + (Math.random() < 0.5 ? -1.2 : 1.2);
       const fz = cell.z + (Math.random() < 0.5 ? -1.1 : 1.1);
-      if (canPlaceFurnitureAt(fx, fz, Math.abs(Math.cos(rot)) > 0.5 ? 0.85 : 0.22, Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : 0.85, 0.52)
+      if (canPlaceFurnitureAt(fx, fz, Math.abs(Math.cos(rot)) > 0.5 ? 0.85 : 0.22, Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : 0.85, 0.72)
         && canEnemyMoveIgnoringFurniture(cell.x, cell.z, 0.38)) {
         addShelf(fx, fz, 1.7, rot);
       }
@@ -1373,7 +1373,7 @@ function buildMansionSecondFloor() {
       const rot = Math.random() < 0.5 ? 0 : Math.PI / 2;
       const fx = cell.x + (Math.random() - 0.5) * 1.4;
       const fz = cell.z + (Math.random() - 0.5) * 1.4;
-      if (canPlaceFurnitureAt(fx, fz, Math.abs(Math.cos(rot)) > 0.5 ? 0.58 : 0.88, Math.abs(Math.cos(rot)) > 0.5 ? 0.88 : 0.58, 0.52)
+      if (canPlaceFurnitureAt(fx, fz, Math.abs(Math.cos(rot)) > 0.5 ? 0.58 : 0.88, Math.abs(Math.cos(rot)) > 0.5 ? 0.88 : 0.58, 0.72)
         && canEnemyMoveIgnoringFurniture(cell.x, cell.z, 0.38)) {
         addDeskSet(fx, fz, rot);
       }
@@ -1820,9 +1820,7 @@ function addDeskSet(x, z, rot = 0) {
   const group = new THREE.Group();
   group.rotation.y = rot;
   localBox(group, 0, 0.72, 0, 1.18, 0.1, 0.7, deskTopMat);
-  for (const sx of [-0.46, 0.46]) {
-    for (const sz of [-0.25, 0.25]) localBox(group, sx, 0.32, sz, 0.085, 0.54, 0.085, darkMat);
-  }
+  localBox(group, 0, 0.36, 0, 0.58, 0.5, 0.28, darkMat);
   localBox(group, -0.22, 0.8, -0.12, 0.32, 0.025, 0.22, paperMat);
   localBox(group, 0.26, 0.83, 0.16, 0.26, 0.06, 0.18, bookMat);
   localBox(group, 0, 0.34, 0.68, 0.54, 0.1, 0.4, darkMat);
@@ -1888,10 +1886,16 @@ function addRoomFixtures(room) {
   const frontZ = worldFromGrid(room.gx0, room.gz1).z + CELL / 2 - 0.28;
   const leftX = worldFromGrid(room.gx0, room.gz0).x - CELL / 2 + 1.15;
   const rightX = worldFromGrid(room.gx1, room.gz1).x + CELL / 2 - 1.15;
+  const tryDeskSet = (x, z, rot = 0) => {
+    const sideways = Math.abs(Math.cos(rot)) <= 0.5;
+    const hw = sideways ? 0.88 : 0.58;
+    const hz = sideways ? 0.58 : 0.88;
+    if (canPlaceFurnitureAt(x, z, hw, hz, 0.42)) addDeskSet(x, z, rot);
+  };
   if (room.id !== 'breaker') {
-    addDeskSet(leftX, center.z - 1.15, Math.random() < 0.5 ? 0 : Math.PI);
-    addDeskSet(rightX, center.z - 1.15, Math.random() < 0.5 ? 0 : Math.PI);
-    if (room.gx1 - room.gx0 >= 3 && room.id !== 'science') addDeskSet(center.x, center.z + 1.15, Math.PI / 2);
+    tryDeskSet(leftX, center.z - 1.25, Math.random() < 0.5 ? 0 : Math.PI);
+    tryDeskSet(rightX, center.z - 1.25, Math.random() < 0.5 ? 0 : Math.PI);
+    if (room.gx1 - room.gx0 >= 3 && room.id !== 'science') tryDeskSet(center.x, center.z + 1.35, Math.PI / 2);
     // Furniture is kept near room edges so entrances and walking routes stay playable.
     const northOpen = Array.from({ length: room.gx1 - room.gx0 + 1 }, (_, i) => room.gx0 + i)
       .some((gx) => isRoomOpening(room, 'north', gx));
@@ -1908,7 +1912,6 @@ function addRoomFixtures(room) {
       addBox(rightX - 0.42, 0.95, center.z + 1.18, 0.42, 0.35, 0.68, paperMat, false, false, false);
     } else if (room.id === 'music') {
       addBox(leftX, 0.78, center.z + 1.1, 1.15, 1.15, 0.28, material(0x3d2a1d, 0.7, 0.04), true, false, false, 'furniture');
-      for (let i = 0; i < 4; i += 1) addBox(center.x - 1.25 + i * 0.2, 1.47, center.z + 1.26, 0.055, 0.38, 0.035, paperMat, false, false, false);
     }
     const sideX = room.sign.side === 'east'
       ? worldFromGrid(room.gx0, room.gz0).x - CELL / 2 + 0.08
@@ -6059,7 +6062,7 @@ function scheduleNextRoar(time) {
 
 function triggerSonarRoar(time) {
   state.roarUntil = time + 3;
-  state.nextRoarDamageAt = time + 0.2;
+  state.nextRoarDamageAt = time;
   state.shakeUntil = Math.max(state.shakeUntil, time + 3);
   state.shakePower = Math.max(state.shakePower, 1.35);
   scheduleNextRoar(time);
@@ -6091,10 +6094,13 @@ function updateSonarRoar(time) {
   if (state.mapMode === 'mansion') return;
   if (!state.nextRoarAt) scheduleNextRoar(time);
   if (time >= state.nextRoarAt) triggerSonarRoar(time);
-  if (time < state.roarUntil && time >= state.nextRoarDamageAt) {
+  if (time < state.roarUntil) {
+    const elapsed = Math.min(0.2, Math.max(0, time - (state.nextRoarDamageAt || time)));
     const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
-    if (!state.hidden && distance <= 30) damagePlayer(1, 'roar');
-    state.nextRoarDamageAt = time + 0.2;
+    if (elapsed > 0 && !state.hidden && distance <= 30) damagePlayer(elapsed * 10, 'roar');
+    state.nextRoarDamageAt = time;
+  } else {
+    state.nextRoarDamageAt = time;
   }
 }
 
@@ -6134,10 +6140,7 @@ function updatePlayer(dt) {
   state.moveMode = running ? 'RUNNING' : 'WALKING';
   state.noise = active ? (running ? 88 : 38) * state.noiseMultiplier : 0;
   if (active && !state.hidden) {
-    const memoryBoost = 1 + enemyData.alertMemory * 0.6;
-    const movementAlertGain = running ? 3.5 : 0.7;
-    setDetection(state.detection + dt * movementAlertGain * memoryBoost);
-    enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.004 : 0.0012), 0, 1);
+    enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + dt * (running ? 0.0014 : 0.0004), 0, 1);
   }
   const nextX = camera.position.x + move.x * speed * dt;
   const nextZ = camera.position.z + move.z * speed * dt;
@@ -6158,10 +6161,13 @@ function updateAmbientMovementSuspicion(dt) {
   if (!state.started || state.ended || state.caught || state.hidden || clock.elapsedTime < state.seatedUntil) return;
   if (state.noise <= 1) return;
   const running = state.moveMode === 'RUNNING';
-  const baseGain = running ? 2.4 : 0.55;
-  const memoryScale = 1 + enemyData.alertMemory * 0.5;
-  const waterScale = isPlayerInWaterTrap() ? 1.8 : 1;
-  setDetection(state.detection + dt * baseGain * memoryScale * waterScale);
+  const baseGain = running ? 0.75 : 0.12;
+  const enemyPosition = state.mapMode === 'mansion' && womanEnemy?.group ? womanEnemy.group.position : enemy.position;
+  const distance = enemyPosition ? Math.hypot(enemyPosition.x - camera.position.x, enemyPosition.z - camera.position.z) : 0;
+  const distanceScale = distance > 40 ? 0.18 : distance > 26 ? 0.34 : distance > 16 ? 0.62 : 1;
+  const memoryScale = 1 + enemyData.alertMemory * 0.25;
+  const waterScale = isPlayerInWaterTrap() ? 1.45 : 1;
+  setDetection(state.detection + dt * baseGain * memoryScale * waterScale * distanceScale);
   enemyData.alertMemory = THREE.MathUtils.clamp(
     enemyData.alertMemory + dt * (running ? 0.0024 : 0.0007),
     0,

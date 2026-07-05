@@ -1424,3 +1424,20 @@ Build:
   - Browser debug walk:
     - School: 330 walkable cells, no missing floor/ceiling
     - Mansion: 126 walkable cells, no missing floor/ceiling
+
+## 2026-07-05 Roar Damage / Alert Gain / Furniture Spacing Fix
+
+- SONAR roar:
+  - Changed the roar damage-over-time from 0.2-second chunk ticks to continuous elapsed-time damage.
+  - The active roar damage now stops immediately when the player leaves the 30m range or hides.
+- Alert gain:
+  - Removed duplicate out-of-range movement detection gain from the player movement loop.
+  - Kept ambient movement suspicion as the single continuous out-of-range source.
+  - Added distance falloff so running far outside detection range raises alert much more slowly.
+- Furniture:
+  - Removed the four bright vertical bars near desks by replacing visible desk legs with a darker center support.
+  - Removed the four white decorative bars near the music-room desk/piano prop.
+  - Increased furniture placement padding, especially in the mansion, to leave more passable gaps between objects.
+- Verified:
+  - `node --check src/main.js`
+  - `npm run build`
