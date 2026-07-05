@@ -1397,3 +1397,30 @@ Build:
   - Browser debug walk:
     - School: 327 walkable cells, no missing floor/ceiling
     - Mansion: 123 walkable cells, no missing floor/ceiling
+
+## 2026-07-05 Mansion Ghost / Roar Damage / Locker Spacing Fix
+
+- Mansion placement:
+  - Furniture now checks corridor clearance before spawning.
+  - Mansion lockers require wider clearance from furniture and their front/exit points.
+  - Forced mansion locker placement also avoids nearby furniture.
+- Mansion ghost:
+  - Normal movement now ignores furniture/object colliders and only respects walls.
+  - Wall phasing remains temporary and now triggers on a 60-second cadence.
+  - Mansion path graph now ignores furniture, so furniture clusters should not trap the ghost route.
+- Ghost double:
+  - If the player is running, the double directly rushes the player from anywhere on the map.
+  - It accelerates while the player keeps running.
+  - When the player stops running, it loses the player and returns to roaming.
+- Ghost illusion event:
+  - Each illusion now rushes to the player position captured at spawn time.
+  - If it touches the player, it clings to the screen for 5 seconds before disappearing.
+- SONAR roar:
+  - Roar hit now deals 20 damage if the player is within 30m and not hiding.
+  - During the roar, the player takes 1 damage every 0.2 seconds while within 30m and not hiding.
+- Verified:
+  - `node --check src/main.js`
+  - `npm run build`
+  - Browser debug walk:
+    - School: 330 walkable cells, no missing floor/ceiling
+    - Mansion: 126 walkable cells, no missing floor/ceiling

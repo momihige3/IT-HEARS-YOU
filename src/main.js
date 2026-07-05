@@ -221,6 +221,7 @@ const state = {
   seatedUntil: 0,
   nextRoarAt: 0,
   roarUntil: 0,
+  nextRoarDamageAt: Infinity,
   shakeUntil: 0,
   shakePower: 0,
   nextSoundRippleAt: 0,
@@ -1362,9 +1363,20 @@ function buildMansionSecondFloor() {
       // Keep the mansion spawn point and breaker route clear.
     } else if (Math.random() < 0.18) {
       const rot = Math.random() < 0.5 ? 0 : Math.PI / 2;
-      addShelf(cell.x + (Math.random() < 0.5 ? -1.2 : 1.2), cell.z + (Math.random() < 0.5 ? -1.1 : 1.1), 1.7, rot);
+      const fx = cell.x + (Math.random() < 0.5 ? -1.2 : 1.2);
+      const fz = cell.z + (Math.random() < 0.5 ? -1.1 : 1.1);
+      if (canPlaceFurnitureAt(fx, fz, Math.abs(Math.cos(rot)) > 0.5 ? 0.85 : 0.22, Math.abs(Math.cos(rot)) > 0.5 ? 0.22 : 0.85, 0.52)
+        && canEnemyMoveIgnoringFurniture(cell.x, cell.z, 0.38)) {
+        addShelf(fx, fz, 1.7, rot);
+      }
     } else if (Math.random() < 0.2) {
-      addDeskSet(cell.x + (Math.random() - 0.5) * 1.4, cell.z + (Math.random() - 0.5) * 1.4, Math.random() < 0.5 ? 0 : Math.PI / 2);
+      const rot = Math.random() < 0.5 ? 0 : Math.PI / 2;
+      const fx = cell.x + (Math.random() - 0.5) * 1.4;
+      const fz = cell.z + (Math.random() - 0.5) * 1.4;
+      if (canPlaceFurnitureAt(fx, fz, Math.abs(Math.cos(rot)) > 0.5 ? 0.58 : 0.88, Math.abs(Math.cos(rot)) > 0.5 ? 0.88 : 0.58, 0.52)
+        && canEnemyMoveIgnoringFurniture(cell.x, cell.z, 0.38)) {
+        addDeskSet(fx, fz, rot);
+      }
     }
   }
   mansionStartPoint = { x: offsetX, z: 28 };
@@ -1587,6 +1599,8 @@ function buildMansionSecondFloor() {
         && hasWallBehindLocker(side)
         && isClearOfMansionUtilities(x, z, 6.2)
         && isClearOfMansionUtilities(exitX, exitZ, 5.4)
+        && !hasFurnitureOverlap(node.x, node.z, 1.45)
+        && !hasFurnitureOverlap(x, z, 1.75)
         && isLockerFrontClear(x, z, side.yaw, 0.38)
         && clearancePoints.every(([px, pz, padding]) => !hasFurnitureOverlap(px, pz, padding))
         && canEnemyMoveTo(exitX, exitZ, 0.8)
@@ -1641,6 +1655,8 @@ function buildMansionSecondFloor() {
         const exitZ = node.z - candidate.z * 0.7;
         return !nearestMansionNode(behindX, behindZ, 1.05)
           && !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.32)
+          && !hasFurnitureOverlap(node.x, node.z, 1.45)
+          && !hasFurnitureOverlap(node.x + candidate.x, node.z + candidate.z, 1.7)
           && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 6.2)
           && isClearOfMansionUtilities(exitX, exitZ, 5.4)
           && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
@@ -1684,6 +1700,8 @@ function buildMansionSecondFloor() {
         const exitX = node.x - candidate.x * 0.8;
         const exitZ = node.z - candidate.z * 0.8;
         return !hasColliderOverlap(node.x + candidate.x, node.z + candidate.z, 0.22)
+          && !hasFurnitureOverlap(node.x, node.z, 1.35)
+          && !hasFurnitureOverlap(node.x + candidate.x, node.z + candidate.z, 1.6)
           && isClearOfMansionUtilities(node.x + candidate.x, node.z + candidate.z, 6.2)
           && isClearOfMansionUtilities(exitX, exitZ, 5.4)
           && isLockerFrontClear(node.x + candidate.x, node.z + candidate.z, candidate.yaw, 0.38)
@@ -2554,7 +2572,7 @@ function createWomanEnemy() {
     x: start.x,
     z: start.z,
     target: null,
-    nextPhaseAt: 30,
+    nextPhaseAt: 60,
     phaseChargeUntil: 0,
     phaseUntil: 0,
     stunnedUntil: 0,
@@ -2583,6 +2601,7 @@ ghostDouble.group.visible = false;
 ghostDouble.active = false;
 ghostDouble.spawnAt = Infinity;
 ghostDouble.despawnAt = 0;
+ghostDouble.runChaseSpeed = 0;
 ghostDouble.visualMaterials = [];
 ghostDouble.group.traverse((child) => {
   if (!child.material) return;
@@ -2605,6 +2624,7 @@ const ghostIllusions = Array.from({ length: 10 }, () => {
   illusion.despawnAt = 0;
   illusion.speed = 5.2;
   illusion.target = new THREE.Vector3();
+  illusion.clingUntil = 0;
   illusion.group.traverse((child) => {
     if (!child.material) return;
     const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -4548,6 +4568,7 @@ function respawnPlayer() {
   setBreaker(false, false);
   state.seatedUntil = 0;
   state.roarUntil = 0;
+  state.nextRoarDamageAt = Infinity;
   scheduleNextRoar(clock.elapsedTime);
   state.nextSoundRippleAt = 0;
   state.nextTrapAt = 0;
@@ -4580,7 +4601,7 @@ function respawnPlayer() {
     : mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z };
   womanEnemy.group.position.set(womanStart.x, 0, womanStart.z);
   womanEnemy.target = null;
-  womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
+  womanEnemy.nextPhaseAt = clock.elapsedTime + 60;
   womanEnemy.phaseChargeUntil = 0;
   womanEnemy.phaseUntil = 0;
   womanEnemy.stunnedUntil = 0;
@@ -5083,7 +5104,7 @@ async function startGame(mode = 'school') {
     const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
     camera.position.set(safeStart.x, 1.68, safeStart.z);
     camera.rotation.set(0, 0, 0);
-    womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
+    womanEnemy.nextPhaseAt = clock.elapsedTime + 60;
     womanEnemy.phaseChargeUntil = 0;
     womanEnemy.stunnedUntil = 0;
     state.ghostLightSeconds = 0;
@@ -6038,6 +6059,7 @@ function scheduleNextRoar(time) {
 
 function triggerSonarRoar(time) {
   state.roarUntil = time + 3;
+  state.nextRoarDamageAt = time + 0.2;
   state.shakeUntil = Math.max(state.shakeUntil, time + 3);
   state.shakePower = Math.max(state.shakePower, 1.35);
   scheduleNextRoar(time);
@@ -6050,6 +6072,9 @@ function triggerSonarRoar(time) {
   enemyData.globalStuckSince = 0;
   enemyData.globalStuckAnchorX = enemy.position.x;
   enemyData.globalStuckAnchorZ = enemy.position.z;
+  if (!state.hidden && distance <= 30) {
+    damagePlayer(20, 'roar');
+  }
   if (!state.hidden && distance <= runningDetectionRange) {
     state.seatedUntil = time + 5;
     state.noise = 0;
@@ -6066,6 +6091,11 @@ function updateSonarRoar(time) {
   if (state.mapMode === 'mansion') return;
   if (!state.nextRoarAt) scheduleNextRoar(time);
   if (time >= state.nextRoarAt) triggerSonarRoar(time);
+  if (time < state.roarUntil && time >= state.nextRoarDamageAt) {
+    const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
+    if (!state.hidden && distance <= 30) damagePlayer(1, 'roar');
+    state.nextRoarDamageAt = time + 0.2;
+  }
 }
 
 function updatePlayer(dt) {
@@ -6728,7 +6758,7 @@ function buildMansionPathGraph() {
       if (!candidate) continue;
       const midX = (candidate.x + node.x) / 2;
       const midZ = (candidate.z + node.z) / 2;
-      if (canEnemyMoveTo(candidate.x, candidate.z, 0.22) && canEnemyMoveTo(midX, midZ, 0.22)) neighbors.push(candidate);
+      if (canEnemyMoveIgnoringFurniture(candidate.x, candidate.z, 0.22) && canEnemyMoveIgnoringFurniture(midX, midZ, 0.22)) neighbors.push(candidate);
     }
     mansionPathNeighbors.set(key, neighbors);
   }
@@ -6958,12 +6988,14 @@ function spawnGhostDouble(time) {
   ghostDouble.despawnAt = time + 60;
   ghostDouble.target = nearestMansionNode(node.x, node.z, 8);
   ghostDouble.repathAt = time + 0.8;
+  ghostDouble.runChaseSpeed = 0;
 }
 
 function despawnGhostDouble(time) {
   ghostDouble.group.visible = false;
   ghostDouble.active = false;
   ghostDouble.target = null;
+  ghostDouble.runChaseSpeed = 0;
   ghostDouble.spawnAt = time + 60;
   ghostDouble.despawnAt = 0;
 }
@@ -6982,7 +7014,17 @@ function updateGhostDouble(dt, time) {
     despawnGhostDouble(time);
     return;
   }
-  if (!ghostDouble.target || time >= ghostDouble.repathAt || Math.hypot(ghostDouble.group.position.x - ghostDouble.target.x, ghostDouble.group.position.z - ghostDouble.target.z) < 0.7) {
+  const playerRunningInMansion = !state.hidden && state.moveMode === 'RUNNING' && state.noise > 8;
+  if (playerRunningInMansion) {
+    ghostDouble.target = { x: camera.position.x, z: camera.position.z };
+    ghostDouble.runChaseSpeed = Math.min(24, (ghostDouble.runChaseSpeed || 7.5) + dt * 5.5);
+    ghostDouble.repathAt = time + 0.18;
+  } else if (ghostDouble.runChaseSpeed > 0) {
+    ghostDouble.runChaseSpeed = 0;
+    ghostDouble.target = null;
+    ghostDouble.repathAt = 0;
+  }
+  if (!playerRunningInMansion && (!ghostDouble.target || time >= ghostDouble.repathAt || Math.hypot(ghostDouble.group.position.x - ghostDouble.target.x, ghostDouble.group.position.z - ghostDouble.target.z) < 0.7)) {
     const node = mansionNodes
       .filter((candidate) => Math.hypot(candidate.x - ghostDouble.group.position.x, candidate.z - ghostDouble.group.position.z) > 8)
       .sort(() => Math.random() - 0.5)[0] || nearestMansionNode(ghostDouble.group.position.x, ghostDouble.group.position.z, 6);
@@ -6994,7 +7036,7 @@ function updateGhostDouble(dt, time) {
     const dz = ghostDouble.target.z - ghostDouble.group.position.z;
     const len = Math.hypot(dx, dz);
     if (len > 0.05) {
-      const speed = 4.8;
+      const speed = playerRunningInMansion ? ghostDouble.runChaseSpeed : 4.8;
       const step = speed * dt;
       const prevX = ghostDouble.group.position.x;
       const prevZ = ghostDouble.group.position.z;
@@ -7048,10 +7090,12 @@ function spawnGhostIllusions(time) {
   illusion.group.position.set(node.x, 0.28, node.z);
   illusion.group.rotation.set(0, Math.atan2(camera.position.x - node.x, camera.position.z - node.z), 0);
   if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
+  illusion.target.set(camera.position.x, 0.28, camera.position.z);
+  illusion.clingUntil = 0;
   illusion.group.visible = true;
   illusion.active = true;
-  illusion.despawnAt = time + 8;
-  illusion.speed = 5.8 + Math.random() * 0.9;
+  illusion.despawnAt = time + 5.5;
+  illusion.speed = 10.5 + Math.random() * 1.8;
   state.ghostIllusionQueue = Math.max(0, state.ghostIllusionQueue - 1);
   if (state.ghostIllusionQueue <= 0) scheduleGhostIllusions(time);
   else state.nextGhostIllusionAt = Infinity;
@@ -7075,13 +7119,32 @@ function updateGhostIllusions(dt, time) {
     if (time >= illusion.despawnAt) {
       illusion.group.visible = false;
       illusion.active = false;
+      illusion.clingUntil = 0;
       if (state.ghostIllusionQueue > 0) scheduleNextQueuedGhostIllusion(time);
       continue;
     }
-    const dx = camera.position.x - illusion.group.position.x;
-    const dz = camera.position.z - illusion.group.position.z;
+    if (time < illusion.clingUntil) {
+      camera.getWorldDirection(forward);
+      illusion.group.position.set(
+        camera.position.x + forward.x * 0.78,
+        camera.position.y - 0.34,
+        camera.position.z + forward.z * 0.78,
+      );
+      illusion.group.rotation.y = camera.rotation.y + Math.PI;
+      if (illusion.externalModel) illusion.externalModel.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
+      continue;
+    }
+    const dx = illusion.target.x - illusion.group.position.x;
+    const dz = illusion.target.z - illusion.group.position.z;
     const len = Math.hypot(dx, dz);
-    if (len < 0.72) {
+    if (!state.hidden && Math.hypot(camera.position.x - illusion.group.position.x, camera.position.z - illusion.group.position.z) < 0.82) {
+      illusion.clingUntil = time + 5;
+      illusion.despawnAt = illusion.clingUntil;
+      state.seatedUntil = Math.max(state.seatedUntil, time + 1.2);
+      flashScreen('red', 0.42);
+      continue;
+    }
+    if (len < 0.45) {
       illusion.group.visible = false;
       illusion.active = false;
       if (state.ghostIllusionQueue > 0) scheduleNextQueuedGhostIllusion(time);
@@ -7148,7 +7211,7 @@ function updateWomanEnemy(dt, time) {
   if (time >= womanEnemy.nextPhaseAt) {
     womanEnemy.phaseChargeUntil = time + 1.0;
     womanEnemy.phaseUntil = time + 11.0;
-    womanEnemy.nextPhaseAt = time + 40;
+    womanEnemy.nextPhaseAt = time + 60;
   }
   const phaseCharging = time < womanEnemy.phaseChargeUntil;
   let phasing = !phaseCharging && time < womanEnemy.phaseUntil;
@@ -7279,13 +7342,13 @@ function updateWomanEnemy(dt, time) {
       const prevZ = womanEnemy.group.position.z;
       const nx = womanEnemy.group.position.x + (dx / len) * step;
       const nz = womanEnemy.group.position.z + (dz / len) * step;
-      if (phasing || canEnemyMoveTo(nx, nz, 0.28)) {
+      if (phasing || canEnemyMoveIgnoringFurniture(nx, nz, 0.28)) {
         womanEnemy.group.position.x = nx;
         womanEnemy.group.position.z = nz;
       } else {
         const sideA = { x: dz / len, z: -dx / len };
         const sideB = { x: -dz / len, z: dx / len };
-        const slide = [sideA, sideB].find((side) => canEnemyMoveTo(womanEnemy.group.position.x + side.x * step, womanEnemy.group.position.z + side.z * step, 0.28));
+        const slide = [sideA, sideB].find((side) => canEnemyMoveIgnoringFurniture(womanEnemy.group.position.x + side.x * step, womanEnemy.group.position.z + side.z * step, 0.28));
         if (slide) {
           womanEnemy.group.position.x += slide.x * step;
           womanEnemy.group.position.z += slide.z * step;
