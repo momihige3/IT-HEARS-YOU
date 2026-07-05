@@ -1570,3 +1570,24 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Train Daruma / Ghost Presentation Fix
+
+- Daruma 3D cleanup:
+  - Removed the red eye-ring meshes that appeared as red bars over the Daruma eyes.
+  - Removed the eyebrow meshes entirely because they made the Daruma look worried/cute.
+  - Kept the large black eyes / face panel direction and adjusted the model closer to the provided Daruma reference.
+- Train ghost event:
+  - Ghost event duration changed to `3–6s`.
+  - Ghost reappearance interval changed to `10–30s`.
+  - While active, the ghost is fixed roughly 2m in front of the player so it is visible during the event.
+- Game over visuals:
+  - Ghost game over now uses the existing eye scare image.
+  - Daruma game over now uses `public/images/daruma_gameover.png`, copied from the provided reference image.
+  - Game over text card receives a darker background / lighter text for readability.
+  - Daruma game over clears active train ghost state so the Daruma and ghost presentation do not overlap.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
