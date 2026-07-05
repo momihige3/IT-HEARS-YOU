@@ -275,6 +275,8 @@ const darumaState = {
   ghostUntil: 0,
   ghostNextAt: Infinity,
   noiseUntil: 0,
+  speedRound: false,
+  clearBannerUntil: 0,
   monster: null,
   ghost: null,
 };
@@ -4790,6 +4792,7 @@ function endGame(win) {
     });
   }
   document.body.classList.remove('eyes-closed', 'train-noise', 'train-mode');
+  document.body.classList.remove('ghost-eye-danger', 'train-clear');
   stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
   if (win) playClearSound();
@@ -5000,25 +5003,110 @@ function setDarumaFacingPlayer(facingPlayer) {
 
 function makeDarumaMonster() {
   const group = new THREE.Group();
-  const redMat = new THREE.MeshStandardMaterial({ color: 0x8d0707, roughness: 0.62, metalness: 0.05, emissive: 0x250000, emissiveIntensity: 0.2 });
-  const faceMat = new THREE.MeshStandardMaterial({ color: 0xd8bda1, roughness: 0.8, metalness: 0.0 });
-  const blackMat = new THREE.MeshBasicMaterial({ color: 0x050000 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.25, 32, 24), redMat);
-  body.scale.set(1.05, 1.22, 0.92);
-  body.position.y = 1.25;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  const grd = ctx.createRadialGradient(210, 150, 10, 250, 280, 360);
+  grd.addColorStop(0, '#c9261e');
+  grd.addColorStop(0.48, '#8a0808');
+  grd.addColorStop(1, '#260203');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 260; i += 1) {
+    ctx.strokeStyle = Math.random() < 0.72 ? 'rgba(255,130,72,.12)' : 'rgba(20,0,0,.28)';
+    ctx.lineWidth = 0.6 + Math.random() * 2.4;
+    const x = Math.random() * 512;
+    ctx.beginPath();
+    ctx.moveTo(x, Math.random() * 512);
+    ctx.bezierCurveTo(x + Math.random() * 80 - 40, 160, x + Math.random() * 140 - 70, 330, x + Math.random() * 90 - 45, 512);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(18,0,0,.32)';
+  for (let i = 0; i < 22; i += 1) {
+    ctx.beginPath();
+    ctx.ellipse(256 + (Math.random() - 0.5) * 330, 120 + Math.random() * 300, 22 + Math.random() * 60, 5 + Math.random() * 15, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const darumaTex = new THREE.CanvasTexture(canvas);
+  darumaTex.colorSpace = THREE.SRGBColorSpace;
+  const redMat = new THREE.MeshStandardMaterial({
+    color: 0x9b0b08,
+    roughness: 0.52,
+    metalness: 0.02,
+    map: darumaTex,
+    emissive: 0x250000,
+    emissiveIntensity: 0.16,
+  });
+  const faceMat = new THREE.MeshStandardMaterial({ color: 0xe0c1a1, roughness: 0.72, metalness: 0.0 });
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x070000, roughness: 0.46, metalness: 0.05 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xa57a20, roughness: 0.5, metalness: 0.35, emissive: 0x2c1500, emissiveIntensity: 0.18 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.32, 48, 36), redMat);
+  body.scale.set(1.08, 1.26, 0.96);
+  body.position.y = 1.22;
   group.add(body);
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.72, 24, 16), faceMat);
-  face.scale.set(0.86, 0.55, 0.16);
-  face.position.set(0, 1.52, 0.86);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.82, 36, 18), faceMat);
+  belly.scale.set(0.92, 0.68, 0.12);
+  belly.position.set(0, 0.98, 1.08);
+  group.add(belly);
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.78, 36, 18), faceMat);
+  face.scale.set(0.92, 0.6, 0.15);
+  face.position.set(0, 1.72, 1.0);
   group.add(face);
   for (const sx of [-0.28, 0.28]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), blackMat);
-    eye.position.set(sx, 1.6, 1.02);
+    const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 12), new THREE.MeshStandardMaterial({ color: 0xf3eee4, roughness: 0.35 }));
+    eyeWhite.scale.set(1, 0.72, 0.18);
+    eyeWhite.position.set(sx, 1.78, 1.14);
+    group.add(eyeWhite);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.072, 14, 8), blackMat);
+    eye.position.set(sx, 1.78, 1.25);
     group.add(eye);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.055, 0.045), blackMat);
+    brow.position.set(sx, 1.95, 1.2);
+    brow.rotation.z = sx < 0 ? -0.38 : 0.38;
+    group.add(brow);
   }
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.055, 0.03), blackMat);
-  mouth.position.set(0, 1.33, 1.03);
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 8, 18, Math.PI), blackMat);
+  mouth.position.set(0, 1.52, 1.17);
+  mouth.rotation.x = Math.PI;
   group.add(mouth);
+  for (const sx of [-0.36, 0.36]) {
+    const moustache = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.58, 10), blackMat);
+    moustache.position.set(sx, 1.5, 1.17);
+    moustache.rotation.z = sx < 0 ? 1.03 : -1.03;
+    moustache.rotation.x = Math.PI / 2;
+    group.add(moustache);
+  }
+  const kanji = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.035), goldMat);
+  kanji.position.set(0, 0.98, 1.24);
+  group.add(kanji);
+  const kanjiStroke1 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.045), blackMat);
+  kanjiStroke1.position.set(0, 1.04, 1.27);
+  group.add(kanjiStroke1);
+  const kanjiStroke2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28, 0.045), blackMat);
+  kanjiStroke2.position.set(0, 0.96, 1.27);
+  group.add(kanjiStroke2);
+  for (const sx of [-1.18, 1.18]) {
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.56, 8, 14), redMat);
+    arm.position.set(sx, 1.1, 0.12);
+    arm.rotation.z = sx < 0 ? -0.38 : 0.38;
+    group.add(arm);
+  }
+  const base = new THREE.Mesh(new THREE.TorusGeometry(1.08, 0.09, 12, 56), goldMat);
+  base.position.y = 0.22;
+  base.rotation.x = Math.PI / 2;
+  group.add(base);
+  const top = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.055, 10, 40), goldMat);
+  top.position.y = 2.46;
+  top.rotation.x = Math.PI / 2;
+  group.add(top);
+  const spotTarget = new THREE.Object3D();
+  spotTarget.position.set(0, 1.1, 0.2);
+  group.add(spotTarget);
+  const spot = new THREE.SpotLight(0xffe2b0, 3.6, 11, Math.PI / 5.6, 0.45, 1.4);
+  spot.position.set(0, 4.0, 1.1);
+  spot.target = spotTarget;
+  group.add(spot);
   group.position.set(TRAIN_OFFSET_X, 0, trainDarumaZ(1));
   group.rotation.y = Math.PI;
   addTrainObject(group);
@@ -5052,6 +5140,9 @@ function buildTrainMap() {
   const wall = new THREE.MeshStandardMaterial({ color: 0x5d6366, roughness: 0.82, metalness: 0.08 });
   const seat = new THREE.MeshStandardMaterial({ color: 0x253d59, roughness: 0.7, metalness: 0.05 });
   const trim = new THREE.MeshStandardMaterial({ color: 0x111517, roughness: 0.65, metalness: 0.25 });
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0x071012, roughness: 0.38, metalness: 0.18, emissive: 0x061d28, emissiveIntensity: 0.35 });
+  const adMat = new THREE.MeshStandardMaterial({ color: 0xd8d4be, roughness: 0.7, metalness: 0.0 });
+  const bagMat = new THREE.MeshStandardMaterial({ color: 0x5e3d27, roughness: 0.82, metalness: 0.02 });
   const totalLength = TRAIN_CAR_COUNT * TRAIN_CAR_LENGTH;
   const centerZ = TRAIN_START_Z - totalLength / 2;
   const box = (x, y, z, w, h, d, mat) => {
@@ -5067,14 +5158,32 @@ function buildTrainMap() {
   box(TRAIN_OFFSET_X, 1.55, TRAIN_START_Z + 0.56, TRAIN_WIDTH, 3.1, 0.16, wall);
   for (let i = 0; i < TRAIN_CAR_COUNT; i += 1) {
     const carCenterZ = TRAIN_START_Z - i * TRAIN_CAR_LENGTH - TRAIN_CAR_LENGTH / 2;
-    box(TRAIN_OFFSET_X - 1.45, 0.52, carCenterZ, 0.7, 0.38, TRAIN_CAR_LENGTH - 2.4, seat);
-    box(TRAIN_OFFSET_X + 1.45, 0.52, carCenterZ, 0.7, 0.38, TRAIN_CAR_LENGTH - 2.4, seat);
-    box(TRAIN_OFFSET_X - 1.9, 1.7, carCenterZ, 0.04, 0.65, TRAIN_CAR_LENGTH - 3.0, trim);
-    box(TRAIN_OFFSET_X + 1.9, 1.7, carCenterZ, 0.04, 0.65, TRAIN_CAR_LENGTH - 3.0, trim);
+    const segmentOffsets = [-TRAIN_CAR_LENGTH * 0.31, -TRAIN_CAR_LENGTH * 0.08, TRAIN_CAR_LENGTH * 0.18, TRAIN_CAR_LENGTH * 0.37];
+    for (const [side, x] of [['L', TRAIN_OFFSET_X - 1.45], ['R', TRAIN_OFFSET_X + 1.45]]) {
+      for (let s = 0; s < segmentOffsets.length; s += 1) {
+        if ((i + s + (side === 'L' ? 0 : 1)) % 5 === 0) continue;
+        const z = carCenterZ + segmentOffsets[s];
+        box(x, 0.5, z, 0.74, 0.34, 2.7, seat);
+        box(x + (side === 'L' ? -0.24 : 0.24), 0.93, z, 0.12, 0.82, 2.7, seat);
+        if ((i + s) % 4 === 1) box(x, 0.9, z + 0.52, 0.38, 0.25, 0.5, bagMat);
+      }
+    }
+    box(TRAIN_OFFSET_X - 1.9, 1.72, carCenterZ, 0.04, 0.5, TRAIN_CAR_LENGTH - 2.8, windowMat);
+    box(TRAIN_OFFSET_X + 1.9, 1.72, carCenterZ, 0.04, 0.5, TRAIN_CAR_LENGTH - 2.8, windowMat);
+    box(TRAIN_OFFSET_X - 1.88, 2.38, carCenterZ - TRAIN_CAR_LENGTH * 0.18, 0.045, 0.32, 1.5, adMat);
+    box(TRAIN_OFFSET_X + 1.88, 2.38, carCenterZ + TRAIN_CAR_LENGTH * 0.18, 0.045, 0.32, 1.5, adMat);
+    box(TRAIN_OFFSET_X, 2.22, carCenterZ, 0.08, 0.08, TRAIN_CAR_LENGTH - 2.1, trim);
+    for (const dz of [-TRAIN_CAR_LENGTH * 0.28, 0, TRAIN_CAR_LENGTH * 0.28]) {
+      box(TRAIN_OFFSET_X - 0.72, 1.68, carCenterZ + dz, 0.055, 1.0, 0.055, trim);
+      box(TRAIN_OFFSET_X + 0.72, 1.68, carCenterZ + dz, 0.055, 1.0, 0.055, trim);
+    }
     if (i > 0) box(TRAIN_OFFSET_X, 1.55, TRAIN_START_Z - i * TRAIN_CAR_LENGTH, TRAIN_WIDTH, 2.9, 0.08, trim);
-    const lamp = new THREE.PointLight(0xc9e6ff, 1.0, 8, 1.5);
-    lamp.position.set(TRAIN_OFFSET_X, 2.7, carCenterZ);
-    addTrainObject(lamp);
+    for (const dz of [-TRAIN_CAR_LENGTH * 0.28, 0, TRAIN_CAR_LENGTH * 0.28]) {
+      box(TRAIN_OFFSET_X, 2.86, carCenterZ + dz, 1.05, 0.055, 0.32, new THREE.MeshStandardMaterial({ color: 0xdfefff, emissive: 0xaed7ff, emissiveIntensity: 0.9, roughness: 0.28 }));
+      const lamp = new THREE.PointLight(0xc9e6ff, 0.62, 6.5, 1.6);
+      lamp.position.set(TRAIN_OFFSET_X, 2.68, carCenterZ + dz);
+      addTrainObject(lamp);
+    }
   }
   darumaState.monster = makeDarumaMonster();
   darumaState.ghost = makeTrainGhost();
@@ -5085,11 +5194,14 @@ function setTrainPhrase() {
   if (!phrase) return;
   phrase.innerHTML = '';
   const chars = ['だ', 'る', 'ま', 'さ', 'ん', 'が', 'こ', 'ろ', 'ん', 'だ'];
+  const finalRedActive = Number.isFinite(darumaState.nextRoundAt)
+    && darumaState.sequenceIndex > 9
+    && clock.elapsedTime < darumaState.nextRoundAt;
   chars.forEach((char, index) => {
     const span = document.createElement('span');
     span.textContent = char;
     if (index < darumaState.sequenceIndex) span.classList.add('read');
-    if (index === 9 && clock.elapsedTime - darumaState.finalDaAt < 2) span.classList.add('final');
+    if (index === 9 && finalRedActive) span.classList.add('final');
     phrase.appendChild(span);
   });
   const car = $('#daruma-car');
@@ -5097,7 +5209,8 @@ function setTrainPhrase() {
 }
 
 function randomDarumaDelay(slow = false, final = false) {
-  if (final) return 0.1 + Math.random() * 4.9;
+  if (darumaState.speedRound) return 0.1;
+  if (final) return 0.1 + Math.random() * 1.9;
   const t = Math.random();
   return slow ? 0.35 + t * t * 0.65 : 0.1 + t * 0.9;
 }
@@ -5116,12 +5229,21 @@ function startDarumaRound(time = clock.elapsedTime) {
   darumaState.sequenceIndex = 0;
   darumaState.finalDaAt = -Infinity;
   darumaState.freezeUntilNext = false;
+  darumaState.speedRound = Math.random() < 0.25;
   darumaState.nextSyllableAt = time + 0.12;
   darumaState.nextRoundAt = Infinity;
   darumaState.lastX = camera.position.x;
   darumaState.lastZ = camera.position.z;
   setDarumaFacingPlayer(false);
   setTrainPhrase();
+}
+
+function showTrainClearBanner(count) {
+  const banner = $('#train-clear-banner');
+  if (!banner) return;
+  banner.textContent = `${count}/10 クリア`;
+  darumaState.clearBannerUntil = clock.elapsedTime + 3;
+  document.body.classList.add('train-clear');
 }
 
 function resetTrainCarPosition() {
@@ -5149,30 +5271,32 @@ function initTrainStage() {
 }
 
 function endTrainGameOver(kind = 'daruma') {
-  Object.values(darumaAudio).forEach((sound) => {
-    sound.pause();
-    sound.currentTime = 0;
-  });
+  if (kind !== 'daruma') {
+    Object.values(darumaAudio).forEach((sound) => {
+      sound.pause();
+      sound.currentTime = 0;
+    });
+  }
   document.body.classList.remove('eyes-closed', 'train-noise');
+  document.body.classList.remove('ghost-eye-danger', 'train-clear');
   if (kind === 'ghost') {
-    $('#message-kicker').textContent = '幽霊に捕まった';
+    $('#message-kicker').textContent = '\u5e7d\u970a\u306b\u6355\u307e\u3063\u305f';
     $('#message-title').textContent = 'GAME OVER';
-    $('#message-body').textContent = '目を閉じるのが、少し遅かった。';
+    $('#message-body').textContent = '\u76ee\u3092\u9589\u3058\u308b\u306e\u304c\u3001\u5c11\u3057\u9045\u304b\u3063\u305f\u3002';
     state.ended = true;
     state.allowExit = true;
     controls.unlock();
     $('#message-screen').classList.add('visible');
     return;
   }
-  $('#message-kicker').textContent = 'だるまに捕まった';
+  $('#message-kicker').textContent = '\u3060\u308b\u307e\u306b\u6355\u307e\u3063\u305f';
   $('#message-title').textContent = 'GAME OVER';
-  $('#message-body').textContent = '「だ」の後に、動いてしまった。';
+  $('#message-body').textContent = '\u300c\u3060\u300d\u306e\u5f8c\u306b\u3001\u52d5\u3044\u3066\u3057\u307e\u3063\u305f\u3002';
   state.ended = true;
   state.allowExit = true;
   controls.unlock();
   $('#message-screen').classList.add('visible');
 }
-
 function restartTrainStageFromGameOver() {
   Object.values(darumaAudio).forEach((sound) => {
     sound.pause();
@@ -5189,6 +5313,7 @@ function restartTrainStageFromGameOver() {
   $('#settings-screen')?.classList.remove('visible');
   document.body.classList.add('game-running', 'train-mode');
   document.body.classList.remove('eyes-closed', 'train-noise');
+  document.body.classList.remove('ghost-eye-danger', 'train-clear');
   clearMovementInput();
   initTrainStage();
   updateHUD();
@@ -5197,6 +5322,7 @@ function restartTrainStageFromGameOver() {
 
 function advanceTrainGame() {
   const time = clock.elapsedTime;
+  showTrainClearBanner(Math.min(darumaState.game, 10));
   if (darumaState.game === 10 && !darumaState.resetUsed) {
     darumaState.resetUsed = true;
     document.body.classList.add('train-noise');
@@ -5673,6 +5799,28 @@ addEventListener('mouseup', (event) => {
   darumaState.eyesClosed = false;
   document.body.classList.remove('eyes-closed');
 }, { passive: false });
+const mobileCloseEyesButton = $('#mobile-close-eyes');
+mobileCloseEyesButton?.addEventListener('pointerdown', (event) => {
+  if (state.mapMode !== 'train' || !state.started || state.ended || state.caught) return;
+  event.preventDefault();
+  event.stopPropagation();
+  darumaState.eyesClosed = true;
+  document.body.classList.add('eyes-closed');
+  Object.values(darumaAudio).forEach((sound) => {
+    sound.pause();
+    sound.currentTime = 0;
+  });
+  try { mobileCloseEyesButton.setPointerCapture(event.pointerId); } catch { /* Ignore capture failure. */ }
+}, { passive: false });
+const releaseMobileCloseEyes = (event) => {
+  if (state.mapMode !== 'train') return;
+  event.preventDefault();
+  event.stopPropagation();
+  darumaState.eyesClosed = false;
+  document.body.classList.remove('eyes-closed');
+};
+mobileCloseEyesButton?.addEventListener('pointerup', releaseMobileCloseEyes, { passive: false });
+mobileCloseEyesButton?.addEventListener('pointercancel', releaseMobileCloseEyes, { passive: false });
 addEventListener('blur', clearMovementInput);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) clearMovementInput();
@@ -6507,6 +6655,7 @@ function updateSonarRoar(time) {
 function updateDarumaStage(dt, time) {
   if (state.mapMode !== 'train' || !darumaState.active || state.ended || state.caught) return;
   if (time >= darumaState.noiseUntil) document.body.classList.remove('train-noise');
+  if (time >= darumaState.clearBannerUntil) document.body.classList.remove('train-clear');
   if (darumaState.nextRoundAt !== Infinity && time >= darumaState.nextRoundAt) startDarumaRound(time);
   if (time >= darumaState.nextSyllableAt && darumaState.nextRoundAt === Infinity) {
     if (darumaState.sequenceIndex < darumaSyllables.length) {
@@ -6532,7 +6681,7 @@ function updateDarumaStage(dt, time) {
     setTrainPhrase();
   }
   darumaState.freezeUntilNext = Number.isFinite(darumaState.nextRoundAt)
-    && time >= darumaState.finalDaAt + 0.3
+    && time >= darumaState.finalDaAt + 0.5
     && time < darumaState.nextRoundAt;
   if (time - darumaState.finalDaAt >= 2) setTrainPhrase();
 
@@ -6553,11 +6702,17 @@ function updateDarumaStage(dt, time) {
     if (time >= darumaState.ghostUntil || darumaState.nextRoundAt !== Infinity) {
       darumaState.ghostActive = false;
       darumaState.ghostNextAt = Infinity;
+      document.body.classList.remove('ghost-eye-danger');
       if (darumaState.ghost) darumaState.ghost.visible = false;
     } else if (!darumaState.eyesClosed && time >= (darumaState.nextGhostDamageAt || 0)) {
-      damagePlayer(5, 'train-ghost');
+      document.body.classList.add('ghost-eye-danger');
+      damagePlayer(1, 'train-ghost');
       darumaState.nextGhostDamageAt = time + 0.1;
+    } else {
+      document.body.classList.toggle('ghost-eye-danger', !darumaState.eyesClosed);
     }
+  } else {
+    document.body.classList.remove('ghost-eye-danger');
   }
 }
 
@@ -6582,7 +6737,7 @@ function updatePlayer(dt) {
     }
     const moved = Math.hypot(camera.position.x - darumaState.lastX, camera.position.z - darumaState.lastZ);
     const freezeWindowActive = Number.isFinite(darumaState.nextRoundAt)
-      && time >= darumaState.finalDaAt + 0.3
+      && time >= darumaState.finalDaAt + 0.5
       && time < darumaState.nextRoundAt;
     if (freezeWindowActive && moved > 0.035) {
       endTrainGameOver('daruma');

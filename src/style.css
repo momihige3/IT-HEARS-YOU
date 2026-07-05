@@ -46,6 +46,9 @@ body.train-mode #radar-panel,
 body.train-mode #bottom-hud,
 body.train-mode #mobile-controls,
 body.train-mode #ghost-stun-reticle { display:none!important; }
+body.train-mode #coin-panel,
+body.train-mode #breaker-hud,
+body.train-mode .status-cluster { display:none!important; }
 
 #crosshair { position: fixed; z-index: 7; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); opacity: .62; }
 #crosshair i { position:absolute; background:#d8e0db; } #crosshair i:nth-child(1){width:5px;height:1px;left:0;top:10px} #crosshair i:nth-child(2){width:5px;height:1px;right:0;top:10px} #crosshair i:nth-child(3){height:5px;width:1px;top:0;left:10px} #crosshair i:nth-child(4){height:5px;width:1px;bottom:0;left:10px}
@@ -75,6 +78,18 @@ body.train-mode.game-running #daruma-ui { display:block; }
 #daruma-phrase span.final { color:#ff1919; transform:scale(1.5); text-shadow:0 0 22px #f00,0 4px 18px #000; }
 #daruma-car { margin-top:8px; color:#d9ddd8; font:14px 'Share Tech Mono'; letter-spacing:.16em; text-shadow:0 2px 9px #000; }
 @keyframes darumaJitter { 0%{ transform:translate(0,0) } 50%{ transform:translate(1px,-1px) } 100%{ transform:translate(-1px,1px) } }
+#train-clear-banner { position:fixed; z-index:18; left:50%; top:42%; transform:translate(-50%,-50%) scale(.88); opacity:0; pointer-events:none; padding:18px 34px; border:2px solid rgba(255,255,255,.7); background:rgba(0,0,0,.62); color:#fff; font:bold clamp(30px,5vw,68px) 'Share Tech Mono'; letter-spacing:.16em; text-shadow:0 0 18px #fff,0 4px 18px #000; transition:opacity .22s, transform .22s; }
+body.train-clear #train-clear-banner { opacity:1; transform:translate(-50%,-50%) scale(1); }
+#ghost-eye-warning { display:none; margin-top:10px; color:#ff1717; font:bold clamp(28px,4.6vw,62px) sans-serif; letter-spacing:.08em; text-shadow:0 0 22px #ff0000,0 4px 16px #000; animation:ghostWarn .12s infinite steps(2,end); }
+body.ghost-eye-danger #ghost-eye-warning { display:block; }
+@keyframes ghostWarn { from{ transform:translateX(-2px) } to{ transform:translateX(2px) } }
+#close-eye-hint { position:fixed; z-index:12; left:38px; bottom:34px; display:none; padding:10px 14px; border:1px solid rgba(255,255,255,.34); background:rgba(0,0,0,.46); color:#eee; font:15px 'Share Tech Mono'; letter-spacing:.1em; pointer-events:none; text-shadow:0 2px 8px #000; }
+body.train-mode.game-running #close-eye-hint { display:block; }
+#mobile-close-eyes { position:fixed; z-index:20; right:34px; bottom:34px; display:none; min-width:170px; min-height:86px; border:2px solid rgba(255,70,60,.72); border-radius:8px; background:rgba(92,10,8,.68); color:#ffe9e9; font:bold 22px sans-serif; letter-spacing:.08em; box-shadow:0 0 24px rgba(255,20,15,.22); touch-action:none; }
+@media (hover:none) and (pointer:coarse) {
+  body.train-mode.game-running #close-eye-hint { display:none; }
+  body.train-mode.game-running #mobile-close-eyes { display:block; }
+}
 #eyes-closed { position:fixed; inset:0; z-index:30; display:none; place-items:center; background:#000; color:#d8d8d8; font:24px 'Share Tech Mono'; letter-spacing:.25em; pointer-events:none; }
 body.eyes-closed #eyes-closed { display:grid; }
 body.eyes-closed #daruma-ui { display:none!important; }

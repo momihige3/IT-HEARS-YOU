@@ -1492,3 +1492,29 @@ Build:
 - Verified:
   - `node --check src/main.js`
   - `npm run build`
+
+## 2026-07-05 Train Daruma Polish / Eye Warning Update
+
+- Train Daruma timing:
+  - Final `だ` wait interval changed to `0.1–2.0s`.
+  - The final `だ` remains red until the next `だ1` starts.
+  - 25% of rounds now force every syllable interval to the fastest `0.1s`.
+  - Movement failure grace after the final `だ` is `0.5s`.
+  - Daruma game-over no longer stops the final `だ` audio.
+- Train HUD:
+  - Coin, breaker, noise, and detection UI are hidden in train mode.
+  - Added PC hint: `右クリックで目を閉じる`.
+  - Added mobile bottom-right `目を閉じる` button.
+  - Added red `目を閉じろ！` warning while the train ghost is dangerous.
+- Train ghost:
+  - Ghost eye-open damage changed to `1 HP every 0.1s`.
+- Train visuals:
+  - Upgraded the Daruma from a simple sphere to a more detailed procedural model with canvas texture, facial parts, belly plate, arms, rings, and a spotlight.
+  - Train interior now has segmented seats, gaps, luggage props, side windows/ads, poles, and more ceiling lights so forward movement is easier to read.
+  - Added per-car clear banner showing `〇/10 クリア` for roughly 3 seconds.
+
+### Verification
+
+- Run after changes:
+  - `node --check src/main.js`
+  - `npm run build`
