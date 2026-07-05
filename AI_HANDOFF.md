@@ -1323,3 +1323,12 @@ Build:
 - Enemy no longer repeats the same object collision loop indefinitely:
   - After repeated slide attempts, sound pursuit re-routes to the source.
   - Normal routes skip the stuck node or switch to an outer route.
+
+## 2026-07-05 Expanded Wing Route / Enemy Empty-Path Fix
+
+- Added guaranteed right-wing school corridors:
+  - Horizontal lanes at gz 2/9/16 from gx 6 to gx 18.
+  - Vertical lanes at gx 12 and gx 18.
+- Increased school corridor lights from 4 to 12 so the expanded right wing is not a black void.
+- Fixed enemy destination selection treating an empty path/current node as a successful route when the intended point was still far away.
+- Random enemy roaming now tries multiple distant candidates and avoids selecting near/current nodes that produce no movement.

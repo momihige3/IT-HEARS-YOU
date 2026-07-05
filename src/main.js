@@ -585,6 +585,7 @@ function ensureSchoolBackRoute() {
     [6, 18], [6, 17], [5, 17], [5, 14],
     [3, 14], [3, 11], [7, 11], [7, 7],
     [5, 7], [5, 4], [6, 4], [6, 2],
+    [12, 2], [18, 2], [18, 9], [18, 16], [12, 16], [6, 16],
   ];
   for (let i = 0; i < route.length - 1; i += 1) {
     carvePath(route[i][0], route[i][1], route[i + 1][0], route[i + 1][1]);
@@ -598,6 +599,11 @@ function ensureSchoolBackRoute() {
       .sort((a, b) => a.distance - b.distance)[0];
     if (nearestRoute) carvePath(doorGx, doorGz, nearestRoute.gx, nearestRoute.gz);
   }
+  carvePath(6, 2, 18, 2);
+  carvePath(6, 9, 18, 9);
+  carvePath(6, 16, 18, 16);
+  carvePath(12, 2, 12, 16);
+  carvePath(18, 2, 18, 16);
 }
 
 ensureSchoolBackRoute();
@@ -715,7 +721,7 @@ for (const key of walkable) {
     const fixture = addBox(pos.x, 4.08, pos.z, 1.25, 0.08, 0.28, material(0xdfe6d5, 0.28), false, false, false);
     fixture.material.emissive = new THREE.Color(0x68745d);
     fixture.material.emissiveIntensity = 1.4;
-    if (corridorLightCount < 4) {
+    if (corridorLightCount < 12) {
       const light = new THREE.PointLight(0xc2cbaa, 4.5, 8, 1.7);
       light.position.set(pos.x, 3.82, pos.z);
       scene.add(light);
@@ -3056,8 +3062,13 @@ function setEnemyDestination(x, z, mode = 'ROAMING') {
       }
     }
   }
+  if (!path.length && start.key === finalTarget.key) {
+    if (Math.hypot(enemy.position.x - x, enemy.position.z - z) > 1.2) {
+      return false;
+    }
+  }
   commitEnemyPath(path, finalTarget, mode);
-  return path.length > 0 || start.key === finalTarget.key;
+  return path.length > 0 || Math.hypot(enemy.position.x - finalTarget.x, enemy.position.z - finalTarget.z) <= 1.2;
 }
 
 function setEnemyDestinationNear(x, z, mode = 'ROAMING', radius = 2.2) {
@@ -3189,13 +3200,15 @@ function chooseRandomEnemyRoute(mode = 'ROAMING') {
         - Math.hypot(a.x - camera.position.x, a.z - camera.position.z));
   }
   if (!choices.length) choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
-  const target = choices[Math.floor(Math.random() * choices.length)];
-  if (!target || !setEnemyDestination(target.x, target.z, mode)) {
-    const fallback = [...navNodes.values()]
-      .filter((node) => node.key !== enemyData.targetKey)
-      .sort((a, b) => Math.random() - 0.5)[0];
-    if (fallback) setEnemyDestination(fallback.x, fallback.z, mode);
+  const shuffled = shuffleCopy(choices)
+    .filter((node) => Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > CELL * 1.2);
+  for (const target of shuffled.slice(0, 12)) {
+    if (setEnemyDestination(target.x, target.z, mode)) return;
   }
+  const fallback = [...navNodes.values()]
+    .filter((node) => node.key !== enemyData.targetKey)
+    .sort((a, b) => Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z) - Math.hypot(a.x - enemy.position.x, a.z - enemy.position.z))[0];
+  if (fallback) setEnemyDestination(fallback.x, fallback.z, mode);
 }
 
 function chooseOuterLoopRoute(time, mode = 'SEARCHING') {
