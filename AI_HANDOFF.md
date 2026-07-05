@@ -1332,3 +1332,12 @@ Build:
 - Increased school corridor lights from 4 to 12 so the expanded right wing is not a black void.
 - Fixed enemy destination selection treating an empty path/current node as a successful route when the intended point was still far away.
 - Random enemy roaming now tries multiple distant candidates and avoids selecting near/current nodes that produce no movement.
+
+## 2026-07-05 Cell Size Regression Fix
+
+- Reverted global `CELL` from 5.6 back to 4.
+- Root cause:
+  - `CELL` is shared by school and mansion generation.
+  - Enlarging `CELL` broke mansion floor/wall/ceiling placement and contributed to void/black areas.
+- School horizontal expansion is now handled by `GRID_W = 25` and added right-wing rooms/corridors, not by changing cell size.
+- Build verified after the revert.

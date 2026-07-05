@@ -278,7 +278,7 @@ const selectedMapCache = {
   school: { ready: true, generatedAt: performance.now() },
   mansion: { ready: false, generatedAt: 0 },
 };
-const CELL = 5.6;
+const CELL = 4;
 const GRID_W = 25;
 const GRID_H = 19;
 const GRID_HALF_W = (GRID_W - 1) / 2;
