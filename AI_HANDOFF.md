@@ -1341,3 +1341,25 @@ Build:
   - Enlarging `CELL` broke mansion floor/wall/ceiling placement and contributed to void/black areas.
 - School horizontal expansion is now handled by `GRID_W = 25` and added right-wing rooms/corridors, not by changing cell size.
 - Build verified after the revert.
+
+## 2026-07-05 Map Void Root Fix
+
+- Root cause found after continued black/void areas:
+  - Mansion coordinates overlapped the expanded school coordinate range.
+  - Coordinate-based cleanup could delete valid floor/ceiling meshes from the other map.
+  - Keeping map caches around after switching also risked half-deleted map geometry.
+- Moved mansion generation farther away from the school with `MANSION_OFFSET_X`.
+- Replaced hard-coded mansion bounds with constants derived from mansion grid limits.
+- Restored active-map cleanup so only the selected stage remains during play.
+- Added map surface registration for generated floors and ceilings.
+- Added `validateMapIntegrity(mode, repair)` and browser debug hook:
+  - `window.__validateMapIntegrity('school', true)`
+  - `window.__validateMapIntegrity('mansion', true)`
+  - `await window.__debugWalkAllMapCells('school')`
+  - `await window.__debugWalkAllMapCells('mansion')`
+- Game start now validates the selected map and repairs missing floor/ceiling surfaces before play begins.
+- Verified:
+  - `node --check src/main.js`
+  - `npm run build`
+- Note:
+  - The in-app browser instance was unavailable/closed during this handoff, so live browser traversal should be rerun from DevTools using the hooks above if visual confirmation is needed.

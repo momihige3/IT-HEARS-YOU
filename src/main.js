@@ -283,10 +283,20 @@ const GRID_W = 25;
 const GRID_H = 19;
 const GRID_HALF_W = (GRID_W - 1) / 2;
 const GRID_HALF_H = (GRID_H - 1) / 2;
+const MANSION_OFFSET_X = 96;
+const MANSION_CENTER_Z = -12;
+const MANSION_MIN_IX = -6;
+const MANSION_MAX_IX = 6;
+const MANSION_MIN_IZ = -9;
+const MANSION_MAX_IZ = 10;
 const REQUIRED_KEYS = 5;
 const KEY_DETECTION_FLOOR_STEP = 10;
 const walkable = new Set();
 const navNodes = new Map();
+const schoolFloorMeshes = [];
+const schoolCeilingMeshes = [];
+const mansionFloorMeshes = [];
+const mansionCeilingMeshes = [];
 
 function inSchoolBounds(x, z) {
   const maxX = GRID_HALF_W * CELL + CELL / 2;
@@ -295,7 +305,11 @@ function inSchoolBounds(x, z) {
 }
 
 function inMansionBounds(x, z) {
-  return x >= 32 && x <= 104 && z >= -70 && z <= 48;
+  const margin = CELL * 1.25;
+  return x >= MANSION_OFFSET_X + MANSION_MIN_IX * CELL - CELL / 2 - margin
+    && x <= MANSION_OFFSET_X + MANSION_MAX_IX * CELL + CELL / 2 + margin
+    && z >= MANSION_CENTER_Z + MANSION_MIN_IZ * CELL - CELL / 2 - margin
+    && z <= MANSION_CENTER_Z + MANSION_MAX_IZ * CELL + CELL / 2 + margin;
 }
 
 function markSharedObject(object) {
@@ -708,8 +722,16 @@ for (const key of walkable) {
   const pos = worldFromGrid(gx, gz);
   navNodes.set(key, { key, gx, gz, x: pos.x, z: pos.z });
   const room = getRoomAt(gx, gz);
-  addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, room ? classroomFloorMat : floorMat, false, false, false);
-  addBox(pos.x, 4.25, pos.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat, false, false, false);
+  const floor = addBox(pos.x, -0.12, pos.z, CELL + 0.04, 0.25, CELL + 0.04, room ? classroomFloorMat : floorMat, false, false, false);
+  floor.userData.mapMode = 'school';
+  floor.userData.mapSurface = 'floor';
+  floor.userData.gridKey = key;
+  schoolFloorMeshes.push(floor);
+  const ceiling = addBox(pos.x, 4.25, pos.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat, false, false, false);
+  ceiling.userData.mapMode = 'school';
+  ceiling.userData.mapSurface = 'ceiling';
+  ceiling.userData.gridKey = key;
+  schoolCeilingMeshes.push(ceiling);
 
   for (const [dx, dz] of directions) {
     if (walkable.has(gridKey(gx + dx, gz + dz))) continue;
@@ -1102,6 +1124,8 @@ function clearMansionMapRuntime() {
   for (const object of [...new Set(mansionRuntimeObjects)]) removeSceneObject(object);
   mansionRuntimeObjects.length = 0;
   mansionNodes.length = 0;
+  mansionFloorMeshes.length = 0;
+  mansionCeilingMeshes.length = 0;
   removeArrayItemsByBounds(colliders, (x, z) => inMansionBounds(x, z));
   colliderSpatialCount = -1;
   colliderSpatialBuckets = new Map();
@@ -1160,12 +1184,12 @@ function addStairMarker(x, z, label = '2F') {
 function buildMansionSecondFloor() {
   if (mansionBuilt) return;
   mansionBuilt = true;
-  const offsetX = 68;
+  const offsetX = MANSION_OFFSET_X;
   const cells = [];
   const mansionCellKeys = new Set();
   const mansionCellKey = (ix, iz) => `${ix},${iz}`;
   const addMansionCell = (ix, iz, force = false) => {
-    if (ix < -6 || ix > 6 || iz < -9 || iz > 10) return false;
+    if (ix < MANSION_MIN_IX || ix > MANSION_MAX_IX || iz < MANSION_MIN_IZ || iz > MANSION_MAX_IZ) return false;
     const norm = Math.hypot(ix / 5.9, iz / 8.8);
     const forced = (ix === 0 && iz === 10)
       || (ix === 0 && iz === 0)
@@ -1260,7 +1284,7 @@ function buildMansionSecondFloor() {
   }
   const mansionProtectedSpot = (x, z) => {
     const ix = Math.round((x - offsetX) / CELL);
-    const iz = Math.round((z + 12) / CELL);
+    const iz = Math.round((z - MANSION_CENTER_Z) / CELL);
     const outerLoop = Math.abs(ix) === 6 || iz === 9 || iz === -9;
     return outerLoop
       || Math.hypot(x - offsetX, z - 28) < 5.2
@@ -1271,11 +1295,17 @@ function buildMansionSecondFloor() {
     for (let iz = -9; iz <= 10; iz += 1) {
       if (!mansionCellKeys.has(mansionCellKey(ix, iz))) continue;
       const x = offsetX + ix * CELL;
-      const z = -12 + iz * CELL;
+      const z = MANSION_CENTER_Z + iz * CELL;
       cells.push({ x, z });
       mansionNodes.push({ x, z });
-      addBox(x, -0.11, z, CELL + 0.04, 0.22, CELL + 0.04, mansionFloorMat, false, false, false);
-      addBox(x, 4.15, z, CELL + 0.02, 0.18, CELL + 0.02, mansionWallMat, false, false, false);
+      const floor = addBox(x, -0.11, z, CELL + 0.04, 0.22, CELL + 0.04, mansionFloorMat, false, false, false);
+      floor.userData.mapMode = 'mansion';
+      floor.userData.mapSurface = 'floor';
+      mansionFloorMeshes.push(floor);
+      const ceiling = addBox(x, 4.15, z, CELL + 0.02, 0.18, CELL + 0.02, mansionWallMat, false, false, false);
+      ceiling.userData.mapMode = 'mansion';
+      ceiling.userData.mapSurface = 'ceiling';
+      mansionCeilingMeshes.push(ceiling);
       if ((ix + iz * 2) % 7 === 0) {
         const lamp = new THREE.PointLight(0xffd9a6, 2.1, 9, 1.9);
         lamp.position.set(x, 3.2, z);
@@ -1320,7 +1350,7 @@ function buildMansionSecondFloor() {
     !hasMansionNodeNear(node.x + side.x * CELL, node.z + side.z * CELL, 0.55);
   const isInteriorMansionNode = (node) => {
     const ix = Math.round((node.x - offsetX) / CELL);
-    const iz = Math.round((node.z + 12) / CELL);
+    const iz = Math.round((node.z - MANSION_CENTER_Z) / CELL);
     return Math.abs(ix) <= 4 && iz >= -7 && iz <= 8;
   };
   const choosePlacement = (placements, preferInterior = true) => {
@@ -2098,11 +2128,11 @@ function placeKeyItemsForMode(mode) {
         || chooseMansionKeyNode(3, false)
         || mansionNodes.find((candidate) => !mansionKeyPositions.some((p) => Math.hypot(p.x - candidate.x, p.z - candidate.z) < 2))
         || mansionNodes[i % Math.max(1, mansionNodes.length)]
-        || { x: 68 + i * 2, z: -12 };
+        || { x: MANSION_OFFSET_X + i * 2, z: MANSION_CENTER_Z };
       mansionKeyPositions.push({ x: node.x, z: node.z });
     }
     keyItems.forEach((item, index) => {
-      item.mansionPosition = mansionKeyPositions[index] || mansionKeyPositions[mansionKeyPositions.length - 1] || { x: 68, z: -12 };
+      item.mansionPosition = mansionKeyPositions[index] || mansionKeyPositions[mansionKeyPositions.length - 1] || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z };
     });
   }
   for (const item of keyItems) {
@@ -2118,7 +2148,7 @@ function placeKeyItemsForMode(mode) {
         item.mansionPosition = choices[0]
           || mansionNodes.find((node) => !pickupNearRestrictedUtility(node.x, node.z, 'mansion'))
           || mansionNodes[Math.floor(Math.random() * mansionNodes.length)]
-          || { x: 68, z: -12 };
+          || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z };
       }
       pos = item.mansionPosition;
     }
@@ -2154,7 +2184,7 @@ function placeFakeOfudaItems(mode) {
     const node = choices[0]
       || mansionNodes.find((candidate) => !pickupNearRestrictedUtility(candidate.x, candidate.z, 'mansion'))
       || mansionNodes[Math.floor(Math.random() * mansionNodes.length)]
-      || { x: 68, z: -12 };
+      || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z };
     fake.mansionPosition = { x: node.x, z: node.z };
     fake.group.position.set(node.x, fake.baseY, node.z);
     fake.light.position.copy(fake.group.position);
@@ -2430,7 +2460,7 @@ function createWomanEnemy() {
   group.traverse((child) => {
     child.userData.proceduralGhost = true;
   });
-  const start = mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
+  const start = mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z };
   group.position.set(start.x, 0, start.z);
   group.visible = false;
   scene.add(group);
@@ -3841,7 +3871,7 @@ function isInsidePlayableBounds(x, z) {
   const maxX = GRID_HALF_W * CELL + CELL / 2 - 0.2;
   const maxZ = GRID_HALF_H * CELL + CELL / 2 - 0.2;
   const inSchool = x >= -maxX && x <= maxX && z >= -maxZ && z <= maxZ;
-  const inMansion = x >= 32 && x <= 104 && z >= -68 && z <= 46;
+  const inMansion = inMansionBounds(x, z);
   return inSchool || inMansion;
 }
 
@@ -4374,8 +4404,8 @@ function respawnPlayer() {
       .filter((node) => Math.hypot(node.x - camera.position.x, node.z - camera.position.z) > 22)
       .sort((a, b) => Math.hypot(b.x - camera.position.x, b.z - camera.position.z) - Math.hypot(a.x - camera.position.x, a.z - camera.position.z))[0]
       || mansionNodes[Math.floor(mansionNodes.length * 0.5)]
-      || { x: 68, z: -12 }
-    : mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: 68, z: -12 };
+      || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z }
+    : mansionNodes[Math.floor(mansionNodes.length * 0.5)] || { x: MANSION_OFFSET_X, z: MANSION_CENTER_Z };
   womanEnemy.group.position.set(womanStart.x, 0, womanStart.z);
   womanEnemy.target = null;
   womanEnemy.nextPhaseAt = clock.elapsedTime + 30;
@@ -4677,6 +4707,102 @@ function clearSpawnedPickupRuntime() {
   noiseTraps.length = 0;
 }
 
+function surfaceExistsAt(meshes, x, z) {
+  return meshes.some((mesh) => mesh?.parent
+    && Math.abs(mesh.position.x - x) < 0.25
+    && Math.abs(mesh.position.z - z) < 0.25);
+}
+
+function registerSchoolSurface(mesh, surface, key) {
+  mesh.userData.mapMode = 'school';
+  mesh.userData.mapSurface = surface;
+  mesh.userData.gridKey = key;
+  if (surface === 'floor') schoolFloorMeshes.push(mesh);
+  else schoolCeilingMeshes.push(mesh);
+  return mesh;
+}
+
+function registerMansionSurface(mesh, surface) {
+  mesh.userData.mapMode = 'mansion';
+  mesh.userData.mapSurface = surface;
+  if (surface === 'floor') mansionFloorMeshes.push(mesh);
+  else mansionCeilingMeshes.push(mesh);
+  return mesh;
+}
+
+function validateMapIntegrity(mode = state.mapMode, repair = false) {
+  const errors = [];
+  const inspectNode = (mapMode, key, x, z, floorMeshes, ceilingMeshes, makeFloor, makeCeiling) => {
+    if (!surfaceExistsAt(floorMeshes, x, z)) {
+      errors.push(`${mapMode}:${key}:missing-floor`);
+      if (repair) makeFloor();
+    }
+    if (!surfaceExistsAt(ceilingMeshes, x, z)) {
+      errors.push(`${mapMode}:${key}:missing-ceiling`);
+      if (repair) makeCeiling();
+    }
+  };
+
+  if (mode === 'school') {
+    for (const [key, node] of navNodes) {
+      const room = getRoomAt(node.gx, node.gz);
+      inspectNode(
+        'school',
+        key,
+        node.x,
+        node.z,
+        schoolFloorMeshes,
+        schoolCeilingMeshes,
+        () => registerSchoolSurface(addBox(node.x, -0.12, node.z, CELL + 0.04, 0.25, CELL + 0.04, room ? classroomFloorMat : floorMat, false, false, false), 'floor', key),
+        () => registerSchoolSurface(addBox(node.x, 4.25, node.z, CELL + 0.05, 0.18, CELL + 0.05, ceilingMat, false, false, false), 'ceiling', key),
+      );
+    }
+  }
+
+  if (mode === 'mansion') {
+    for (const node of mansionNodes) {
+      const key = `${Math.round((node.x - MANSION_OFFSET_X) / CELL)},${Math.round((node.z - MANSION_CENTER_Z) / CELL)}`;
+      inspectNode(
+        'mansion',
+        key,
+        node.x,
+        node.z,
+        mansionFloorMeshes,
+        mansionCeilingMeshes,
+        () => registerMansionSurface(addBox(node.x, -0.11, node.z, CELL + 0.04, 0.22, CELL + 0.04, mansionFloorMat, false, false, false), 'floor'),
+        () => registerMansionSurface(addBox(node.x, 4.15, node.z, CELL + 0.02, 0.18, CELL + 0.02, mansionWallMat, false, false, false), 'ceiling'),
+      );
+    }
+  }
+
+  if (repair && errors.length) {
+    const remaining = validateMapIntegrity(mode, false).errors;
+    return { ok: remaining.length === 0, repaired: errors.length, errors: remaining };
+  }
+  return { ok: errors.length === 0, repaired: 0, errors };
+}
+
+async function debugWalkAllMapCells(mode = state.mapMode) {
+  const originalPosition = camera.position.clone();
+  const originalRotation = camera.rotation.clone();
+  const nodes = mode === 'mansion'
+    ? mansionNodes.map((node) => ({ x: node.x, z: node.z }))
+    : [...navNodes.values()].map((node) => ({ x: node.x, z: node.z }));
+  const result = validateMapIntegrity(mode, true);
+  for (let i = 0; i < nodes.length; i += 1) {
+    camera.position.set(nodes[i].x, 1.68, nodes[i].z);
+    renderer.render(scene, camera);
+    if (i % 16 === 0) await nextFrame();
+  }
+  camera.position.copy(originalPosition);
+  camera.rotation.copy(originalRotation);
+  renderer.render(scene, camera);
+  return { mode, walked: nodes.length, ...result };
+}
+
+window.__debugWalkAllMapCells = debugWalkAllMapCells;
+window.__validateMapIntegrity = validateMapIntegrity;
+
 function purgeUnselectedMapRuntime(mode) {
   const removeSchool = mode === 'mansion';
   const shouldRemoveSceneChild = removeSchool
@@ -4695,6 +4821,14 @@ function purgeUnselectedMapRuntime(mode) {
   removeArrayItemsByBounds(colliders, shouldRemoveRuntimeItem);
   removeArrayItemsByBounds(lockers, shouldRemoveRuntimeItem, (locker) => removeSceneObject(locker.group));
   removeArrayItemsByBounds(schoolLights, shouldRemoveSceneChild, (light) => scene.remove(light));
+
+  if (removeSchool) {
+    schoolRuntimeObjects.length = 0;
+    schoolFloorMeshes.length = 0;
+    schoolCeilingMeshes.length = 0;
+  } else {
+    clearMansionMapRuntime();
+  }
 
   clearSpawnedPickupRuntime();
   soundEvents.length = 0;
@@ -4740,6 +4874,12 @@ async function prepareSelectedMapCache(mode) {
 
 async function startGame(mode = 'school') {
   if (state.loading || state.started) return;
+  if (mode === 'school' && schoolFloorMeshes.length === 0) {
+    sessionStorage.setItem('pendingMapStart', 'school');
+    state.allowExit = true;
+    location.reload();
+    return;
+  }
   tuneInitialResolutionForViewport();
   setLoading(true, mode === 'mansion' ? '屋敷マップを生成しています...' : '学校マップを準備しています...');
   await nextFrame();
@@ -4749,12 +4889,18 @@ async function startGame(mode = 'school') {
   if (mode === 'mansion') {
     await nextFrame();
     purgeUnselectedMapRuntime(mode);
+    const integrity = validateMapIntegrity(mode, true);
+    document.body.dataset.mapIntegrity = JSON.stringify({ mode, ...integrity });
+    if (!integrity.ok) console.error('Map integrity failed after mansion generation', integrity);
     enemy.visible = false;
     womanEnemy.group.visible = true;
   } else {
     loadExternalSonarModel();
     await nextFrame();
     purgeUnselectedMapRuntime(mode);
+    const integrity = validateMapIntegrity(mode, true);
+    document.body.dataset.mapIntegrity = JSON.stringify({ mode, ...integrity });
+    if (!integrity.ok) console.error('Map integrity failed after school generation', integrity);
     enemy.visible = true;
     womanEnemy.group.visible = false;
   }
@@ -4824,6 +4970,25 @@ document.querySelectorAll('[data-map-start]').forEach((button) => {
     startGame(button.dataset.mapStart || 'school');
   });
 });
+const pendingMapStart = sessionStorage.getItem('pendingMapStart');
+if (pendingMapStart) {
+  sessionStorage.removeItem('pendingMapStart');
+  setTimeout(() => startGame(pendingMapStart), 80);
+}
+const debugWalkMap = new URLSearchParams(location.search).get('debugWalk');
+if (debugWalkMap === 'school' || debugWalkMap === 'mansion') {
+  setTimeout(async () => {
+    try {
+      await startGame(debugWalkMap);
+      const result = await debugWalkAllMapCells(debugWalkMap);
+      document.body.dataset.debugWalkResult = JSON.stringify(result);
+      console.info('debugWalkResult', result);
+    } catch (error) {
+      document.body.dataset.debugWalkResult = JSON.stringify({ mode: debugWalkMap, ok: false, error: String(error) });
+      console.error('debugWalk failed', error);
+    }
+  }, 120);
+}
 $('#shop-close')?.addEventListener('click', closeShop);
 document.querySelectorAll('[data-shop-buy]').forEach((button) => {
   button.addEventListener('click', () => buyShopItem(button.dataset.shopBuy));
