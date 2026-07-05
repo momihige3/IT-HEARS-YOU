@@ -1518,3 +1518,29 @@ Build:
 - Run after changes:
   - `node --check src/main.js`
   - `npm run build`
+
+## 2026-07-06 Train Daruma Timing / Visual Follow-up
+
+- Train title button:
+  - Train button text is forced white.
+  - Added an `おまけ` label above the train button.
+- Daruma chant:
+  - Final-da movement failure grace changed from `0.5s` to `0.4s`.
+  - Removed the late-word slowdown weighting; non-final syllables now use the same random interval range.
+  - Added a 10% hyper-speed round where every syllable interval is `0.05s`.
+  - Added a 5% skip round: `だ → る → ま → だ2`.
+  - During the skip round's final state, only `だるまだ` is displayed and all four characters are red.
+  - Removed the visible `1/10` car counter from the HUD.
+- Ghost danger:
+  - While the train ghost is active and the player keeps eyes closed, a red heartbeat-style overlay is shown.
+- Train visuals:
+  - Train poles now extend down to the floor.
+  - Daruma model face was adjusted toward the provided reference: larger white eyes, gold/red eye rings, heavier brows, and black cheek/moustache details.
+- Game over:
+  - Ghost game over adds a ghost close-up style background.
+  - Daruma game over adds a Daruma close-up style background.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

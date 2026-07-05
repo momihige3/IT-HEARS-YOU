@@ -276,6 +276,9 @@ const darumaState = {
   ghostNextAt: Infinity,
   noiseUntil: 0,
   speedRound: false,
+  hyperSpeedRound: false,
+  skipRound: false,
+  skipFinalStarted: false,
   clearBannerUntil: 0,
   monster: null,
   ghost: null,
@@ -4792,7 +4795,7 @@ function endGame(win) {
     });
   }
   document.body.classList.remove('eyes-closed', 'train-noise', 'train-mode');
-  document.body.classList.remove('ghost-eye-danger', 'train-clear');
+  document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat', 'train-clear', 'train-gameover-ghost', 'train-gameover-daruma');
   stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
   if (win) playClearSound();
@@ -5049,22 +5052,36 @@ function makeDarumaMonster() {
   belly.scale.set(0.92, 0.68, 0.12);
   belly.position.set(0, 0.98, 1.08);
   group.add(belly);
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.78, 36, 18), faceMat);
-  face.scale.set(0.92, 0.6, 0.15);
-  face.position.set(0, 1.72, 1.0);
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.92, 40, 22), faceMat);
+  face.scale.set(1.08, 0.72, 0.16);
+  face.position.set(0, 1.69, 1.02);
   group.add(face);
-  for (const sx of [-0.28, 0.28]) {
-    const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 12), new THREE.MeshStandardMaterial({ color: 0xf3eee4, roughness: 0.35 }));
-    eyeWhite.scale.set(1, 0.72, 0.18);
-    eyeWhite.position.set(sx, 1.78, 1.14);
+  const redTrimMat = new THREE.MeshStandardMaterial({ color: 0xb60b08, roughness: 0.35, metalness: 0.06, emissive: 0x2a0000, emissiveIntensity: 0.16 });
+  for (const sx of [-0.33, 0.33]) {
+    const eyeRing = new THREE.Mesh(new THREE.TorusGeometry(0.245, 0.04, 10, 28), redTrimMat);
+    eyeRing.position.set(sx, 1.78, 1.25);
+    eyeRing.rotation.x = Math.PI / 2;
+    group.add(eyeRing);
+    const goldRing = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.032, 10, 32), goldMat);
+    goldRing.position.set(sx, 1.78, 1.24);
+    goldRing.rotation.x = Math.PI / 2;
+    group.add(goldRing);
+    const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.24, 28, 16), new THREE.MeshStandardMaterial({ color: 0xf4ead9, roughness: 0.3 }));
+    eyeWhite.scale.set(1, 0.92, 0.2);
+    eyeWhite.position.set(sx, 1.78, 1.16);
     group.add(eyeWhite);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.072, 14, 8), blackMat);
-    eye.position.set(sx, 1.78, 1.25);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.13, 18, 12), blackMat);
+    eye.scale.set(1, 1, 0.22);
+    eye.position.set(sx, 1.78, 1.31);
     group.add(eye);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.055, 0.045), blackMat);
-    brow.position.set(sx, 1.95, 1.2);
-    brow.rotation.z = sx < 0 ? -0.38 : 0.38;
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.075, 0.05), blackMat);
+    brow.position.set(sx, 2.02, 1.2);
+    brow.rotation.z = sx < 0 ? -0.48 : 0.48;
     group.add(brow);
+    const cheek = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 8, 22, Math.PI * 1.45), blackMat);
+    cheek.position.set(sx * 1.12, 1.48, 1.22);
+    cheek.rotation.set(Math.PI / 2, 0, sx < 0 ? -0.7 : 0.7);
+    group.add(cheek);
   }
   const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 8, 18, Math.PI), blackMat);
   mouth.position.set(0, 1.52, 1.17);
@@ -5174,8 +5191,8 @@ function buildTrainMap() {
     box(TRAIN_OFFSET_X + 1.88, 2.38, carCenterZ + TRAIN_CAR_LENGTH * 0.18, 0.045, 0.32, 1.5, adMat);
     box(TRAIN_OFFSET_X, 2.22, carCenterZ, 0.08, 0.08, TRAIN_CAR_LENGTH - 2.1, trim);
     for (const dz of [-TRAIN_CAR_LENGTH * 0.28, 0, TRAIN_CAR_LENGTH * 0.28]) {
-      box(TRAIN_OFFSET_X - 0.72, 1.68, carCenterZ + dz, 0.055, 1.0, 0.055, trim);
-      box(TRAIN_OFFSET_X + 0.72, 1.68, carCenterZ + dz, 0.055, 1.0, 0.055, trim);
+      box(TRAIN_OFFSET_X - 0.72, 1.42, carCenterZ + dz, 0.055, 2.76, 0.055, trim);
+      box(TRAIN_OFFSET_X + 0.72, 1.42, carCenterZ + dz, 0.055, 2.76, 0.055, trim);
     }
     if (i > 0) box(TRAIN_OFFSET_X, 1.55, TRAIN_START_Z - i * TRAIN_CAR_LENGTH, TRAIN_WIDTH, 2.9, 0.08, trim);
     for (const dz of [-TRAIN_CAR_LENGTH * 0.28, 0, TRAIN_CAR_LENGTH * 0.28]) {
@@ -5193,15 +5210,18 @@ function setTrainPhrase() {
   const phrase = $('#daruma-phrase');
   if (!phrase) return;
   phrase.innerHTML = '';
-  const chars = ['だ', 'る', 'ま', 'さ', 'ん', 'が', 'こ', 'ろ', 'ん', 'だ'];
   const finalRedActive = Number.isFinite(darumaState.nextRoundAt)
     && darumaState.sequenceIndex > 9
     && clock.elapsedTime < darumaState.nextRoundAt;
+  const chars = darumaState.skipRound && finalRedActive
+    ? ['だ', 'る', 'ま', 'だ']
+    : ['だ', 'る', 'ま', 'さ', 'ん', 'が', 'こ', 'ろ', 'ん', 'だ'];
   chars.forEach((char, index) => {
     const span = document.createElement('span');
     span.textContent = char;
-    if (index < darumaState.sequenceIndex) span.classList.add('read');
-    if (index === 9 && finalRedActive) span.classList.add('final');
+    if (darumaState.skipRound && finalRedActive) span.classList.add('final');
+    else if (index < darumaState.sequenceIndex) span.classList.add('read');
+    if (!darumaState.skipRound && index === 9 && finalRedActive) span.classList.add('final');
     phrase.appendChild(span);
   });
   const car = $('#daruma-car');
@@ -5209,10 +5229,11 @@ function setTrainPhrase() {
 }
 
 function randomDarumaDelay(slow = false, final = false) {
+  if (darumaState.hyperSpeedRound) return 0.05;
   if (darumaState.speedRound) return 0.1;
   if (final) return 0.1 + Math.random() * 1.9;
   const t = Math.random();
-  return slow ? 0.35 + t * t * 0.65 : 0.1 + t * 0.9;
+  return 0.1 + t * 0.9;
 }
 
 function playDarumaSound(src, delay) {
@@ -5225,11 +5246,28 @@ function playDarumaSound(src, delay) {
   sound.play().catch(() => {});
 }
 
+function triggerDarumaFinalDa(time, delay, src) {
+  if (!darumaState.eyesClosed) playDarumaSound(src, delay);
+  darumaState.sequenceIndex = darumaState.skipRound ? 10 : darumaSyllables.length + 1;
+  darumaState.finalDaAt = time;
+  darumaState.freezeUntilNext = false;
+  darumaState.nextSyllableAt = Infinity;
+  darumaState.nextRoundAt = time + delay;
+  darumaState.lastX = camera.position.x;
+  darumaState.lastZ = camera.position.z;
+  darumaState.skipFinalStarted = true;
+  setDarumaFacingPlayer(true);
+}
+
 function startDarumaRound(time = clock.elapsedTime) {
   darumaState.sequenceIndex = 0;
   darumaState.finalDaAt = -Infinity;
   darumaState.freezeUntilNext = false;
-  darumaState.speedRound = Math.random() < 0.25;
+  const patternRoll = Math.random();
+  darumaState.skipRound = patternRoll < 0.05;
+  darumaState.hyperSpeedRound = !darumaState.skipRound && patternRoll < 0.15;
+  darumaState.speedRound = !darumaState.skipRound && !darumaState.hyperSpeedRound && patternRoll < 0.4;
+  darumaState.skipFinalStarted = false;
   darumaState.nextSyllableAt = time + 0.12;
   darumaState.nextRoundAt = Infinity;
   darumaState.lastX = camera.position.x;
@@ -5278,8 +5316,9 @@ function endTrainGameOver(kind = 'daruma') {
     });
   }
   document.body.classList.remove('eyes-closed', 'train-noise');
-  document.body.classList.remove('ghost-eye-danger', 'train-clear');
+  document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat', 'train-clear', 'train-gameover-ghost', 'train-gameover-daruma');
   if (kind === 'ghost') {
+    document.body.classList.add('train-gameover-ghost');
     $('#message-kicker').textContent = '\u5e7d\u970a\u306b\u6355\u307e\u3063\u305f';
     $('#message-title').textContent = 'GAME OVER';
     $('#message-body').textContent = '\u76ee\u3092\u9589\u3058\u308b\u306e\u304c\u3001\u5c11\u3057\u9045\u304b\u3063\u305f\u3002';
@@ -5289,6 +5328,7 @@ function endTrainGameOver(kind = 'daruma') {
     $('#message-screen').classList.add('visible');
     return;
   }
+  document.body.classList.add('train-gameover-daruma');
   $('#message-kicker').textContent = '\u3060\u308b\u307e\u306b\u6355\u307e\u3063\u305f';
   $('#message-title').textContent = 'GAME OVER';
   $('#message-body').textContent = '\u300c\u3060\u300d\u306e\u5f8c\u306b\u3001\u52d5\u3044\u3066\u3057\u307e\u3063\u305f\u3002';
@@ -5313,7 +5353,7 @@ function restartTrainStageFromGameOver() {
   $('#settings-screen')?.classList.remove('visible');
   document.body.classList.add('game-running', 'train-mode');
   document.body.classList.remove('eyes-closed', 'train-noise');
-  document.body.classList.remove('ghost-eye-danger', 'train-clear');
+  document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat', 'train-clear', 'train-gameover-ghost', 'train-gameover-daruma');
   clearMovementInput();
   initTrainStage();
   updateHUD();
@@ -6658,7 +6698,10 @@ function updateDarumaStage(dt, time) {
   if (time >= darumaState.clearBannerUntil) document.body.classList.remove('train-clear');
   if (darumaState.nextRoundAt !== Infinity && time >= darumaState.nextRoundAt) startDarumaRound(time);
   if (time >= darumaState.nextSyllableAt && darumaState.nextRoundAt === Infinity) {
-    if (darumaState.sequenceIndex < darumaSyllables.length) {
+    if (darumaState.skipRound && darumaState.sequenceIndex >= 3 && !darumaState.skipFinalStarted) {
+      const delay = randomDarumaDelay(false, true);
+      triggerDarumaFinalDa(time, delay, './audio/daruma_da2.mp3');
+    } else if (darumaState.sequenceIndex < darumaSyllables.length) {
       const syllable = darumaSyllables[darumaState.sequenceIndex];
       const finalIsNext = darumaState.sequenceIndex === darumaSyllables.length - 1;
       const delay = finalIsNext ? randomDarumaDelay(true, true) : randomDarumaDelay(syllable.slow, false);
@@ -6668,20 +6711,12 @@ function updateDarumaStage(dt, time) {
     } else if (darumaState.sequenceIndex === darumaSyllables.length) {
       const delay = 3 + Math.random() * 3;
       const src = darumaFinalSounds[Math.floor(Math.random() * darumaFinalSounds.length)];
-      if (!darumaState.eyesClosed) playDarumaSound(src, delay);
-      darumaState.sequenceIndex += 1;
-      darumaState.finalDaAt = time;
-      darumaState.freezeUntilNext = false;
-      darumaState.nextSyllableAt = Infinity;
-      darumaState.nextRoundAt = time + delay;
-      darumaState.lastX = camera.position.x;
-      darumaState.lastZ = camera.position.z;
-      setDarumaFacingPlayer(true);
+      triggerDarumaFinalDa(time, delay, src);
     }
     setTrainPhrase();
   }
   darumaState.freezeUntilNext = Number.isFinite(darumaState.nextRoundAt)
-    && time >= darumaState.finalDaAt + 0.5
+    && time >= darumaState.finalDaAt + 0.4
     && time < darumaState.nextRoundAt;
   if (time - darumaState.finalDaAt >= 2) setTrainPhrase();
 
@@ -6702,17 +6737,19 @@ function updateDarumaStage(dt, time) {
     if (time >= darumaState.ghostUntil || darumaState.nextRoundAt !== Infinity) {
       darumaState.ghostActive = false;
       darumaState.ghostNextAt = Infinity;
-      document.body.classList.remove('ghost-eye-danger');
+      document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat');
       if (darumaState.ghost) darumaState.ghost.visible = false;
     } else if (!darumaState.eyesClosed && time >= (darumaState.nextGhostDamageAt || 0)) {
       document.body.classList.add('ghost-eye-danger');
+      document.body.classList.remove('ghost-heartbeat');
       damagePlayer(1, 'train-ghost');
       darumaState.nextGhostDamageAt = time + 0.1;
     } else {
       document.body.classList.toggle('ghost-eye-danger', !darumaState.eyesClosed);
+      document.body.classList.toggle('ghost-heartbeat', darumaState.eyesClosed);
     }
   } else {
-    document.body.classList.remove('ghost-eye-danger');
+    document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat');
   }
 }
 
@@ -6737,7 +6774,7 @@ function updatePlayer(dt) {
     }
     const moved = Math.hypot(camera.position.x - darumaState.lastX, camera.position.z - darumaState.lastZ);
     const freezeWindowActive = Number.isFinite(darumaState.nextRoundAt)
-      && time >= darumaState.finalDaAt + 0.5
+      && time >= darumaState.finalDaAt + 0.4
       && time < darumaState.nextRoundAt;
     if (freezeWindowActive && moved > 0.035) {
       endTrainGameOver('daruma');
