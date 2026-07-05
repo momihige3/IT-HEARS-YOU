@@ -1591,3 +1591,25 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Train Game Over Preload / Ghost Model Follow-up
+
+- Game over image lag:
+  - Added startup preloading for `eye_scare.png` and `daruma_gameover.png` so train game-over backgrounds can appear immediately.
+- Train ghost:
+  - Replaced the train ghost's simple teru-teru-bozu silhouette with a woman-ghost style procedural model based on the mansion ghost:
+    - white robe/capsule body,
+    - long black hair strands,
+    - face shadow,
+    - hands/arms,
+    - red eye lights.
+- Train game 10 reset:
+  - The noise transition before game 11 now lasts 3 seconds.
+  - The next round starts after the 3-second noise effect finishes.
+- Hidden debug assist:
+  - Holding number `5` now also triples train-stage forward movement speed.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

@@ -82,6 +82,12 @@ eyeScarePreload.decoding = 'async';
 eyeScarePreload.onload = () => eyeScareElement?.classList.add('image-ready');
 eyeScarePreload.src = './images/eye_scare.png';
 if (eyeScarePreload.complete && eyeScarePreload.naturalWidth > 0) eyeScareElement?.classList.add('image-ready');
+const gameOverPreloadImages = ['./images/eye_scare.png', './images/daruma_gameover.png'].map((src) => {
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = src;
+  return image;
+});
 // Mobile play protection: disable text selection, long-press menu, pinch-zoom, and double-tap zoom.
 document.addEventListener('contextmenu', (event) => {
   if (touchDevice || state?.mapMode === 'train') event.preventDefault();
@@ -5111,20 +5117,53 @@ function makeDarumaMonster() {
 
 function makeTrainGhost() {
   const group = new THREE.Group();
-  const cloth = new THREE.Mesh(new THREE.ConeGeometry(0.72, 2.1, 18, 1, true), new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.9, transparent: true, opacity: 0.78 }));
-  cloth.position.y = 1.35;
-  group.add(cloth);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.85 }));
-  head.position.y = 2.38;
+  const ghostMaterial = clothWhiteMat.clone();
+  ghostMaterial.transparent = true;
+  ghostMaterial.opacity = 0.86;
+  const dress = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.45, 6, 12), ghostMaterial);
+  dress.position.y = 1.05;
+  dress.scale.set(0.92, 1.18, 0.72);
+  group.add(dress);
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.55, 12, 3, true), ghostMaterial);
+  robe.position.y = 0.78;
+  robe.rotation.y = Math.PI / 18;
+  group.add(robe);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 9), new THREE.MeshStandardMaterial({ color: 0xc7b8aa, roughness: 0.9, transparent: true, opacity: 0.92 }));
+  head.position.y = 2.12;
   group.add(head);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.29, 12, 9, 0, Math.PI * 2, 0, Math.PI * 0.88), hairMat.clone());
+  hair.position.set(0, 2.06, 0.02);
+  hair.scale.set(0.86, 1.32, 0.72);
+  group.add(hair);
+  for (let i = 0; i < 10; i += 1) {
+    const strand = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.35 + Math.random() * 0.65, 0.018), hairMat.clone());
+    const angle = -0.92 + (i / 9) * 1.84;
+    strand.position.set(Math.sin(angle) * 0.2, 1.46 - Math.random() * 0.18, 0.2 + Math.cos(angle) * 0.08);
+    strand.rotation.z = -angle * 0.13;
+    strand.rotation.x = 0.1 + Math.random() * 0.12;
+    group.add(strand);
+  }
+  const faceShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.38), new THREE.MeshBasicMaterial({ color: 0x020101, transparent: true, opacity: 0.72, side: THREE.DoubleSide }));
+  faceShadow.position.set(0, 2.1, 0.218);
+  group.add(faceShadow);
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.92, 4, 6), ghostMaterial);
+    arm.position.set(side * 0.34, 1.18, 0.04);
+    arm.rotation.z = side * 0.28;
+    group.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0xb8aa9d, roughness: 0.92, transparent: true, opacity: 0.9 }));
+    hand.position.set(side * 0.48, 0.68, 0.1);
+    group.add(hand);
+  }
   for (const sx of [-0.12, 0.12]) {
     const eye = new THREE.PointLight(0xff1212, 3.2, 4, 1.8);
-    eye.position.set(sx, 2.42, 0.24);
+    eye.position.set(sx, 2.12, 0.25);
     group.add(eye);
     const dot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff1111 }));
     dot.position.copy(eye.position);
     group.add(dot);
   }
+  group.scale.setScalar(1.14);
   group.visible = false;
   addTrainObject(group);
   return group;
@@ -5351,12 +5390,12 @@ function advanceTrainGame() {
   if (darumaState.game === 10 && !darumaState.resetUsed) {
     darumaState.resetUsed = true;
     document.body.classList.add('train-noise');
-    darumaState.noiseUntil = time + 1;
-    setTimeout(() => document.body.classList.remove('train-noise'), 1000);
+    darumaState.noiseUntil = time + 3;
+    setTimeout(() => document.body.classList.remove('train-noise'), 3000);
     resetTrainCarPosition();
     darumaState.game = 11;
     if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(10);
-    startDarumaRound(time + 1.05);
+    startDarumaRound(time + 3.05);
     return;
   }
   if (darumaState.game >= 11) {
@@ -6772,7 +6811,8 @@ function updatePlayer(dt) {
     state.moveMode = movingForward ? 'WALKING' : 'WALKING';
     state.noise = 0;
     if (movingForward && !state.settingsOpen && !state.fullMapOpen) {
-      camera.position.z -= 2.25 * dt;
+      const trainSpeedMultiplier = keys.Digit5 ? 3 : 1;
+      camera.position.z -= 2.25 * trainSpeedMultiplier * dt;
       camera.position.x = THREE.MathUtils.lerp(camera.position.x, TRAIN_OFFSET_X, dt * 8);
       camera.position.y = 1.55;
     }
