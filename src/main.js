@@ -1039,6 +1039,42 @@ function isNearSchoolDoorOrConnector(x, z, minDistance = 2.35, includeConnectors
   });
 }
 
+function schoolDoorWorldPoints(room) {
+  const points = [];
+  const sign = worldFromGrid(room.sign.gx, room.sign.gz);
+  points.push({ x: sign.x, z: sign.z });
+  for (const [gx, gz] of room.connector) {
+    const pos = worldFromGrid(gx, gz);
+    points.push({ x: pos.x, z: pos.z });
+  }
+  for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
+    if (isRoomOpening(room, 'west', gz)) {
+      const p = worldFromGrid(room.gx0, gz);
+      points.push({ x: p.x - CELL / 2, z: p.z });
+    }
+    if (isRoomOpening(room, 'east', gz)) {
+      const p = worldFromGrid(room.gx1, gz);
+      points.push({ x: p.x + CELL / 2, z: p.z });
+    }
+  }
+  for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
+    if (isRoomOpening(room, 'north', gx)) {
+      const p = worldFromGrid(gx, room.gz0);
+      points.push({ x: p.x, z: p.z - CELL / 2 });
+    }
+    if (isRoomOpening(room, 'south', gx)) {
+      const p = worldFromGrid(gx, room.gz1);
+      points.push({ x: p.x, z: p.z + CELL / 2 });
+    }
+  }
+  return points;
+}
+
+function isNearSchoolEntranceStrict(x, z, radius = 4.4) {
+  return schoolRooms.some((room) =>
+    schoolDoorWorldPoints(room).some((point) => Math.hypot(x - point.x, z - point.z) < radius));
+}
+
 function schoolRoomById(id) {
   return schoolRooms.find((room) => room.id === id) || null;
 }
@@ -1348,6 +1384,11 @@ function buildMansionSecondFloor() {
     mansionNodes.some((node) => Math.hypot(node.x - x, node.z - z) <= radius);
   const isMansionWallFacingSide = (node, side) =>
     !hasMansionNodeNear(node.x + side.x * CELL, node.z + side.z * CELL, 0.55);
+  const mansionNodeDegree = (node) => directions.reduce((count, [dx, dz]) =>
+    count + (hasMansionNodeNear(node.x + dx * CELL, node.z + dz * CELL, 0.55) ? 1 : 0), 0);
+  const isMansionEntranceLikeNode = (node) => mansionNodeDegree(node) >= 3;
+  const isNearMansionEntranceLikeNode = (x, z, radius = 5.2) =>
+    mansionNodes.some((node) => isMansionEntranceLikeNode(node) && Math.hypot(node.x - x, node.z - z) < radius);
   const isInteriorMansionNode = (node) => {
     const ix = Math.round((node.x - offsetX) / CELL);
     const iz = Math.round((node.z - MANSION_CENTER_Z) / CELL);
@@ -1368,8 +1409,14 @@ function buildMansionSecondFloor() {
     return choosePlacement(placements, preferInterior);
   };
   const wallExitFallbacks = shuffleCopy(mansionNodes)
+    .filter((node) => !isMansionEntranceLikeNode(node))
     .flatMap((node) => shuffleCopy(mansionExitSides)
       .filter((side) => isMansionWallFacingSide(node, side)
+        && !isNearMansionEntranceLikeNode(
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
+          4.6,
+        )
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
@@ -1378,9 +1425,15 @@ function buildMansionSecondFloor() {
       .map((side) => ({ node, side })));
   const mansionExitCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 10)
+    .filter((node) => !isMansionEntranceLikeNode(node))
     .flatMap((node) => shuffleCopy(mansionExitSides)
       .filter((side) => isMansionWallFacingSide(node, side)
         && canEnemyMoveTo(node.x - side.x * 0.72, node.z - side.z * 0.72, 0.48)
+        && !isNearMansionEntranceLikeNode(
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
+          wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
+          4.6,
+        )
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).x,
           wallMountPoint(node, side, side.x ? side.doorW : side.doorD).z,
@@ -1420,8 +1473,14 @@ function buildMansionSecondFloor() {
   ];
   const wallBreakerFallbacks = shuffleCopy(mansionNodes)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
+    .filter((node) => !isMansionEntranceLikeNode(node))
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
       .filter((side) => isMansionWallFacingSide(node, side)
+        && !isNearMansionEntranceLikeNode(
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
+          4.8,
+        )
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
@@ -1431,9 +1490,15 @@ function buildMansionSecondFloor() {
   const breakerCandidates = shuffleCopy(mansionNodes)
     .filter((node) => Math.hypot(node.x - mansionStartPoint.x, node.z - mansionStartPoint.z) > 6)
     .filter((node) => !mansionExit || Math.hypot(node.x - mansionExit.approachX, node.z - mansionExit.approachZ) > IMPORTANT_OBJECT_CLEARANCE)
+    .filter((node) => !isMansionEntranceLikeNode(node))
     .flatMap((node) => shuffleCopy(mansionWallSideOptions)
       .filter((side) => isMansionWallFacingSide(node, side)
         && canEnemyMoveTo(node.x - Math.sign(side.x) * 0.58, node.z - Math.sign(side.z) * 0.58, 0.44)
+        && !isNearMansionEntranceLikeNode(
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
+          wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
+          4.8,
+        )
         && !hasNonWallColliderOverlap(
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).x,
           wallMountPoint(node, side, side.x ? side.panelW : side.panelD).z,
@@ -1637,8 +1702,22 @@ const exitWallSide = exitRoom.sign.side === 'east' ? 'west' : 'east';
 const exitWallX = exitWallSide === 'west'
   ? worldFromGrid(exitRoom.gx0, exitRoom.gz0).x - CELL / 2 + 0.11
   : worldFromGrid(exitRoom.gx1, exitRoom.gz1).x + CELL / 2 - 0.11;
+const distanceFromSchoolEntrances = (room, x, z) =>
+  schoolDoorWorldPoints(room).reduce((min, point) => Math.min(min, Math.hypot(x - point.x, z - point.z)), Infinity);
+const exitCandidateNodes = walkableNodes
+  .filter((node) => node.gx >= exitRoom.gx0 && node.gx <= exitRoom.gx1)
+  .filter((node) => node.gz >= exitRoom.gz0 && node.gz <= exitRoom.gz1)
+  .filter((node) => !isNearSchoolEntranceStrict(exitWallX, node.z, 4.8))
+  .sort(() => Math.random() - 0.5);
+const exitNode = exitCandidateNodes[0]
+  || walkableNodes
+    .filter((node) => node.gx >= exitRoom.gx0 && node.gx <= exitRoom.gx1)
+    .filter((node) => node.gz >= exitRoom.gz0 && node.gz <= exitRoom.gz1)
+    .sort((a, b) => distanceFromSchoolEntrances(exitRoom, exitWallX, b.z) - distanceFromSchoolEntrances(exitRoom, exitWallX, a.z))[0]
+  || nearestNode(roomCenter(exitRoom).x, roomCenter(exitRoom).z)
+  || walkableNodes[0];
 const exitPosition = new THREE.Vector3(exitWallX, 0, exitRoomCenter.z);
-const exitNode = nearestNode(exitRoomCenter.x, exitRoomCenter.z) || walkableNodes[0];
+exitPosition.z = exitNode.z;
 const exitDoor = addBox(exitPosition.x, 1.45, exitPosition.z, 0.16, 2.35, 1.35, material(0x303a33, 0.48, 0.6), false, false, false);
 addBox(exitPosition.x, 3.05, exitPosition.z, 0.09, 0.32, 1.05, material(0x1d6243, 0.35), false, false, false);
 const exitLight = new THREE.PointLight(0x3acb88, 4.5, 6);
@@ -1670,6 +1749,7 @@ const breakerCandidates = walkableNodes
   .filter((node) => node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1)
   .filter((node) => node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1)
   .filter((node) => !isNearSchoolDoorOrConnector(breakerWallX, node.z, 3.0))
+  .filter((node) => !isNearSchoolEntranceStrict(breakerWallX, node.z, 4.8))
   .filter((node) => !lockers.some((locker) => !inMansionBounds(locker.x, locker.z) && Math.hypot(locker.x - breakerWallX, locker.z - node.z) < 5.5))
   .filter((node) => !hasNonWallColliderOverlap(breakerWallX, node.z, 1.0))
   .sort((a, b) => schoolBreakerCandidateScore(a) - schoolBreakerCandidateScore(b));
@@ -1677,6 +1757,7 @@ const breakerFallbackCandidates = walkableNodes
   .filter((node) => node.key !== exitNode.key && breakerRoom)
   .filter((node) => node.gx >= breakerRoom.gx0 && node.gx <= breakerRoom.gx1)
   .filter((node) => node.gz >= breakerRoom.gz0 && node.gz <= breakerRoom.gz1)
+  .filter((node) => !isNearSchoolEntranceStrict(breakerWallX, node.z, 3.6))
   .sort((a, b) => schoolBreakerCandidateScore(a) - schoolBreakerCandidateScore(b));
 const breakerNode = breakerCandidates[0] || breakerFallbackCandidates[0] || walkableNodes[walkableNodes.length - 1];
 const breakerPosition = new THREE.Vector3(breakerWallX, 0, breakerNode.z);
@@ -1814,7 +1895,11 @@ function addRoomFixtures(room) {
     const sideX = room.sign.side === 'east'
       ? worldFromGrid(room.gx0, room.gz0).x - CELL / 2 + 0.08
       : worldFromGrid(room.gx1, room.gz1).x + CELL / 2 - 0.08;
-    addNightWindow(sideX, center.z - 0.9, room.sign.side === 'east' ? Math.PI / 2 : -Math.PI / 2, 1.35);
+    const windowZChoices = [center.z - 1.45, center.z + 1.45, center.z]
+      .filter((z) => !isNearSchoolEntranceStrict(sideX, z, 4.2))
+      .sort(() => Math.random() - 0.5);
+    const windowZ = windowZChoices[0];
+    if (Number.isFinite(windowZ)) addNightWindow(sideX, windowZ, room.sign.side === 'east' ? Math.PI / 2 : -Math.PI / 2, 1.35);
   } else {
     addBox(center.x, 0.58, center.z + 1.1, 1.7, 1.16, 0.7, metalMat, true, false, false);
     addShelf(center.x - 0.92, center.z - 0.92, 1.2, Math.PI / 2);
@@ -2855,6 +2940,9 @@ const enemyData = {
   lastRoomJumpAt: -Infinity,
   recoveryJump: null,
   loopEscapeUntil: 0,
+  closeRangeStuckSince: 0,
+  closeRangeAnchorX: enemy.position.x,
+  closeRangeAnchorZ: enemy.position.z,
 };
 
 function nearestNode(x, z) {
@@ -3333,6 +3421,63 @@ function choosePassByRoute(time) {
   enemyData.lookBackYaw = Math.atan2(camera.position.x - enemy.position.x, camera.position.z - enemy.position.z)
     + (Math.random() < 0.5 ? -0.75 : 0.75);
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, time + 0.25);
+}
+
+function nearestRoomToPoint(x, z) {
+  const exact = schoolRoomAtWorld(x, z);
+  if (exact) return exact;
+  return schoolRooms
+    .map((room) => {
+      const center = roomCenter(room);
+      return { room, distance: Math.hypot(center.x - x, center.z - z) };
+    })
+    .sort((a, b) => a.distance - b.distance)[0]?.room || null;
+}
+
+function routeEnemyToPlayerNearestRoom(time) {
+  const room = nearestRoomToPoint(camera.position.x, camera.position.z);
+  if (!room) return false;
+  const start = nearestReachableNode(enemy.position.x, enemy.position.z, 12) || nearestNode(enemy.position.x, enemy.position.z);
+  if (!start) return false;
+  const roomCenterPoint = roomCenter(room);
+  const entranceNodes = room.connector
+    .map(([gx, gz]) => navNodes.get(gridKey(gx, gz)) || nearestNode(worldFromGrid(gx, gz).x, worldFromGrid(gx, gz).z))
+    .filter(Boolean);
+  const interiorNodes = [...navNodes.values()]
+    .filter((node) => node.gx >= room.gx0 && node.gx <= room.gx1 && node.gz >= room.gz0 && node.gz <= room.gz1)
+    .filter((node) => canEnemyMoveIgnoringFurniture(node.x, node.z, 0.16))
+    .sort((a, b) => Math.hypot(a.x - camera.position.x, a.z - camera.position.z)
+      - Math.hypot(b.x - camera.position.x, b.z - camera.position.z));
+  const targets = [...interiorNodes.slice(0, 6), ...entranceNodes];
+  let best = null;
+  for (const entrance of entranceNodes.length ? entranceNodes : [nearestNode(roomCenterPoint.x, roomCenterPoint.z)]) {
+    if (!entrance) continue;
+    const toEntrance = findPath(start.key, entrance.key);
+    if (!toEntrance.length && start.key !== entrance.key) continue;
+    for (const target of targets) {
+      if (!target) continue;
+      const toTarget = target.key === entrance.key ? [] : findPath(entrance.key, target.key);
+      if (!toTarget.length && target.key !== entrance.key) continue;
+      const score = toEntrance.length + toTarget.length * 0.8 + Math.hypot(target.x - camera.position.x, target.z - camera.position.z) * 0.25;
+      if (!best || score < best.score) best = { path: [...toEntrance, ...toTarget], target, score };
+    }
+  }
+  if (!best?.path?.length) {
+    const target = targets[0] || nearestNode(roomCenterPoint.x, roomCenterPoint.z);
+    if (!target) return false;
+    if (!setEnemyDestination(target.x, target.z, state.detection > 70 ? 'HUNTING' : 'SEARCHING')) return false;
+  } else {
+    commitEnemyPath(best.path, best.target, state.detection > 70 ? 'HUNTING' : 'SEARCHING');
+  }
+  enemyData.closeRangeStuckSince = 0;
+  enemyData.closeRangeAnchorX = enemy.position.x;
+  enemyData.closeRangeAnchorZ = enemy.position.z;
+  enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 12);
+  enemyData.investigateUntil = Math.max(enemyData.investigateUntil, time + 8);
+  enemyData.pauseUntil = 0;
+  enemyData.lookAroundUntil = 0;
+  enemyData.repathAt = time + 0.6;
+  return true;
 }
 
 function recoverEnemyNavigation(time) {
@@ -6075,6 +6220,21 @@ function updateEnemy(dt, time) {
     }
   }
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
+  if (!state.hidden && distance <= 5) {
+    const closeDrift = Math.hypot(enemy.position.x - enemyData.closeRangeAnchorX, enemy.position.z - enemyData.closeRangeAnchorZ);
+    if (closeDrift < 1.15) {
+      if (!enemyData.closeRangeStuckSince) enemyData.closeRangeStuckSince = time;
+      if (time - enemyData.closeRangeStuckSince > 5) routeEnemyToPlayerNearestRoom(time);
+    } else {
+      enemyData.closeRangeStuckSince = 0;
+      enemyData.closeRangeAnchorX = enemy.position.x;
+      enemyData.closeRangeAnchorZ = enemy.position.z;
+    }
+  } else {
+    enemyData.closeRangeStuckSince = 0;
+    enemyData.closeRangeAnchorX = enemy.position.x;
+    enemyData.closeRangeAnchorZ = enemy.position.z;
+  }
   const enemyEye = enemy.position.clone().add(new THREE.Vector3(0, 1.7, 0));
   const playerEye = camera.position.clone();
   toPlayer.subVectors(playerEye, enemyEye);
@@ -6414,6 +6574,9 @@ function updateEnemy(dt, time) {
     enemy.rotation.y += roarTurn * dt;
   }
   if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
+    if (!state.hidden && distance <= 5 && enemyData.closeRangeStuckSince && time - enemyData.closeRangeStuckSince > 2.2) {
+      if (routeEnemyToPlayerNearestRoom(time)) return;
+    }
     const sweepProgress = (time * (state.detection > 58 || enemyData.alertMemory > 0.55 ? 2.35 : 1.25)) % (Math.PI * 2);
     enemy.rotation.y = enemyData.lookBaseYaw + sweepProgress;
   }

@@ -1363,3 +1363,19 @@ Build:
   - `npm run build`
 - Note:
   - The in-app browser instance was unavailable/closed during this handoff, so live browser traversal should be rerun from DevTools using the hooks above if visual confirmation is needed.
+
+## 2026-07-05 Entrance Placement / Enemy Close-Stuck Fix
+
+- Excluded room entrance/connector/opening zones from school window placement.
+- Excluded room entrance/connector/opening zones from school breaker and school exit placement.
+- Excluded mansion entrance-like junction nodes from mansion breaker and mansion exit placement.
+- Added enemy close-range stuck watchdog:
+  - If SONAR stays within 5m of the player and fails to escape the local area for 5 seconds, it builds a forced route to the player's nearest room.
+  - If SONAR is only looking around within 5m for more than 2.2 seconds, it also tries the same route immediately.
+- Added route generation toward the player's nearest room through room connectors/interior nodes.
+- Verified after change:
+  - `node --check src/main.js`
+  - `npm run build`
+  - Browser debug walk:
+    - School: 331 walkable cells, no missing floor/ceiling
+    - Mansion: 131 walkable cells, no missing floor/ceiling
