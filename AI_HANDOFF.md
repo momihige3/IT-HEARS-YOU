@@ -1314,3 +1314,12 @@ Build:
 - Enemy corridor routing now considers multiple vertical lanes (`gx` 6/12/18), not only the old left-side lane.
 - Desk chair backs were removed/flattened to eliminate the bright white vertical stick artifact.
 - Blackboard/shelf removal now only happens on actual registered room openings, not merely adjacent walkable cells.
+
+## 2026-07-05 Bounds / Map Sync / Collision Loop Fix
+
+- Removed the `beforeunload` page refresh warning.
+- Fixed school bounds to derive from `GRID_W`, `GRID_H`, and `CELL` instead of old hardcoded values; this prevents the expanded right side from becoming an unmanaged/white area.
+- Full-map room wall rendering now respects registered room openings, matching the actual generated walls after thin/open wall changes.
+- Enemy no longer repeats the same object collision loop indefinitely:
+  - After repeated slide attempts, sound pursuit re-routes to the source.
+  - Normal routes skip the stuck node or switch to an outer route.

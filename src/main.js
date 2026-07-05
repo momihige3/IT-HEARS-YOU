@@ -289,7 +289,9 @@ const walkable = new Set();
 const navNodes = new Map();
 
 function inSchoolBounds(x, z) {
-  return x >= -32 && x <= 32 && z >= -42 && z <= 42;
+  const maxX = GRID_HALF_W * CELL + CELL / 2;
+  const maxZ = GRID_HALF_H * CELL + CELL / 2;
+  return x >= -maxX && x <= maxX && z >= -maxZ && z <= maxZ;
 }
 
 function inMansionBounds(x, z) {
@@ -4913,13 +4915,6 @@ addEventListener('mousemove', (event) => {
     Math.PI / 2,
   );
 });
-addEventListener('beforeunload', (event) => {
-  if (state.started && !state.ended && !state.allowExit) {
-    event.preventDefault();
-    event.returnValue = '';
-  }
-});
-
 function toLandscapeInputDelta(dx, dy) {
   if (!document.body.classList.contains('mobile-portrait-landscape')) return { x: dx, y: dy };
   return { x: dy, y: -dx };
@@ -6173,6 +6168,22 @@ function updateEnemy(dt, time) {
           enemyData.isMoving = true;
           enemyData.wallSlideAttempts += 1;
           movedThisFrame = true;
+          if (enemyData.wallSlideAttempts > 3) {
+            if (enemyData.soundSourceTarget) {
+              setEnemyDestinationToSoundSource(
+                enemyData.soundSourceTarget.x,
+                enemyData.soundSourceTarget.z,
+                enemyData.mode === 'HUNTING' ? 'HUNTING' : 'INVESTIGATING',
+                enemyData.soundSourceTarget.roomId,
+              );
+              enemyData.repathAt = time + 0.6;
+            } else if (enemyData.path.length > 1) {
+              enemyData.path.shift();
+              enemyData.wallSlideAttempts = 0;
+            } else {
+              chooseOuterLoopRoute(time, enemyData.mode === 'ROAMING' ? 'ROAMING' : 'SEARCHING');
+            }
+          }
         } else {
           const safe = nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
           if (!isSafeSpawnPoint(enemy.position.x, enemy.position.z, 0.18) || enemyData.wallSlideAttempts > 3) {
@@ -7130,14 +7141,14 @@ function drawFullMap() {
       for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
         const west = worldFromGrid(room.gx0, gz);
         const east = worldFromGrid(room.gx1, gz);
-        if (!(doorOnWest && gz === doorZ)) drawWallRect(west.x - CELL / 2, west.z, wallThickness, CELL * scale);
-        if (!(doorOnEast && gz === doorZ)) drawWallRect(east.x + CELL / 2, east.z, wallThickness, CELL * scale);
+        if (!(doorOnWest && gz === doorZ) && !isRoomOpening(room, 'west', gz)) drawWallRect(west.x - CELL / 2, west.z, wallThickness, CELL * scale);
+        if (!(doorOnEast && gz === doorZ) && !isRoomOpening(room, 'east', gz)) drawWallRect(east.x + CELL / 2, east.z, wallThickness, CELL * scale);
       }
       for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
         const north = worldFromGrid(gx, room.gz0);
         const south = worldFromGrid(gx, room.gz1);
-        drawWallRect(north.x, north.z - CELL / 2, CELL * scale, wallThickness);
-        drawWallRect(south.x, south.z + CELL / 2, CELL * scale, wallThickness);
+        if (!isRoomOpening(room, 'north', gx)) drawWallRect(north.x, north.z - CELL / 2, CELL * scale, wallThickness);
+        if (!isRoomOpening(room, 'south', gx)) drawWallRect(south.x, south.z + CELL / 2, CELL * scale, wallThickness);
       }
     }
   }
