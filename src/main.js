@@ -84,7 +84,7 @@ eyeScarePreload.src = './images/eye_scare.png';
 if (eyeScarePreload.complete && eyeScarePreload.naturalWidth > 0) eyeScareElement?.classList.add('image-ready');
 // Mobile play protection: disable text selection, long-press menu, pinch-zoom, and double-tap zoom.
 document.addEventListener('contextmenu', (event) => {
-  if (touchDevice) event.preventDefault();
+  if (touchDevice || state?.mapMode === 'train') event.preventDefault();
 }, { passive: false });
 document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
 document.addEventListener('gesturechange', (event) => event.preventDefault(), { passive: false });
@@ -251,6 +251,32 @@ const state = {
   settingsOpen: false,
   allowExit: false,
   bob: 0,
+};
+
+const TRAIN_OFFSET_X = -120;
+const TRAIN_START_Z = 18;
+const TRAIN_CAR_LENGTH = 12;
+const TRAIN_CAR_COUNT = 10;
+const TRAIN_WIDTH = 4.2;
+const trainRuntimeObjects = [];
+const darumaState = {
+  active: false,
+  game: 1,
+  sequenceIndex: 0,
+  nextSyllableAt: Infinity,
+  finalDaAt: -Infinity,
+  freezeUntilNext: false,
+  nextRoundAt: Infinity,
+  eyesClosed: false,
+  lastX: 0,
+  lastZ: 0,
+  resetUsed: false,
+  ghostActive: false,
+  ghostUntil: 0,
+  ghostNextAt: Infinity,
+  noiseUntil: 0,
+  monster: null,
+  ghost: null,
 };
 
 const keys = {};
@@ -4757,6 +4783,13 @@ function endGame(win) {
   ghostDouble.group.visible = false;
   ghostDouble.active = false;
   $('#eye-scare')?.classList.remove('visible');
+  if (state.mapMode === 'train') {
+    Object.values(darumaAudio).forEach((sound) => {
+      sound.pause();
+      sound.currentTime = 0;
+    });
+  }
+  document.body.classList.remove('eyes-closed', 'train-noise', 'train-mode');
   stopMobileGameplayInput();
   if (!win) setBreaker(false, false);
   if (win) playClearSound();
@@ -4919,6 +4952,243 @@ controls.addEventListener('unlock', () => {
   }
 });
 
+const darumaSyllables = [
+  { char: 'だ', src: './audio/daruma_da1.mp3', slow: false },
+  { char: 'る', src: './audio/daruma_ru.mp3', slow: false },
+  { char: 'ま', src: './audio/daruma_ma.mp3', slow: false },
+  { char: 'さ', src: './audio/daruma_sa.mp3', slow: false },
+  { char: 'ん', src: './audio/daruma_n1.mp3', slow: false },
+  { char: 'が', src: './audio/daruma_ga.mp3', slow: false },
+  { char: 'こ', src: './audio/daruma_ko.mp3', slow: true },
+  { char: 'ろ', src: './audio/daruma_ro.mp3', slow: true },
+  { char: 'ん', src: './audio/daruma_n2.mp3', slow: true },
+];
+const darumaFinalSounds = ['./audio/daruma_da2.mp3', './audio/daruma_da3.mp3'];
+const darumaAudio = [...darumaSyllables.map((item) => item.src), ...darumaFinalSounds].reduce((acc, src) => {
+  const element = new Audio(src);
+  element.preload = 'auto';
+  element.volume = Math.min(1, Math.max(0, seVolume / 100));
+  acc[src] = element;
+  return acc;
+}, {});
+
+function addTrainObject(object) {
+  trainRuntimeObjects.push(object);
+  scene.add(object);
+  return object;
+}
+
+function clearTrainRuntime() {
+  for (const object of trainRuntimeObjects) removeSceneObject(object);
+  trainRuntimeObjects.length = 0;
+  darumaState.monster = null;
+  darumaState.ghost = null;
+}
+
+function trainCarStartZ(game = darumaState.game) {
+  return TRAIN_START_Z - (game - 1) * TRAIN_CAR_LENGTH;
+}
+
+function trainDarumaZ(game = darumaState.game) {
+  return trainCarStartZ(game) - TRAIN_CAR_LENGTH + 1.65;
+}
+
+function makeDarumaMonster() {
+  const group = new THREE.Group();
+  const redMat = new THREE.MeshStandardMaterial({ color: 0x8d0707, roughness: 0.62, metalness: 0.05, emissive: 0x250000, emissiveIntensity: 0.2 });
+  const faceMat = new THREE.MeshStandardMaterial({ color: 0xd8bda1, roughness: 0.8, metalness: 0.0 });
+  const blackMat = new THREE.MeshBasicMaterial({ color: 0x050000 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.25, 32, 24), redMat);
+  body.scale.set(1.05, 1.22, 0.92);
+  body.position.y = 1.25;
+  group.add(body);
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.72, 24, 16), faceMat);
+  face.scale.set(0.86, 0.55, 0.16);
+  face.position.set(0, 1.52, 0.86);
+  group.add(face);
+  for (const sx of [-0.28, 0.28]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), blackMat);
+    eye.position.set(sx, 1.6, 1.02);
+    group.add(eye);
+  }
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.055, 0.03), blackMat);
+  mouth.position.set(0, 1.33, 1.03);
+  group.add(mouth);
+  group.position.set(TRAIN_OFFSET_X, 0, trainDarumaZ(1));
+  group.rotation.y = Math.PI;
+  addTrainObject(group);
+  return group;
+}
+
+function makeTrainGhost() {
+  const group = new THREE.Group();
+  const cloth = new THREE.Mesh(new THREE.ConeGeometry(0.72, 2.1, 18, 1, true), new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.9, transparent: true, opacity: 0.78 }));
+  cloth.position.y = 1.35;
+  group.add(cloth);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.85 }));
+  head.position.y = 2.38;
+  group.add(head);
+  for (const sx of [-0.12, 0.12]) {
+    const eye = new THREE.PointLight(0xff1212, 3.2, 4, 1.8);
+    eye.position.set(sx, 2.42, 0.24);
+    group.add(eye);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff1111 }));
+    dot.position.copy(eye.position);
+    group.add(dot);
+  }
+  group.visible = false;
+  addTrainObject(group);
+  return group;
+}
+
+function buildTrainMap() {
+  clearTrainRuntime();
+  const floor = new THREE.MeshStandardMaterial({ color: 0x272b2d, roughness: 0.76, metalness: 0.12 });
+  const wall = new THREE.MeshStandardMaterial({ color: 0x5d6366, roughness: 0.82, metalness: 0.08 });
+  const seat = new THREE.MeshStandardMaterial({ color: 0x253d59, roughness: 0.7, metalness: 0.05 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0x111517, roughness: 0.65, metalness: 0.25 });
+  const totalLength = TRAIN_CAR_COUNT * TRAIN_CAR_LENGTH;
+  const centerZ = TRAIN_START_Z - totalLength / 2;
+  const box = (x, y, z, w, h, d, mat) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x, y, z);
+    addTrainObject(mesh);
+    return mesh;
+  };
+  box(TRAIN_OFFSET_X, -0.08, centerZ, TRAIN_WIDTH, 0.16, totalLength + 1.2, floor);
+  box(TRAIN_OFFSET_X, 3.05, centerZ, TRAIN_WIDTH, 0.16, totalLength + 1.2, wall);
+  box(TRAIN_OFFSET_X - TRAIN_WIDTH / 2, 1.55, centerZ, 0.16, 3.1, totalLength + 1.2, wall);
+  box(TRAIN_OFFSET_X + TRAIN_WIDTH / 2, 1.55, centerZ, 0.16, 3.1, totalLength + 1.2, wall);
+  for (let i = 0; i < TRAIN_CAR_COUNT; i += 1) {
+    const carCenterZ = TRAIN_START_Z - i * TRAIN_CAR_LENGTH - TRAIN_CAR_LENGTH / 2;
+    box(TRAIN_OFFSET_X - 1.45, 0.52, carCenterZ, 0.7, 0.38, TRAIN_CAR_LENGTH - 2.4, seat);
+    box(TRAIN_OFFSET_X + 1.45, 0.52, carCenterZ, 0.7, 0.38, TRAIN_CAR_LENGTH - 2.4, seat);
+    box(TRAIN_OFFSET_X - 1.9, 1.7, carCenterZ, 0.04, 0.65, TRAIN_CAR_LENGTH - 3.0, trim);
+    box(TRAIN_OFFSET_X + 1.9, 1.7, carCenterZ, 0.04, 0.65, TRAIN_CAR_LENGTH - 3.0, trim);
+    if (i > 0) box(TRAIN_OFFSET_X, 1.55, TRAIN_START_Z - i * TRAIN_CAR_LENGTH, TRAIN_WIDTH, 2.9, 0.08, trim);
+    const lamp = new THREE.PointLight(0xc9e6ff, 1.0, 8, 1.5);
+    lamp.position.set(TRAIN_OFFSET_X, 2.7, carCenterZ);
+    addTrainObject(lamp);
+  }
+  darumaState.monster = makeDarumaMonster();
+  darumaState.ghost = makeTrainGhost();
+}
+
+function setTrainPhrase() {
+  const phrase = $('#daruma-phrase');
+  if (!phrase) return;
+  phrase.innerHTML = '';
+  const chars = ['だ', 'る', 'ま', 'さ', 'ん', 'が', 'こ', 'ろ', 'ん', 'だ'];
+  chars.forEach((char, index) => {
+    const span = document.createElement('span');
+    span.textContent = char;
+    if (index < darumaState.sequenceIndex) span.classList.add('read');
+    if (index === 9 && clock.elapsedTime - darumaState.finalDaAt < 2) span.classList.add('final');
+    phrase.appendChild(span);
+  });
+  const car = $('#daruma-car');
+  if (car) car.textContent = `${Math.min(darumaState.game, 10)} / 10`;
+}
+
+function randomDarumaDelay(slow = false, final = false) {
+  if (final) return 0.1 + Math.random() * 4.9;
+  const t = Math.random();
+  return slow ? 0.35 + t * t * 0.65 : 0.1 + t * 0.9;
+}
+
+function playDarumaSound(src, delay) {
+  const sound = darumaAudio[src];
+  if (!sound) return;
+  sound.pause();
+  sound.currentTime = 0;
+  sound.volume = Math.min(1, Math.max(0, seVolume / 100));
+  sound.playbackRate = THREE.MathUtils.clamp(0.72 / Math.max(delay, 0.12), 0.55, 1.85);
+  sound.play().catch(() => {});
+}
+
+function startDarumaRound(time = clock.elapsedTime) {
+  darumaState.sequenceIndex = 0;
+  darumaState.finalDaAt = -Infinity;
+  darumaState.freezeUntilNext = false;
+  darumaState.nextSyllableAt = time + 0.12;
+  darumaState.nextRoundAt = Infinity;
+  darumaState.lastX = camera.position.x;
+  darumaState.lastZ = camera.position.z;
+  setTrainPhrase();
+}
+
+function resetTrainCarPosition() {
+  camera.position.set(TRAIN_OFFSET_X, 1.55, trainCarStartZ(Math.min(darumaState.game, 10)) - 1.0);
+  camera.rotation.set(0, Math.PI, 0);
+  darumaState.lastX = camera.position.x;
+  darumaState.lastZ = camera.position.z;
+}
+
+function initTrainStage() {
+  buildTrainMap();
+  darumaState.active = true;
+  darumaState.game = 1;
+  darumaState.resetUsed = false;
+  darumaState.eyesClosed = false;
+  darumaState.ghostActive = false;
+  darumaState.ghostUntil = 0;
+  darumaState.ghostNextAt = Infinity;
+  darumaState.noiseUntil = 0;
+  resetTrainCarPosition();
+  if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(1);
+  if (darumaState.ghost) darumaState.ghost.visible = false;
+  startDarumaRound(clock.elapsedTime + 0.3);
+  setTrainPhrase();
+}
+
+function endTrainGameOver(kind = 'daruma') {
+  Object.values(darumaAudio).forEach((sound) => {
+    sound.pause();
+    sound.currentTime = 0;
+  });
+  document.body.classList.remove('eyes-closed', 'train-noise');
+  if (kind === 'ghost') {
+    $('#message-kicker').textContent = '幽霊に捕まった';
+    $('#message-title').textContent = 'GAME OVER';
+    $('#message-body').textContent = '目を閉じるのが、少し遅かった。';
+    state.ended = true;
+    state.allowExit = true;
+    controls.unlock();
+    $('#message-screen').classList.add('visible');
+    return;
+  }
+  $('#message-kicker').textContent = 'だるまに捕まった';
+  $('#message-title').textContent = 'GAME OVER';
+  $('#message-body').textContent = '「だ」の後に、動いてしまった。';
+  state.ended = true;
+  state.allowExit = true;
+  controls.unlock();
+  $('#message-screen').classList.add('visible');
+}
+
+function advanceTrainGame() {
+  const time = clock.elapsedTime;
+  if (darumaState.game === 10 && !darumaState.resetUsed) {
+    darumaState.resetUsed = true;
+    document.body.classList.add('train-noise');
+    darumaState.noiseUntil = time + 1;
+    setTimeout(() => document.body.classList.remove('train-noise'), 1000);
+    resetTrainCarPosition();
+    darumaState.game = 11;
+    if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(10);
+    startDarumaRound(time + 1.05);
+    return;
+  }
+  if (darumaState.game >= 11) {
+    endGame(true);
+    return;
+  }
+  darumaState.game += 1;
+  resetTrainCarPosition();
+  if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(Math.min(darumaState.game, 10));
+  startDarumaRound(time + 0.45);
+}
+
 function clearSpawnedPickupRuntime() {
   for (const item of healItems) {
     scene.remove(item.group);
@@ -5031,6 +5301,27 @@ window.__debugWalkAllMapCells = debugWalkAllMapCells;
 window.__validateMapIntegrity = validateMapIntegrity;
 
 function purgeUnselectedMapRuntime(mode) {
+  if (mode === 'train') {
+    for (const child of [...scene.children]) {
+      if (child.userData?.preserveOnMapCleanup) continue;
+      const pos = getWorldXZ(child);
+      if (inSchoolBounds(pos.x, pos.z) || inMansionBounds(pos.x, pos.z)) removeSceneObject(child);
+    }
+    removeArrayItemsByBounds(colliders, (x, z) => inSchoolBounds(x, z) || inMansionBounds(x, z));
+    removeArrayItemsByBounds(lockers, (x, z) => inSchoolBounds(x, z) || inMansionBounds(x, z), (locker) => removeSceneObject(locker.group));
+    removeArrayItemsByBounds(schoolLights, (x, z) => inSchoolBounds(x, z) || inMansionBounds(x, z), (light) => scene.remove(light));
+    schoolRuntimeObjects.length = 0;
+    schoolFloorMeshes.length = 0;
+    schoolCeilingMeshes.length = 0;
+    clearMansionMapRuntime();
+    clearSpawnedPickupRuntime();
+    soundEvents.length = 0;
+    sonarReveals.length = 0;
+    if (enemy.parent) enemy.parent.remove(enemy);
+    enemy.visible = false;
+    womanEnemy.group.visible = false;
+    return;
+  }
   const removeSchool = mode === 'mansion';
   const shouldRemoveSceneChild = removeSchool
     ? (x, z) => inSchoolBounds(x, z)
@@ -5073,6 +5364,14 @@ function purgeUnselectedMapRuntime(mode) {
 }
 
 async function prepareSelectedMapCache(mode) {
+  if (mode === 'train') {
+    setLoading(true, '電車ステージを準備しています...');
+    await nextFrame();
+    buildTrainMap();
+    selectedMapCache.train = { ready: true, generatedAt: performance.now() };
+    await nextFrame();
+    return;
+  }
   if (mode === 'mansion') {
     setLoading(true, '屋敷マップをランダム生成しています...');
     await nextFrame();
@@ -5113,7 +5412,15 @@ async function startGame(mode = 'school') {
   state.mapMode = mode;
   state.floorLevel = mode === 'mansion' ? 2 : 1;
   await prepareSelectedMapCache(mode);
-  if (mode === 'mansion') {
+  if (mode === 'train') {
+    await nextFrame();
+    purgeUnselectedMapRuntime(mode);
+    initTrainStage();
+    enemy.visible = false;
+    womanEnemy.group.visible = false;
+    state.hasRadar = false;
+    state.hasFullMap = false;
+  } else if (mode === 'mansion') {
     await nextFrame();
     purgeUnselectedMapRuntime(mode);
     const integrity = validateMapIntegrity(mode, true);
@@ -5133,8 +5440,11 @@ async function startGame(mode = 'school') {
   }
   setLoading(true, 'アイテムと敵を配置しています...');
   await nextFrame();
-  placeKeyItemsForMode(mode);
-  if (mode === 'mansion' && mansionStartPoint) {
+  if (mode !== 'train') placeKeyItemsForMode(mode);
+  if (mode === 'train') {
+    resetTrainCarPosition();
+    $('#objective-text').textContent = 'だるまに触れる';
+  } else if (mode === 'mansion' && mansionStartPoint) {
     const safeStart = nearestSafeMansionNode(mansionStartPoint.x, mansionStartPoint.z) || mansionStartPoint;
     camera.position.set(safeStart.x, 1.68, safeStart.z);
     camera.rotation.set(0, 0, 0);
@@ -5181,8 +5491,9 @@ async function startGame(mode = 'school') {
     spawnHealItem(clock.elapsedTime, true);
     scheduleNextHeal(clock.elapsedTime);
   }
-  if (coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
+  if (mode !== 'train' && coinItems.length === 0) scheduleNextCoin(clock.elapsedTime);
   document.body.classList.add('game-running');
+  document.body.classList.toggle('train-mode', mode === 'train');
   $('#mobile-controls')?.classList.remove('disabled');
   $('#start-screen').classList.remove('visible');
   $('#full-map-screen')?.classList.remove('visible');
@@ -5278,6 +5589,7 @@ addEventListener('keydown', (event) => {
   }
   if (event.code === 'KeyM' && state.started && !event.repeat) {
     event.preventDefault();
+    if (state.mapMode === 'train') return;
     toggleFullMap();
     return;
   }
@@ -5308,6 +5620,22 @@ addEventListener('keydown', (event) => {
 addEventListener('keyup', (event) => {
   if (movementKeyCodes.has(event.code)) keys[event.code] = false;
 });
+addEventListener('mousedown', (event) => {
+  if (state.mapMode !== 'train' || !state.started || state.ended || state.caught) return;
+  if (event.button !== 2) return;
+  event.preventDefault();
+  darumaState.eyesClosed = true;
+  document.body.classList.add('eyes-closed');
+  Object.values(darumaAudio).forEach((sound) => {
+    sound.pause();
+    sound.currentTime = 0;
+  });
+}, { passive: false });
+addEventListener('mouseup', (event) => {
+  if (event.button !== 2) return;
+  darumaState.eyesClosed = false;
+  document.body.classList.remove('eyes-closed');
+}, { passive: false });
 addEventListener('blur', clearMovementInput);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) clearMovementInput();
@@ -5493,6 +5821,10 @@ function damagePlayer(amount, reason = 'damage') {
   state.shakeUntil = Math.max(state.shakeUntil, clock.elapsedTime + 0.42);
   state.shakePower = Math.max(state.shakePower, 1.25);
   if (state.hp <= 0) {
+    if (state.mapMode === 'train' && reason === 'train-ghost') {
+      endTrainGameOver('ghost');
+      return;
+    }
     state.ended = true;
     stopMobileGameplayInput();
     controls.unlock();
@@ -6122,7 +6454,7 @@ function triggerSonarRoar(time) {
 }
 
 function updateSonarRoar(time) {
-  if (state.mapMode === 'mansion') return;
+  if (state.mapMode !== 'school') return;
   if (!state.nextRoarAt) scheduleNextRoar(time);
   if (time >= state.nextRoarAt) triggerSonarRoar(time);
   if (time < state.roarUntil) {
@@ -6135,8 +6467,89 @@ function updateSonarRoar(time) {
   }
 }
 
+function updateDarumaStage(dt, time) {
+  if (state.mapMode !== 'train' || !darumaState.active || state.ended || state.caught) return;
+  if (time >= darumaState.noiseUntil) document.body.classList.remove('train-noise');
+  if (darumaState.nextRoundAt !== Infinity && time >= darumaState.nextRoundAt) startDarumaRound(time);
+  if (time >= darumaState.nextSyllableAt && darumaState.nextRoundAt === Infinity) {
+    if (darumaState.sequenceIndex < darumaSyllables.length) {
+      const syllable = darumaSyllables[darumaState.sequenceIndex];
+      const finalIsNext = darumaState.sequenceIndex === darumaSyllables.length - 1;
+      const delay = finalIsNext ? randomDarumaDelay(true, true) : randomDarumaDelay(syllable.slow, false);
+      if (!darumaState.eyesClosed) playDarumaSound(syllable.src, delay);
+      darumaState.sequenceIndex += 1;
+      darumaState.nextSyllableAt = time + delay;
+    } else if (darumaState.sequenceIndex === darumaSyllables.length) {
+      const delay = 3 + Math.random() * 3;
+      const src = darumaFinalSounds[Math.floor(Math.random() * darumaFinalSounds.length)];
+      if (!darumaState.eyesClosed) playDarumaSound(src, delay);
+      darumaState.sequenceIndex += 1;
+      darumaState.finalDaAt = time;
+      darumaState.freezeUntilNext = false;
+      darumaState.nextSyllableAt = Infinity;
+      darumaState.nextRoundAt = time + delay;
+      darumaState.lastX = camera.position.x;
+      darumaState.lastZ = camera.position.z;
+    }
+    setTrainPhrase();
+  }
+  if (time - darumaState.finalDaAt >= 0.3 && time < darumaState.nextRoundAt) darumaState.freezeUntilNext = true;
+  if (time - darumaState.finalDaAt >= 2) setTrainPhrase();
+
+  if (darumaState.game >= 4 && darumaState.nextRoundAt === Infinity && darumaState.sequenceIndex > 0 && !darumaState.ghostActive) {
+    if (darumaState.ghostNextAt === Infinity) darumaState.ghostNextAt = time + 0.5 + Math.random() * 4.5;
+    if (time >= darumaState.ghostNextAt) {
+      darumaState.ghostActive = true;
+      darumaState.ghostUntil = time + 0.5 + Math.random() * 4.5;
+      darumaState.nextGhostDamageAt = time;
+      if (darumaState.ghost && darumaState.monster) {
+        darumaState.ghost.position.set(TRAIN_OFFSET_X, 0, darumaState.monster.position.z - 1.25);
+        darumaState.ghost.rotation.y = Math.PI;
+        darumaState.ghost.visible = true;
+      }
+    }
+  }
+  if (darumaState.ghostActive) {
+    if (time >= darumaState.ghostUntil || darumaState.nextRoundAt !== Infinity) {
+      darumaState.ghostActive = false;
+      darumaState.ghostNextAt = Infinity;
+      if (darumaState.ghost) darumaState.ghost.visible = false;
+    } else if (!darumaState.eyesClosed && time >= (darumaState.nextGhostDamageAt || 0)) {
+      damagePlayer(5, 'train-ghost');
+      darumaState.nextGhostDamageAt = time + 0.1;
+    }
+  }
+}
+
 function updatePlayer(dt) {
   const time = clock.elapsedTime;
+  if (state.mapMode === 'train') {
+    if ((!controls.isLocked && !mobileInput.active) || state.ended || state.caught) return;
+    const movingForward = keys.KeyW || mobileInput.moveY < -0.25;
+    state.moveMode = movingForward ? 'WALKING' : 'WALKING';
+    state.noise = 0;
+    if (movingForward && !state.settingsOpen && !state.fullMapOpen) {
+      camera.position.z -= 2.25 * dt;
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, TRAIN_OFFSET_X, dt * 8);
+      camera.position.y = 1.55;
+    }
+    camera.position.x = THREE.MathUtils.clamp(camera.position.x, TRAIN_OFFSET_X - 0.72, TRAIN_OFFSET_X + 0.72);
+    const minZ = trainDarumaZ(Math.min(darumaState.game, 10)) + 0.95;
+    const maxZ = trainCarStartZ(Math.min(darumaState.game, 10)) - 0.55;
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z, minZ, maxZ);
+    if (keys.KeyA || keys.KeyS || keys.KeyD || keys.ShiftLeft || keys.ShiftRight) {
+      keys.KeyA = keys.KeyS = keys.KeyD = keys.ShiftLeft = keys.ShiftRight = false;
+    }
+    const moved = Math.hypot(camera.position.x - darumaState.lastX, camera.position.z - darumaState.lastZ);
+    if (darumaState.freezeUntilNext && moved > 0.035) {
+      endTrainGameOver('daruma');
+      return;
+    }
+    darumaState.lastX = camera.position.x;
+    darumaState.lastZ = camera.position.z;
+    if (camera.position.z <= trainDarumaZ(Math.min(darumaState.game, 10)) + 1.08) advanceTrainGame();
+    return;
+  }
   if (state.hidden) {
     state.battery = Math.min(100, state.battery + dt * 1.35);
     const hideProgress = THREE.MathUtils.clamp((time - state.lockerHideAt) / 5, 0, 1);
@@ -7704,6 +8117,7 @@ function drawFullMap() {
 function updateRadar(dt, time) {
   if (!state.started || state.loading) return;
   syncUnlockUI();
+  if (state.mapMode === 'train') return;
   if (!state.hasRadar) return;
   radar.clearRect(0, 0, minimap.width, minimap.height);
   radar.fillStyle = 'rgba(3,9,6,.92)';
@@ -7962,19 +8376,22 @@ function animate() {
     updateSonarRoar(time);
     updatePlayer(dt);
     updateLockerView();
+    updateDarumaStage(dt, time);
     if (shouldUpdateSchoolEnemy(dt)) updateEnemy(dt, time);
     if (shouldUpdateMansionEnemy(dt)) updateWomanEnemy(dt, time);
     if (shouldUpdateGhostEffects(dt)) {
       updateGhostDouble(dt, time);
       updateGhostIllusions(dt, time);
     }
-    updateAmbientMovementSuspicion(dt);
-    updateNoiseTraps(dt, time);
-    updateHealItems(dt, time);
-    updateCoins(dt, time);
-    updateSonarModel(dt, time);
+    if (state.mapMode !== 'train') {
+      updateAmbientMovementSuspicion(dt);
+      updateNoiseTraps(dt, time);
+      updateHealItems(dt, time);
+      updateCoins(dt, time);
+      updateSonarModel(dt, time);
+    }
     if (time >= nextVisionUpdate) {
-      updateEnemyVision();
+      if (state.mapMode !== 'train') updateEnemyVision();
       nextVisionUpdate = time + (state.mapMode === 'mansion' ? 0.5 : 1 / 12);
     }
     interactionAccumulator += dt;
@@ -7990,8 +8407,10 @@ function animate() {
     updateLight(time);
     cullingAccumulator += dt;
     if (cullingAccumulator >= 0.25) {
-      updateSchoolDistanceCulling();
-      updateMansionDistanceCulling();
+      if (state.mapMode !== 'train') {
+        updateSchoolDistanceCulling();
+        updateMansionDistanceCulling();
+      }
       cullingAccumulator = 0;
     }
     updateAudio(time);

@@ -1378,6 +1378,26 @@ Build:
   - Sends the pickup position to the ghost route target when not stunned.
   - Raises detection to at least 52.
 - Fake ofuda trap behavior was left unchanged.
+
+## 2026-07-05 Train / Daruma Stage Added
+
+- Added a third title-screen map option: train stage.
+- Added public audio assets for the Daruma chant:
+  - `daruma_da1.mp3`, `daruma_ru.mp3`, `daruma_ma.mp3`, `daruma_sa.mp3`, `daruma_n1.mp3`, `daruma_ga.mp3`, `daruma_ko.mp3`, `daruma_ro.mp3`, `daruma_n2.mp3`, `daruma_da2.mp3`, `daruma_da3.mp3`
+- Train stage:
+  - Generates a lightweight vertical 10-car train map.
+  - Uses a simple Daruma monster at the end of each car.
+  - Only forward movement is allowed; running, radar, map, back/left/right movement are disabled.
+  - Right mouse button closes the player's eyes while held.
+  - The chant UI shows `だるまさんがころんだ`; read characters turn gray.
+  - The final `だ` randomly uses `daruma_da2` or `daruma_da3`, turns red, and scales up for 2 seconds.
+  - Moving 0.3 seconds after the final `だ` until the next round starts causes Daruma game over.
+  - From game 4 onward, a red-eyed ghost can appear behind Daruma; if eyes are open it deals 5 HP every 0.1 seconds.
+  - Touching Daruma on game 10 triggers 1 second of noise and resets the player for an 11th final round.
+  - Winning the 11th round and touching Daruma clears the stage.
+- Verified:
+  - `node --check src/main.js`
+  - `npm run build`
 - Note:
   - The in-app browser instance was unavailable/closed during this handoff, so live browser traversal should be rerun from DevTools using the hooks above if visual confirmation is needed.
 

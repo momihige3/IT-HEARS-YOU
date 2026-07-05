@@ -42,6 +42,10 @@ body.hidden-in-locker #crosshair { opacity:0; }
 .radar-legend span { display:flex; align-items:center; gap:3px; }.radar-legend i { width:5px;height:5px;border-radius:50%;display:inline-block; }
 .radar-legend .you { background:#d7e3db; }.radar-legend .enemy-dot { background:#e34a3d;box-shadow:0 0 5px #e34a3d; }.radar-legend .sound-dot { border:1px solid #d2ad56;background:transparent; }
 body.radar-locked #radar-panel { display:none!important; }
+body.train-mode #radar-panel,
+body.train-mode #bottom-hud,
+body.train-mode #mobile-controls,
+body.train-mode #ghost-stun-reticle { display:none!important; }
 
 #crosshair { position: fixed; z-index: 7; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); opacity: .62; }
 #crosshair i { position:absolute; background:#d8e0db; } #crosshair i:nth-child(1){width:5px;height:1px;left:0;top:10px} #crosshair i:nth-child(2){width:5px;height:1px;right:0;top:10px} #crosshair i:nth-child(3){height:5px;width:1px;top:0;left:10px} #crosshair i:nth-child(4){height:5px;width:1px;bottom:0;left:10px}
@@ -62,6 +66,21 @@ body.radar-locked #radar-panel { display:none!important; }
 #prompt { position: fixed; z-index: 9; left: 50%; top: calc(50% + 42px); transform: translateX(-50%); padding:8px 13px; background:rgba(3,7,5,.55); font: 16px 'Share Tech Mono'; letter-spacing: .08em; text-shadow: 0 1px 8px #000; }
 #prompt:empty { display:none; }
 #prompt:not(:empty)::first-letter { color: #b9c4bd; }
+
+#daruma-ui { position:fixed; z-index:12; left:50%; top:22px; transform:translateX(-50%); display:none; pointer-events:none; text-align:center; }
+body.train-mode.game-running #daruma-ui { display:block; }
+#daruma-phrase { display:flex; gap:.16em; justify-content:center; align-items:center; color:#fff; font:bold clamp(28px,5vw,72px) serif; letter-spacing:.08em; text-shadow:0 3px 16px #000; animation:darumaJitter .09s infinite steps(2,end); }
+#daruma-phrase span { display:inline-block; transition:color .08s, transform .18s; transform-origin:center; }
+#daruma-phrase span.read { color:#777; }
+#daruma-phrase span.final { color:#ff1919; transform:scale(1.5); text-shadow:0 0 22px #f00,0 4px 18px #000; }
+#daruma-car { margin-top:8px; color:#d9ddd8; font:14px 'Share Tech Mono'; letter-spacing:.16em; text-shadow:0 2px 9px #000; }
+@keyframes darumaJitter { 0%{ transform:translateX(-50%) translate(0,0) } 50%{ transform:translateX(-50%) translate(1px,-1px) } 100%{ transform:translateX(-50%) translate(-1px,1px) } }
+#eyes-closed { position:fixed; inset:0; z-index:30; display:none; place-items:center; background:#000; color:#d8d8d8; font:24px 'Share Tech Mono'; letter-spacing:.25em; pointer-events:none; }
+body.eyes-closed #eyes-closed { display:grid; }
+body.eyes-closed #daruma-ui { display:none!important; }
+#train-noise { position:fixed; inset:0; z-index:29; opacity:0; pointer-events:none; background:repeating-linear-gradient(0deg,rgba(255,255,255,.1) 0 1px,rgba(0,0,0,.2) 2px 4px),repeating-linear-gradient(90deg,rgba(255,255,255,.12) 0 2px,rgba(0,0,0,.18) 3px 6px); mix-blend-mode:screen; }
+body.train-noise #train-noise { opacity:.8; animation:trainNoise .08s infinite steps(2,end); }
+@keyframes trainNoise { from{ filter:contrast(2); transform:translateX(-2px) } to{ filter:contrast(4); transform:translateX(2px) } }
 
 #bottom-hud { position: fixed; z-index: 8; inset: auto 38px 30px; display: flex; justify-content: space-between; align-items: end; pointer-events: none; }
 .mode-panel small, .battery-panel small { display:block; margin-bottom:4px; }

@@ -75,6 +75,7 @@
           <div class="start-actions">
             <button id="start-button" data-map-start="school"><span>学校へ入る</span><small>SONARが巡回する校舎</small></button>
             <button id="mansion-start-button" data-map-start="mansion"><span>屋敷へ入る</span><small>白装束の幽霊が徘徊する屋敷</small></button>
+            <button id="train-start-button" data-map-start="train"><span>電車へ入る</span><small>だるまさんが転んだ</small></button>
             <button id="settings-button" class="secondary-button">設定</button>
           </div>
           <div class="controls">
@@ -146,6 +147,12 @@
           <button id="full-map-close" class="secondary-button">閉じる</button>
         </div>
       </section>
+      <div id="daruma-ui" aria-hidden="true">
+        <div id="daruma-phrase"></div>
+        <div id="daruma-car">1 / 10</div>
+      </div>
+      <div id="eyes-closed">目を閉じている</div>
+      <div id="train-noise"></div>
       <div id="loading-screen"><div><strong id="loading-title">ロード中</strong><span id="loading-detail">マップを準備しています...</span></div></div>
       <div id="toast"></div>
     </div>
