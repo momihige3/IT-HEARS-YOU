@@ -1613,3 +1613,31 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Train Ghost Fallback Cleanup
+
+- Train ghost display fix:
+  - The procedural train ghost fallback is now hidden by default so the teru-teru-bozu-like silhouette does not overlap the intended ghost.
+  - Train mode attempts to load `public/models/yurei_woman_v1.glb` as `TRAIN_YUREI_WOMAN_GLB`.
+  - If the GLB loads, the eye-image fallback is hidden and only the 3D ghost is shown.
+  - If the GLB fails or is still loading, only an `eye_scare.png` billboard is shown instead of the old white cone/capsule fallback.
+  - Red point lights/dots from the fallback are also hidden with the fallback to avoid extra overlapping red marks.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
+## 2026-07-06 Train Daruma / Stage 10 Clear Display
+
+- Daruma model cleanup:
+  - Removed the remaining black facial stroke meshes that could appear as unwanted black bars/sticks on the Daruma face.
+  - Kept the large black eyes and red body texture details intact.
+- Stage 10 clear banner:
+  - When the 10th train round is cleared, the clear banner now displays `10/11 クリア`.
+  - The `11` portion is highlighted in red to make the hidden final round obvious.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

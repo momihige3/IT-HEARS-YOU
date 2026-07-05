@@ -80,6 +80,7 @@ body.train-mode.game-running #daruma-ui { display:block; }
 #daruma-car { display:none; }
 @keyframes darumaJitter { 0%{ transform:translate(0,0) } 50%{ transform:translate(1px,-1px) } 100%{ transform:translate(-1px,1px) } }
 #train-clear-banner { position:fixed; z-index:18; left:50%; top:42%; transform:translate(-50%,-50%) scale(.88); opacity:0; pointer-events:none; padding:18px 34px; border:2px solid rgba(255,255,255,.7); background:rgba(0,0,0,.62); color:#fff; font:bold clamp(30px,5vw,68px) 'Share Tech Mono'; letter-spacing:.16em; text-shadow:0 0 18px #fff,0 4px 18px #000; transition:opacity .22s, transform .22s; }
+#train-clear-banner .danger { color:#ff1919; text-shadow:0 0 18px #f00,0 4px 18px #000; }
 body.train-clear #train-clear-banner { opacity:1; transform:translate(-50%,-50%) scale(1); }
 #ghost-eye-warning { display:none; margin-top:10px; color:#ff1717; font:bold clamp(28px,4.6vw,62px) sans-serif; letter-spacing:.08em; text-shadow:0 0 22px #ff0000,0 4px 16px #000; animation:ghostWarn .12s infinite steps(2,end); }
 body.ghost-eye-danger #ghost-eye-warning { display:block; }
