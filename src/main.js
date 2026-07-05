@@ -6161,7 +6161,7 @@ function updateAmbientMovementSuspicion(dt) {
   if (!state.started || state.ended || state.caught || state.hidden || clock.elapsedTime < state.seatedUntil) return;
   if (state.noise <= 1) return;
   const running = state.moveMode === 'RUNNING';
-  const baseGain = running ? 0.75 : 0.12;
+  const baseGain = running ? 1.5 : 0.12;
   const enemyPosition = state.mapMode === 'mansion' && womanEnemy?.group ? womanEnemy.group.position : enemy.position;
   const distance = enemyPosition ? Math.hypot(enemyPosition.x - camera.position.x, enemyPosition.z - camera.position.z) : 0;
   const distanceScale = distance > 40 ? 0.18 : distance > 26 ? 0.34 : distance > 16 ? 0.62 : 1;

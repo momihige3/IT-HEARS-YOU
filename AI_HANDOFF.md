@@ -1361,6 +1361,11 @@ Build:
 - Verified:
   - `node --check src/main.js`
   - `npm run build`
+
+## 2026-07-05 Out-of-Range Running Alert Retune
+
+- Increased out-of-range running alert gain from `0.75` to `1.5`.
+- Walking ambient alert gain was left unchanged.
 - Note:
   - The in-app browser instance was unavailable/closed during this handoff, so live browser traversal should be rerun from DevTools using the hooks above if visual confirmation is needed.
 
