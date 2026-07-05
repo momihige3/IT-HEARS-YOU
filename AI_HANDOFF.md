@@ -1366,6 +1366,18 @@ Build:
 
 - Increased out-of-range running alert gain from `0.75` to `1.5`.
 - Walking ambient alert gain was left unchanged.
+
+## 2026-07-05 Key Pickup Enemy Position Alert
+
+- Added enemy notification when a real key item / real ofuda is picked up.
+- School:
+  - Sends the pickup position and room id to SONAR.
+  - Starts a routed search/hunt path to that pickup location.
+  - Raises detection to at least 58 and increases alert memory slightly.
+- Mansion:
+  - Sends the pickup position to the ghost route target when not stunned.
+  - Raises detection to at least 52.
+- Fake ofuda trap behavior was left unchanged.
 - Note:
   - The in-app browser instance was unavailable/closed during this handoff, so live browser traversal should be rerun from DevTools using the hooks above if visual confirmation is needed.
 

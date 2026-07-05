@@ -4444,6 +4444,36 @@ function leaveLocker() {
   showToast('ロッカーから出た');
 }
 
+function notifyEnemyOfKeyPickup(item) {
+  if (!item?.group) return;
+  const time = clock.elapsedTime;
+  const pickupPosition = item.group.position;
+  const x = pickupPosition.x;
+  const z = pickupPosition.z;
+  if (state.mapMode === 'mansion') {
+    if (womanEnemy?.group && time >= womanEnemy.stunnedUntil) {
+      setWomanRoutedTarget(x, z, time, false);
+      womanEnemy.repathAt = time + 0.45;
+      womanEnemy.speed = Math.max(womanEnemy.speed || 0, 3.35);
+      womanEnemy.target = womanEnemy.path?.[0] || womanEnemy.target || { x, z };
+    }
+    setDetection(Math.max(state.detection, 52));
+    return;
+  }
+  const room = schoolRoomAtWorld(x, z);
+  const mode = state.detection >= 82 || enemyData.alertMemory > 0.72 ? 'HUNTING' : 'SEARCHING';
+  enemyData.lastHeardAt = time;
+  enemyData.lastHeardPosition = { x, z, roomId: room?.id || null };
+  enemyData.pauseUntil = 0;
+  enemyData.lookAroundUntil = 0;
+  enemyData.investigateUntil = Math.max(enemyData.investigateUntil, time + 9);
+  enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 18);
+  enemyData.investigateSpeed = Math.max(enemyData.investigateSpeed, mode === 'HUNTING' ? 6.0 : 4.2);
+  enemyData.alertMemory = THREE.MathUtils.clamp(enemyData.alertMemory + 0.16, 0, 1);
+  setDetection(Math.max(state.detection, 58));
+  setEnemyDestinationToSoundSource(x, z, mode, room?.id || null);
+}
+
 function interact() {
   if (state.hidden) {
     leaveLocker();
@@ -4477,6 +4507,7 @@ function interact() {
     state.keyCount += 1;
     setDetection(Math.max(state.detection, detectionFloor()));
     playItemPickupSound();
+    notifyEnemyOfKeyPickup(nearbyKey);
     updateExitCounter();
     if (state.mapMode === 'mansion') {
       $('#objective-text').textContent = state.keyCount >= REQUIRED_KEYS
