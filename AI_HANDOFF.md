@@ -1291,3 +1291,15 @@ Build:
 - Desk and shelf collider footprints were reduced slightly rather than enlarging object spacing.
 - Cover objects near a doorway are moved deeper into the room instead of being skipped, preserving object count while keeping entrances clear.
 - This keeps room prop density high while relying on looser enemy-vs-furniture collision for navigation.
+
+## 2026-07-05 School Layout / Prop Visual Fix
+
+- Increased school map scale by enlarging the grid cell size, making the school roughly twice as spacious.
+- Darkened/thickened desk leg rods so the four white-stick artifact near desks is no longer prominent.
+- Fixed nurse-room bed accessory placement so the pillow/bed item stays aligned with the bed.
+- Entrance-adjacent cover objects are pushed deeper into the room instead of blocking doorways.
+- Room boundary walls now respect carved adjacent walkable cells, allowing more room-to-room passages.
+- Added more random room-to-room carve paths.
+- Blackboard/shelf props are skipped on room edges that have been opened as passages so they do not visually block new openings.
+- School enemy detects repeated local oscillation sooner and switches to an outer/perimeter route instead of staying in the same spot.
+- Flashlight battery drain increased 3x.

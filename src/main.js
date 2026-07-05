@@ -278,7 +278,7 @@ const selectedMapCache = {
   school: { ready: true, generatedAt: performance.now() },
   mansion: { ready: false, generatedAt: 0 },
 };
-const CELL = 4;
+const CELL = 5.6;
 const GRID_W = 13;
 const GRID_H = 19;
 const GRID_HALF_W = (GRID_W - 1) / 2;
@@ -604,9 +604,9 @@ const roomAnchors = schoolRooms.map((room) => ({
   gz: Math.round((room.gz0 + room.gz1) / 2),
 }));
 for (let i = 0; i < roomAnchors.length - 1; i += 1) {
-  if (Math.random() < 0.72) carvePath(roomAnchors[i].gx, roomAnchors[i].gz, roomAnchors[i + 1].gx, roomAnchors[i + 1].gz);
+  if (Math.random() < 0.92) carvePath(roomAnchors[i].gx, roomAnchors[i].gz, roomAnchors[i + 1].gx, roomAnchors[i + 1].gz);
 }
-for (let i = 0; i < 3; i += 1) {
+for (let i = 0; i < 8; i += 1) {
   const a = roomAnchors[Math.floor(Math.random() * roomAnchors.length)];
   const b = roomAnchors[Math.floor(Math.random() * roomAnchors.length)];
   if (a && b && a !== b) carvePath(a.gx, a.gz, b.gx, b.gz);
@@ -635,18 +635,22 @@ function addRoomBoundaryWalls(room) {
   for (let gz = room.gz0; gz <= room.gz1; gz += 1) {
     const west = worldFromGrid(room.gx0, gz);
     const east = worldFromGrid(room.gx1, gz);
-    if (!(doorOnWest && gz === doorZ)) {
+    if (!(doorOnWest && gz === doorZ) && !walkable.has(gridKey(room.gx0 - 1, gz))) {
       addBox(west.x - CELL / 2, 2.05, west.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true, false);
     }
-    if (!(doorOnEast && gz === doorZ)) {
+    if (!(doorOnEast && gz === doorZ) && !walkable.has(gridKey(room.gx1 + 1, gz))) {
       addBox(east.x + CELL / 2, 2.05, east.z, 0.36, 4.2, CELL + 0.36, wallMat, true, true, false);
     }
   }
   for (let gx = room.gx0; gx <= room.gx1; gx += 1) {
     const north = worldFromGrid(gx, room.gz0);
     const south = worldFromGrid(gx, room.gz1);
-    addBox(north.x, 2.05, north.z - CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
-    addBox(south.x, 2.05, south.z + CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
+    if (!walkable.has(gridKey(gx, room.gz0 - 1))) {
+      addBox(north.x, 2.05, north.z - CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
+    }
+    if (!walkable.has(gridKey(gx, room.gz1 + 1))) {
+      addBox(south.x, 2.05, south.z + CELL / 2, CELL + 0.36, 4.2, 0.36, wallMat, true, true, false);
+    }
   }
 }
 
@@ -859,13 +863,13 @@ function addCover(gx, gz, offsetX, offsetZ, type = 'crate') {
   const awayZ = Math.sign(cell.z - center.z) || Math.sign(offsetZ);
   let x = cell.x + (awayX ? awayX * Math.max(1.18, Math.abs(offsetX)) : offsetX);
   let z = cell.z + (awayZ ? awayZ * Math.max(1.18, Math.abs(offsetZ)) : offsetZ);
-  if (isInSchoolEntranceClearZone(x, z, 2.75)) {
+  if (isInSchoolEntranceClearZone(x, z, 3.15)) {
     const sign = worldFromGrid(room.sign.gx, room.sign.gz);
     const awayFromDoorX = center.x - sign.x;
     const awayFromDoorZ = center.z - sign.z;
     const len = Math.hypot(awayFromDoorX, awayFromDoorZ) || 1;
-    x = sign.x + (awayFromDoorX / len) * 3.25;
-    z = sign.z + (awayFromDoorZ / len) * 3.25;
+    x = center.x + (awayFromDoorX / len) * 1.25;
+    z = center.z + (awayFromDoorZ / len) * 1.25;
   }
   if (type === 'cabinet') {
     addBox(x, 1.15, z, 1.05, 2.3, 0.82, cabinetMat, true, false, true, 'furniture');
@@ -1641,7 +1645,7 @@ function addDeskSet(x, z, rot = 0) {
   group.rotation.y = rot;
   localBox(group, 0, 0.72, 0, 1.18, 0.1, 0.7, deskTopMat);
   for (const sx of [-0.46, 0.46]) {
-    for (const sz of [-0.25, 0.25]) localBox(group, sx, 0.36, sz, 0.07, 0.68, 0.07, chairMat);
+    for (const sz of [-0.25, 0.25]) localBox(group, sx, 0.32, sz, 0.085, 0.54, 0.085, darkMat);
   }
   localBox(group, -0.22, 0.8, -0.12, 0.32, 0.025, 0.22, paperMat);
   localBox(group, 0.26, 0.83, 0.16, 0.26, 0.06, 0.18, bookMat);
@@ -1714,15 +1718,19 @@ function addRoomFixtures(room) {
     addDeskSet(rightX, center.z - 1.15, Math.random() < 0.5 ? 0 : Math.PI);
     if (room.gx1 - room.gx0 >= 3 && room.id !== 'science') addDeskSet(center.x, center.z + 1.15, Math.PI / 2);
     // Furniture is kept near room edges so entrances and walking routes stay playable.
-    addBox(center.x, 1.55, backZ, 2.6, 1.05, 0.08, signMat, false, false, false);
-    addShelf(center.x, frontZ, 1.7, 0);
+    const northOpen = Array.from({ length: room.gx1 - room.gx0 + 1 }, (_, i) => room.gx0 + i)
+      .some((gx) => walkable.has(gridKey(gx, room.gz0 - 1)));
+    const southOpen = Array.from({ length: room.gx1 - room.gx0 + 1 }, (_, i) => room.gx0 + i)
+      .some((gx) => walkable.has(gridKey(gx, room.gz1 + 1)));
+    if (!northOpen) addBox(center.x, 1.55, backZ, 2.6, 1.05, 0.08, signMat, false, false, false);
+    if (!southOpen) addShelf(center.x, frontZ, 1.7, 0);
     if (room.id === 'science') {
       addBox(leftX, 0.95, center.z + 1.35, 1.75, 0.14, 0.72, metalMat, true, false, false, 'furniture');
       addBox(leftX - 0.45, 1.14, center.z + 1.35, 0.22, 0.22, 0.22, material(0x355f72, 0.28, 0.02), false, false, false);
       addSinkRow(rightX, center.z + 1.3, Math.PI / 2);
     } else if (room.id === 'nurse') {
       addBox(rightX, 0.62, center.z + 1.18, 1.65, 0.32, 0.74, material(0xd8d8cf, 0.68, 0.02), true, false, false, 'furniture');
-      addBox(center.x + 0.18, 0.95, center.z + 1.18, 0.42, 0.35, 0.68, paperMat, false, false, false);
+      addBox(rightX - 0.42, 0.95, center.z + 1.18, 0.42, 0.35, 0.68, paperMat, false, false, false);
     } else if (room.id === 'music') {
       addBox(leftX, 0.78, center.z + 1.1, 1.15, 1.15, 0.28, material(0x3d2a1d, 0.7, 0.04), true, false, false, 'furniture');
       for (let i = 0; i < 4; i += 1) addBox(center.x - 1.25 + i * 0.2, 1.47, center.z + 1.26, 0.055, 0.38, 0.035, paperMat, false, false, false);
@@ -2770,6 +2778,7 @@ const enemyData = {
   oscillationAnchorZ: enemy.position.z,
   lastRoomJumpAt: -Infinity,
   recoveryJump: null,
+  loopEscapeUntil: 0,
 };
 
 function nearestNode(x, z) {
@@ -3141,6 +3150,27 @@ function chooseRandomEnemyRoute(mode = 'ROAMING') {
   if (!choices.length) choices = [...navNodes.values()].filter((node) => node.key !== enemyData.targetKey);
   const target = choices[Math.floor(Math.random() * choices.length)];
   setEnemyDestination(target.x, target.z, mode);
+}
+
+function chooseOuterLoopRoute(time, mode = 'SEARCHING') {
+  const edgeScore = (node) => Math.min(node.gx, GRID_W - 1 - node.gx, node.gz, GRID_H - 1 - node.gz);
+  const choices = [...navNodes.values()]
+    .filter((node) => node.key !== enemyData.targetKey)
+    .filter((node) => !enemyData.recentTargetKeys.slice(0, 10).includes(node.key))
+    .filter((node) => canEnemyMoveIgnoringFurniture(node.x, node.z, 0.18))
+    .filter((node) => Math.hypot(node.x - enemy.position.x, node.z - enemy.position.z) > CELL * 2.2)
+    .sort((a, b) => {
+      const aScore = edgeScore(a) * 4 - Math.hypot(a.x - enemy.position.x, a.z - enemy.position.z) * 0.35 + Math.random() * 6;
+      const bScore = edgeScore(b) * 4 - Math.hypot(b.x - enemy.position.x, b.z - enemy.position.z) * 0.35 + Math.random() * 6;
+      return aScore - bScore;
+    });
+  const target = choices[0];
+  if (!target) return false;
+  setEnemyDestination(target.x, target.z, mode);
+  enemyData.loopEscapeUntil = time + 8;
+  enemyData.searchUntil = Math.max(enemyData.searchUntil, time + 10);
+  enemyData.repathAt = time + 1.4;
+  return true;
 }
 
 function chooseSuperAlertRoute(time) {
@@ -4363,6 +4393,7 @@ function respawnPlayer() {
     lastTargetDistance: Infinity,
     recentTargetKeys: [],
     recoveryJump: null,
+    loopEscapeUntil: 0,
   });
   soundEvents.length = 0;
   sonarReveals.length = 0;
@@ -5694,7 +5725,7 @@ function updatePlayer(dt) {
   if (!active) state.bob = 0;
   if (state.flashlight) {
     const ghostDrain = isFlashlightHittingWoman() ? 10 : 1;
-    state.battery = Math.max(0, state.battery - dt * 0.18 * ghostDrain);
+    state.battery = Math.max(0, state.battery - dt * 0.54 * ghostDrain);
     if (state.battery <= 0) state.flashlight = false;
   } else {
     state.battery = Math.min(100, state.battery + dt * 1.05);
@@ -6119,7 +6150,10 @@ function updateEnemy(dt, time) {
           enemyData.oscillationAnchorX = enemy.position.x;
           enemyData.oscillationAnchorZ = enemy.position.z;
         }
-        if (enemyData.oscillationSince && time - enemyData.oscillationSince > 1.35 && recoverEnemyFromOscillation(time)) return;
+        if (enemyData.oscillationSince && time - enemyData.oscillationSince > 0.95) {
+          if (chooseOuterLoopRoute(time, enemyData.mode === 'ROAMING' ? 'ROAMING' : 'SEARCHING')) return;
+          if (recoverEnemyFromOscillation(time)) return;
+        }
         const improving = !Number.isFinite(enemyData.lastTargetDistance)
           || newDistanceToPathTarget < enemyData.lastTargetDistance - 0.035;
         if (improving) {
@@ -6128,7 +6162,7 @@ function updateEnemy(dt, time) {
         } else {
           if (!enemyData.stuckSince) enemyData.stuckSince = time;
           if (time - enemyData.stuckSince > 0.85 || enemyData.wallSlideAttempts > 5) {
-            if (!recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
+            if (!chooseOuterLoopRoute(time, enemyData.mode === 'ROAMING' ? 'ROAMING' : 'SEARCHING') && !recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
           }
         }
         enemyData.lastMoveX = enemy.position.x;
