@@ -2943,6 +2943,10 @@ const enemyData = {
   closeRangeStuckSince: 0,
   closeRangeAnchorX: enemy.position.x,
   closeRangeAnchorZ: enemy.position.z,
+  globalStuckSince: 0,
+  globalStuckAnchorX: enemy.position.x,
+  globalStuckAnchorZ: enemy.position.z,
+  lastUnstuckRouteAt: -Infinity,
 };
 
 function nearestNode(x, z) {
@@ -3478,6 +3482,29 @@ function routeEnemyToPlayerNearestRoom(time) {
   enemyData.lookAroundUntil = 0;
   enemyData.repathAt = time + 0.6;
   return true;
+}
+
+function forceEnemyUnstuckRoute(time, reason = 'stuck') {
+  if (time - enemyData.lastUnstuckRouteAt < 0.85) return false;
+  enemyData.lastUnstuckRouteAt = time;
+  enemyData.pauseUntil = 0;
+  enemyData.lookAroundUntil = 0;
+  enemyData.coverPeekUntil = 0;
+  enemyData.blockedChaseSince = 0;
+  enemyData.mode = state.detection > 55 || reason === 'near-player' ? 'SEARCHING' : enemyData.mode;
+  const routedToRoom = routeEnemyToPlayerNearestRoom(time);
+  if (routedToRoom && enemyData.path.length) return true;
+  if (chooseOuterLoopRoute(time, enemyData.mode === 'ROAMING' ? 'ROAMING' : 'SEARCHING')) return true;
+  const anchor = nearestReachableNode(enemy.position.x, enemy.position.z, 12) || nearestNode(enemy.position.x, enemy.position.z) || enemyStartNode;
+  const candidates = [...navNodes.values()]
+    .filter((node) => node.key !== anchor?.key)
+    .filter((node) => canEnemyMoveIgnoringFurniture(node.x, node.z, 0.14))
+    .sort((a, b) => Math.hypot(b.x - camera.position.x, b.z - camera.position.z)
+      - Math.hypot(a.x - camera.position.x, a.z - camera.position.z));
+  for (const target of candidates.slice(0, 10)) {
+    if (setEnemyDestination(target.x, target.z, 'SEARCHING')) return true;
+  }
+  return anchor ? startEnemyRecoveryJump(anchor, time, reason === 'sound' ? 'sound' : 'random') : false;
 }
 
 function recoverEnemyNavigation(time) {
@@ -6018,9 +6045,11 @@ function triggerSonarRoar(time) {
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
   const runningDetectionRange = 22;
   enemyData.pauseUntil = Math.max(enemyData.pauseUntil, state.roarUntil);
-  enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, state.roarUntil);
-  enemyData.path = [];
+  enemyData.lookAroundUntil = Math.max(enemyData.lookAroundUntil, time + 0.65);
   enemyData.isMoving = false;
+  enemyData.globalStuckSince = 0;
+  enemyData.globalStuckAnchorX = enemy.position.x;
+  enemyData.globalStuckAnchorZ = enemy.position.z;
   if (!state.hidden && distance <= runningDetectionRange) {
     state.seatedUntil = time + 5;
     state.noise = 0;
@@ -6220,11 +6249,36 @@ function updateEnemy(dt, time) {
     }
   }
   const distance = Math.hypot(enemy.position.x - camera.position.x, enemy.position.z - camera.position.z);
-  if (!state.hidden && distance <= 5) {
+  const globalDrift = Math.hypot(enemy.position.x - enemyData.globalStuckAnchorX, enemy.position.z - enemyData.globalStuckAnchorZ);
+  const shouldBeNavigating = !roaring
+    && !enemyData.recoveryJump
+    && enemyData.mode !== 'POUNCING'
+    && (
+      enemyData.path.length > 0
+      || ['SEARCHING', 'INVESTIGATING', 'HUNTING', 'TRAP_RUSH'].includes(enemyData.mode)
+      || state.detection > 45
+      || enemyData.alertMemory > 0.35
+      || enemyData.soundSourceTarget
+    );
+  if (shouldBeNavigating && globalDrift < 0.72) {
+    if (!enemyData.globalStuckSince) enemyData.globalStuckSince = time;
+    const stuckLimit = enemyData.path.length === 0 ? 2.4 : 3.6;
+    if (time - enemyData.globalStuckSince > stuckLimit) {
+      forceEnemyUnstuckRoute(time, distance <= 5 ? 'near-player' : enemyData.soundSourceTarget ? 'sound' : 'stuck');
+      enemyData.globalStuckSince = time;
+      enemyData.globalStuckAnchorX = enemy.position.x;
+      enemyData.globalStuckAnchorZ = enemy.position.z;
+    }
+  } else {
+    enemyData.globalStuckSince = 0;
+    enemyData.globalStuckAnchorX = enemy.position.x;
+    enemyData.globalStuckAnchorZ = enemy.position.z;
+  }
+  if (!state.hidden) {
     const closeDrift = Math.hypot(enemy.position.x - enemyData.closeRangeAnchorX, enemy.position.z - enemyData.closeRangeAnchorZ);
     if (closeDrift < 1.15) {
       if (!enemyData.closeRangeStuckSince) enemyData.closeRangeStuckSince = time;
-      if (time - enemyData.closeRangeStuckSince > 5) routeEnemyToPlayerNearestRoom(time);
+      if (time - enemyData.closeRangeStuckSince > 5) forceEnemyUnstuckRoute(time, distance <= 5 ? 'near-player' : 'stuck');
     } else {
       enemyData.closeRangeStuckSince = 0;
       enemyData.closeRangeAnchorX = enemy.position.x;
@@ -6545,7 +6599,7 @@ function updateEnemy(dt, time) {
           enemyData.oscillationAnchorZ = enemy.position.z;
         }
         if (enemyData.oscillationSince && time - enemyData.oscillationSince > 0.95) {
-          if (chooseOuterLoopRoute(time, enemyData.mode === 'ROAMING' ? 'ROAMING' : 'SEARCHING')) return;
+          if (forceEnemyUnstuckRoute(time, distance <= 5 ? 'near-player' : 'oscillation')) return;
           if (recoverEnemyFromOscillation(time)) return;
         }
         const improving = !Number.isFinite(enemyData.lastTargetDistance)
@@ -6556,7 +6610,7 @@ function updateEnemy(dt, time) {
         } else {
           if (!enemyData.stuckSince) enemyData.stuckSince = time;
           if (time - enemyData.stuckSince > 0.85 || enemyData.wallSlideAttempts > 5) {
-            if (!chooseOuterLoopRoute(time, enemyData.mode === 'ROAMING' ? 'ROAMING' : 'SEARCHING') && !recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
+            if (!forceEnemyUnstuckRoute(time, distance <= 5 ? 'near-player' : 'stuck') && !recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
           }
         }
         enemyData.lastMoveX = enemy.position.x;
@@ -6564,7 +6618,7 @@ function updateEnemy(dt, time) {
       } else if (!enemyData.stuckSince) {
         enemyData.stuckSince = time;
       } else if (time - enemyData.stuckSince > 0.55) {
-        if (!recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
+        if (!forceEnemyUnstuckRoute(time, distance <= 5 ? 'near-player' : 'blocked') && !recoverEnemyFromOscillation(time)) recoverEnemyNavigation(time);
       }
     }
   }
@@ -6575,7 +6629,7 @@ function updateEnemy(dt, time) {
   }
   if (enemyData.mode === 'SEARCHING' && enemyData.path.length === 0 && time < enemyData.lookAroundUntil) {
     if (!state.hidden && distance <= 5 && enemyData.closeRangeStuckSince && time - enemyData.closeRangeStuckSince > 2.2) {
-      if (routeEnemyToPlayerNearestRoom(time)) return;
+      if (forceEnemyUnstuckRoute(time, 'near-player')) return;
     }
     const sweepProgress = (time * (state.detection > 58 || enemyData.alertMemory > 0.55 ? 2.35 : 1.25)) % (Math.PI * 2);
     enemy.rotation.y = enemyData.lookBaseYaw + sweepProgress;

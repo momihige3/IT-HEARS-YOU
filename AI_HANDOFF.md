@@ -1379,3 +1379,21 @@ Build:
   - Browser debug walk:
     - School: 331 walkable cells, no missing floor/ceiling
     - Mansion: 131 walkable cells, no missing floor/ceiling
+
+## 2026-07-05 SONAR Global Stuck Recovery Fix
+
+- Removed the 5m-only limitation from SONAR stuck recovery.
+- Added global stuck watchdog:
+  - If SONAR should be navigating but remains in the same local area, it now forces an unstuck route regardless of distance to the player.
+  - Empty-path look-around states recover faster, preventing endless left/right turning.
+- Added `forceEnemyUnstuckRoute()`:
+  - Clears pause/look-around/cover peek state.
+  - Prioritizes route generation to the player's nearest room.
+  - Falls back to outer-loop route, then a valid recovery jump if needed.
+- Sonar roar no longer clears the current path; it only pauses briefly so roar cannot leave SONAR stuck turning in place.
+- Verified:
+  - `node --check src/main.js`
+  - `npm run build`
+  - Browser debug walk:
+    - School: 327 walkable cells, no missing floor/ceiling
+    - Mansion: 123 walkable cells, no missing floor/ceiling
