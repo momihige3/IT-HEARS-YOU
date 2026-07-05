@@ -279,6 +279,7 @@ const darumaState = {
   hyperSpeedRound: false,
   skipRound: false,
   skipFinalStarted: false,
+  invincible: false,
   clearBannerUntil: 0,
   monster: null,
   ghost: null,
@@ -5058,14 +5059,10 @@ function makeDarumaMonster() {
   group.add(face);
   const redTrimMat = new THREE.MeshStandardMaterial({ color: 0xb60b08, roughness: 0.35, metalness: 0.06, emissive: 0x2a0000, emissiveIntensity: 0.16 });
   for (const sx of [-0.33, 0.33]) {
-    const eyeRing = new THREE.Mesh(new THREE.TorusGeometry(0.245, 0.04, 10, 28), redTrimMat);
+    const eyeRing = new THREE.Mesh(new THREE.TorusGeometry(0.245, 0.035, 10, 28), redTrimMat);
     eyeRing.position.set(sx, 1.78, 1.25);
     eyeRing.rotation.x = Math.PI / 2;
     group.add(eyeRing);
-    const goldRing = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.032, 10, 32), goldMat);
-    goldRing.position.set(sx, 1.78, 1.24);
-    goldRing.rotation.x = Math.PI / 2;
-    group.add(goldRing);
     const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.24, 28, 16), new THREE.MeshStandardMaterial({ color: 0xf4ead9, roughness: 0.3 }));
     eyeWhite.scale.set(1, 0.92, 0.2);
     eyeWhite.position.set(sx, 1.78, 1.16);
@@ -5074,9 +5071,9 @@ function makeDarumaMonster() {
     eye.scale.set(1, 1, 0.22);
     eye.position.set(sx, 1.78, 1.31);
     group.add(eye);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.075, 0.05), blackMat);
-    brow.position.set(sx, 2.02, 1.2);
-    brow.rotation.z = sx < 0 ? -0.48 : 0.48;
+    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.5, 6, 12), blackMat);
+    brow.position.set(sx, 2.03, 1.22);
+    brow.rotation.z = sx < 0 ? -1.1 : 1.1;
     group.add(brow);
     const cheek = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 8, 22, Math.PI * 1.45), blackMat);
     cheek.position.set(sx * 1.12, 1.48, 1.22);
@@ -5094,15 +5091,6 @@ function makeDarumaMonster() {
     moustache.rotation.x = Math.PI / 2;
     group.add(moustache);
   }
-  const kanji = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.035), goldMat);
-  kanji.position.set(0, 0.98, 1.24);
-  group.add(kanji);
-  const kanjiStroke1 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.045), blackMat);
-  kanjiStroke1.position.set(0, 1.04, 1.27);
-  group.add(kanjiStroke1);
-  const kanjiStroke2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28, 0.045), blackMat);
-  kanjiStroke2.position.set(0, 0.96, 1.27);
-  group.add(kanjiStroke2);
   for (const sx of [-1.18, 1.18]) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.56, 8, 14), redMat);
     arm.position.set(sx, 1.1, 0.12);
@@ -5220,6 +5208,7 @@ function setTrainPhrase() {
     const span = document.createElement('span');
     span.textContent = char;
     if (darumaState.skipRound && finalRedActive) span.classList.add('final');
+    else if (darumaState.skipRound && index < Math.min(darumaState.sequenceIndex, 3)) span.classList.add('skip-fill');
     else if (index < darumaState.sequenceIndex) span.classList.add('read');
     if (!darumaState.skipRound && index === 9 && finalRedActive) span.classList.add('final');
     phrase.appendChild(span);
@@ -5363,6 +5352,8 @@ function restartTrainStageFromGameOver() {
 function advanceTrainGame() {
   const time = clock.elapsedTime;
   showTrainClearBanner(Math.min(darumaState.game, 10));
+  state.hp = Math.min(100, state.hp + 40);
+  updateHUD();
   if (darumaState.game === 10 && !darumaState.resetUsed) {
     darumaState.resetUsed = true;
     document.body.classList.add('train-noise');
@@ -5783,6 +5774,13 @@ addEventListener('keydown', (event) => {
   if (state.started && !state.ended && (event.ctrlKey || event.metaKey)) event.preventDefault();
 }, { capture: true });
 addEventListener('keydown', (event) => {
+  if (event.code === 'Digit5') {
+    if (state.started && state.mapMode === 'train') {
+      event.preventDefault();
+      keys.Digit5 = true;
+    }
+    return;
+  }
   if (movementKeyCodes.has(event.code)) {
     event.preventDefault();
     if (state.started && !state.ended && !state.caught && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen && !state.breakerGameOpen && controls.isLocked) {
@@ -5821,6 +5819,7 @@ addEventListener('keydown', (event) => {
   }
 });
 addEventListener('keyup', (event) => {
+  if (event.code === 'Digit5') keys.Digit5 = false;
   if (movementKeyCodes.has(event.code)) keys[event.code] = false;
 });
 addEventListener('mousedown', (event) => {
@@ -6694,6 +6693,18 @@ function updateSonarRoar(time) {
 
 function updateDarumaStage(dt, time) {
   if (state.mapMode !== 'train' || !darumaState.active || state.ended || state.caught) return;
+  darumaState.invincible = Boolean(keys.Digit5);
+  if (darumaState.invincible) {
+    state.hp = 100;
+    document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat');
+    if (darumaState.ghostActive) {
+      darumaState.ghostActive = false;
+      darumaState.ghostNextAt = time + 20 + Math.random() * 40;
+      if (darumaState.ghost) darumaState.ghost.visible = false;
+    }
+    updateHUD();
+    return;
+  }
   if (time >= darumaState.noiseUntil) document.body.classList.remove('train-noise');
   if (time >= darumaState.clearBannerUntil) document.body.classList.remove('train-clear');
   if (darumaState.nextRoundAt !== Infinity && time >= darumaState.nextRoundAt) startDarumaRound(time);
@@ -6721,10 +6732,10 @@ function updateDarumaStage(dt, time) {
   if (time - darumaState.finalDaAt >= 2) setTrainPhrase();
 
   if (darumaState.game >= 4 && darumaState.nextRoundAt === Infinity && darumaState.sequenceIndex > 0 && !darumaState.ghostActive) {
-    if (darumaState.ghostNextAt === Infinity) darumaState.ghostNextAt = time + 0.5 + Math.random() * 4.5;
+    if (darumaState.ghostNextAt === Infinity) darumaState.ghostNextAt = time + 20 + Math.random() * 40;
     if (time >= darumaState.ghostNextAt) {
       darumaState.ghostActive = true;
-      darumaState.ghostUntil = time + 0.5 + Math.random() * 4.5;
+      darumaState.ghostUntil = time + 1 + Math.random() * 2;
       darumaState.nextGhostDamageAt = time;
       if (darumaState.ghost && darumaState.monster) {
         darumaState.ghost.position.set(TRAIN_OFFSET_X, 0, darumaState.monster.position.z - 1.25);
@@ -6736,7 +6747,7 @@ function updateDarumaStage(dt, time) {
   if (darumaState.ghostActive) {
     if (time >= darumaState.ghostUntil || darumaState.nextRoundAt !== Infinity) {
       darumaState.ghostActive = false;
-      darumaState.ghostNextAt = Infinity;
+      darumaState.ghostNextAt = time + 20 + Math.random() * 40;
       document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat');
       if (darumaState.ghost) darumaState.ghost.visible = false;
     } else if (!darumaState.eyesClosed && time >= (darumaState.nextGhostDamageAt || 0)) {
@@ -6776,7 +6787,7 @@ function updatePlayer(dt) {
     const freezeWindowActive = Number.isFinite(darumaState.nextRoundAt)
       && time >= darumaState.finalDaAt + 0.4
       && time < darumaState.nextRoundAt;
-    if (freezeWindowActive && moved > 0.035) {
+    if (!darumaState.invincible && freezeWindowActive && moved > 0.035) {
       endTrainGameOver('daruma');
       return;
     }

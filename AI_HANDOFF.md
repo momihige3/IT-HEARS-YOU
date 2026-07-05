@@ -1544,3 +1544,29 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
+
+- Daruma model cleanup:
+  - Removed the belly kanji/cross-like mesh that looked like a `+` near the mouth/body area.
+  - Removed the gold eye ring that appeared as a mysterious yellow horizontal bar near the eyes.
+  - Replaced box eyebrows with capsule eyebrows to reduce flat bar artifacts.
+- Daruma game over:
+  - Darkened and sharpened the Daruma close-up background to feel more threatening.
+- Skip round display:
+  - During the 5% `だるまだ` round, the normal phrase remains visible while `だるま` fills red.
+  - On the final `だ2`, the display switches to the short red `だるまだ` format.
+- Ghost damage event:
+  - Ghost event duration is now `1–3s`.
+  - After ending, the next event is delayed `20–60s`.
+  - The closed-eye red overlay is removed immediately when the ghost event ends.
+  - Removed the visible `ドクン` text; only the red pulse remains.
+- Hidden debug assist:
+  - Holding number `5` in train mode makes the player invincible, stops the Daruma count/update, clears ghost danger, and restores HP to full.
+- Train phase reward:
+  - Each train phase clear restores `40 HP`.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
