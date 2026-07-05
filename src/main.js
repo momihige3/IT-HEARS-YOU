@@ -255,7 +255,7 @@ const state = {
 
 const TRAIN_OFFSET_X = -120;
 const TRAIN_START_Z = 18;
-const TRAIN_CAR_LENGTH = 12;
+const TRAIN_CAR_LENGTH = 36;
 const TRAIN_CAR_COUNT = 10;
 const TRAIN_WIDTH = 4.2;
 const trainRuntimeObjects = [];
@@ -4993,6 +4993,11 @@ function trainDarumaZ(game = darumaState.game) {
   return trainCarStartZ(game) - TRAIN_CAR_LENGTH + 1.65;
 }
 
+function setDarumaFacingPlayer(facingPlayer) {
+  if (!darumaState.monster) return;
+  darumaState.monster.rotation.y = facingPlayer ? 0 : Math.PI;
+}
+
 function makeDarumaMonster() {
   const group = new THREE.Group();
   const redMat = new THREE.MeshStandardMaterial({ color: 0x8d0707, roughness: 0.62, metalness: 0.05, emissive: 0x250000, emissiveIntensity: 0.2 });
@@ -5059,6 +5064,7 @@ function buildTrainMap() {
   box(TRAIN_OFFSET_X, 3.05, centerZ, TRAIN_WIDTH, 0.16, totalLength + 1.2, wall);
   box(TRAIN_OFFSET_X - TRAIN_WIDTH / 2, 1.55, centerZ, 0.16, 3.1, totalLength + 1.2, wall);
   box(TRAIN_OFFSET_X + TRAIN_WIDTH / 2, 1.55, centerZ, 0.16, 3.1, totalLength + 1.2, wall);
+  box(TRAIN_OFFSET_X, 1.55, TRAIN_START_Z + 0.56, TRAIN_WIDTH, 3.1, 0.16, wall);
   for (let i = 0; i < TRAIN_CAR_COUNT; i += 1) {
     const carCenterZ = TRAIN_START_Z - i * TRAIN_CAR_LENGTH - TRAIN_CAR_LENGTH / 2;
     box(TRAIN_OFFSET_X - 1.45, 0.52, carCenterZ, 0.7, 0.38, TRAIN_CAR_LENGTH - 2.4, seat);
@@ -5114,12 +5120,13 @@ function startDarumaRound(time = clock.elapsedTime) {
   darumaState.nextRoundAt = Infinity;
   darumaState.lastX = camera.position.x;
   darumaState.lastZ = camera.position.z;
+  setDarumaFacingPlayer(false);
   setTrainPhrase();
 }
 
 function resetTrainCarPosition() {
   camera.position.set(TRAIN_OFFSET_X, 1.55, trainCarStartZ(Math.min(darumaState.game, 10)) - 1.0);
-  camera.rotation.set(0, Math.PI, 0);
+  camera.rotation.set(0, 0, 0);
   darumaState.lastX = camera.position.x;
   darumaState.lastZ = camera.position.z;
 }
@@ -5164,6 +5171,28 @@ function endTrainGameOver(kind = 'daruma') {
   state.allowExit = true;
   controls.unlock();
   $('#message-screen').classList.add('visible');
+}
+
+function restartTrainStageFromGameOver() {
+  Object.values(darumaAudio).forEach((sound) => {
+    sound.pause();
+    sound.currentTime = 0;
+  });
+  state.ended = false;
+  state.caught = false;
+  state.hp = 100;
+  state.allowExit = false;
+  state.fullMapOpen = false;
+  state.breakerGameOpen = false;
+  state.settingsOpen = false;
+  $('#message-screen')?.classList.remove('visible');
+  $('#settings-screen')?.classList.remove('visible');
+  document.body.classList.add('game-running', 'train-mode');
+  document.body.classList.remove('eyes-closed', 'train-noise');
+  clearMovementInput();
+  initTrainStage();
+  updateHUD();
+  lockPointer(true);
 }
 
 function advanceTrainGame() {
@@ -5536,6 +5565,10 @@ document.querySelectorAll('[data-breaker-cell]').forEach((button) => {
   button.addEventListener('click', () => handleBreakerCell(Number(button.dataset.breakerCell)));
 });
 $('#restart-button').addEventListener('click', () => {
+  if (state.mapMode === 'train') {
+    restartTrainStageFromGameOver();
+    return;
+  }
   state.allowExit = true;
   location.reload();
 });
@@ -5543,6 +5576,10 @@ $('#restart-button').addEventListener('pointerup', (event) => {
   if (!mobileInput.active) return;
   event.preventDefault();
   event.stopPropagation();
+  if (state.mapMode === 'train') {
+    restartTrainStageFromGameOver();
+    return;
+  }
   state.allowExit = true;
   location.reload();
 }, { passive: false });
@@ -6490,10 +6527,13 @@ function updateDarumaStage(dt, time) {
       darumaState.nextRoundAt = time + delay;
       darumaState.lastX = camera.position.x;
       darumaState.lastZ = camera.position.z;
+      setDarumaFacingPlayer(true);
     }
     setTrainPhrase();
   }
-  if (time - darumaState.finalDaAt >= 0.3 && time < darumaState.nextRoundAt) darumaState.freezeUntilNext = true;
+  darumaState.freezeUntilNext = Number.isFinite(darumaState.nextRoundAt)
+    && time >= darumaState.finalDaAt + 0.3
+    && time < darumaState.nextRoundAt;
   if (time - darumaState.finalDaAt >= 2) setTrainPhrase();
 
   if (darumaState.game >= 4 && darumaState.nextRoundAt === Infinity && darumaState.sequenceIndex > 0 && !darumaState.ghostActive) {
@@ -6541,7 +6581,10 @@ function updatePlayer(dt) {
       keys.KeyA = keys.KeyS = keys.KeyD = keys.ShiftLeft = keys.ShiftRight = false;
     }
     const moved = Math.hypot(camera.position.x - darumaState.lastX, camera.position.z - darumaState.lastZ);
-    if (darumaState.freezeUntilNext && moved > 0.035) {
+    const freezeWindowActive = Number.isFinite(darumaState.nextRoundAt)
+      && time >= darumaState.finalDaAt + 0.3
+      && time < darumaState.nextRoundAt;
+    if (freezeWindowActive && moved > 0.035) {
       endTrainGameOver('daruma');
       return;
     }

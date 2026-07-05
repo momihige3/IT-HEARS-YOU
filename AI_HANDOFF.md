@@ -1398,6 +1398,20 @@ Build:
 - Verified:
   - `node --check src/main.js`
   - `npm run build`
+
+## 2026-07-05 Train / Daruma Stage Retune
+
+- Title screen:
+  - Moved the settings button to the top-right so it no longer clips.
+  - Changed the train start button background to red.
+- Train stage:
+  - Continue now restarts the Daruma train stage from game 1 instead of returning to title.
+  - Fixed player start direction to face forward down the train.
+  - Added a rear wall behind the start point.
+  - Tripled train car length / Daruma distance.
+  - Daruma faces away during the chant, turns around on the final `だ`, and faces away again on the next `だ1`.
+  - Changed the stop/game-over check to be computed only during the final-`だ` freeze window, preventing stale always-on detection.
+  - Moved the Daruma phrase UI below the HP area and reduced size to avoid HUD overlap/clipping.
 - Note:
   - The in-app browser instance was unavailable/closed during this handoff, so live browser traversal should be rerun from DevTools using the hooks above if visual confirmation is needed.
 
