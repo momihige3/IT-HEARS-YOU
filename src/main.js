@@ -5102,68 +5102,10 @@ function makeDarumaMonster() {
 
 function makeTrainGhost() {
   const group = new THREE.Group();
-  const ghostMaterial = clothWhiteMat.clone();
-  ghostMaterial.transparent = true;
-  ghostMaterial.opacity = 0.64;
-  const dress = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.62, 6, 12), ghostMaterial);
-  dress.position.y = 1.03;
-  dress.scale.set(0.78, 1.12, 0.5);
-  dress.userData.trainGhostFallback = true;
-  group.add(dress);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 9), new THREE.MeshStandardMaterial({ color: 0xc7b8aa, roughness: 0.9, transparent: true, opacity: 0.92 }));
-  head.position.y = 2.12;
-  head.userData.trainGhostFallback = true;
-  group.add(head);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.29, 12, 9, 0, Math.PI * 2, 0, Math.PI * 0.88), hairMat.clone());
-  hair.position.set(0, 2.06, 0.02);
-  hair.scale.set(0.86, 1.32, 0.72);
-  hair.userData.trainGhostFallback = true;
-  group.add(hair);
-  for (let i = 0; i < 7; i += 1) {
-    const rag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62 + Math.random() * 0.42, 0.024), ghostMaterial);
-    rag.position.set(-0.25 + i * 0.085, 0.23 + Math.random() * 0.08, 0.17 + (Math.random() - 0.5) * 0.1);
-    rag.rotation.z = (Math.random() - 0.5) * 0.3;
-    rag.userData.trainGhostFallback = true;
-    group.add(rag);
-  }
-  for (let i = 0; i < 10; i += 1) {
-    const strand = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.35 + Math.random() * 0.65, 0.018), hairMat.clone());
-    const angle = -0.92 + (i / 9) * 1.84;
-    strand.position.set(Math.sin(angle) * 0.2, 1.46 - Math.random() * 0.18, 0.2 + Math.cos(angle) * 0.08);
-    strand.rotation.z = -angle * 0.13;
-    strand.rotation.x = 0.1 + Math.random() * 0.12;
-    strand.userData.trainGhostFallback = true;
-    group.add(strand);
-  }
-  const faceShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.38), new THREE.MeshBasicMaterial({ color: 0x020101, transparent: true, opacity: 0.72, side: THREE.DoubleSide }));
-  faceShadow.position.set(0, 2.1, 0.218);
-  faceShadow.userData.trainGhostFallback = true;
-  group.add(faceShadow);
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.92, 4, 6), ghostMaterial);
-    arm.position.set(side * 0.34, 1.18, 0.04);
-    arm.rotation.z = side * 0.28;
-    arm.userData.trainGhostFallback = true;
-    group.add(arm);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0xb8aa9d, roughness: 0.92, transparent: true, opacity: 0.9 }));
-    hand.position.set(side * 0.48, 0.68, 0.1);
-    hand.userData.trainGhostFallback = true;
-    group.add(hand);
-  }
-  for (const sx of [-0.12, 0.12]) {
-    const eye = new THREE.PointLight(0xff1212, 3.2, 4, 1.8);
-    eye.position.set(sx, 2.12, 0.25);
-    eye.userData.trainGhostFallback = true;
-    group.add(eye);
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff1111 }));
-    dot.position.copy(eye.position);
-    dot.userData.trainGhostFallback = true;
-    group.add(dot);
-  }
   const eyeTexture = textureLoader.load('./images/eye_scare.png');
   eyeTexture.colorSpace = THREE.SRGBColorSpace;
   const eyePlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.85, 1.12),
+    new THREE.PlaneGeometry(2.15, 1.3),
     new THREE.MeshBasicMaterial({
       map: eyeTexture,
       transparent: true,
@@ -5172,43 +5114,8 @@ function makeTrainGhost() {
       depthWrite: false,
     }),
   );
-  eyePlane.position.set(0, 1.65, 0.28);
-  eyePlane.userData.trainGhostImageFallback = true;
+  eyePlane.position.set(0, 1.62, 0);
   group.add(eyePlane);
-  group.traverse((child) => {
-    if (child.userData.trainGhostFallback) child.visible = false;
-  });
-  const loader = new GLTFLoader();
-  loader.load('./models/yurei_woman_v1.glb', (gltf) => {
-    const model = gltf.scene;
-    model.name = 'TRAIN_YUREI_WOMAN_GLB';
-    model.scale.setScalar(0.62);
-    model.rotation.set(WOMAN_MODEL_UPRIGHT_X, WOMAN_MODEL_FORWARD_YAW, 0);
-    model.position.set(0, -0.02, 0);
-    model.traverse((child) => {
-      if (!child.isMesh) return;
-      child.castShadow = false;
-      child.receiveShadow = false;
-      child.frustumCulled = true;
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      for (const matItem of materials) {
-        matItem.transparent = true;
-        matItem.opacity = Math.min(matItem.opacity ?? 1, 0.92);
-        if ('roughness' in matItem) matItem.roughness = Math.max(matItem.roughness, 0.74);
-        if ('metalness' in matItem) matItem.metalness = 0;
-      }
-    });
-    group.traverse((child) => {
-      if (child.userData.trainGhostFallback || child.userData.trainGhostImageFallback) child.visible = false;
-    });
-    group.add(model);
-  }, undefined, () => {
-    group.traverse((child) => {
-      if (child.userData.trainGhostFallback) child.visible = false;
-      if (child.userData.trainGhostImageFallback) child.visible = true;
-    });
-  });
-  group.scale.setScalar(1.14);
   group.visible = false;
   addTrainObject(group);
   return group;
@@ -6817,7 +6724,7 @@ function updateDarumaStage(dt, time) {
     if (darumaState.ghostNextAt === Infinity) darumaState.ghostNextAt = time + 10 + Math.random() * 20;
     if (time >= darumaState.ghostNextAt) {
       darumaState.ghostActive = true;
-      darumaState.ghostUntil = time + 3 + Math.random() * 3;
+      darumaState.ghostUntil = time + 5 + Math.random() * 5;
       darumaState.nextGhostDamageAt = time;
       if (darumaState.ghost) {
         darumaState.ghost.visible = true;

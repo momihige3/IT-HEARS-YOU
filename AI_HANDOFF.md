@@ -1641,3 +1641,16 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Train Ghost Image-Only Performance Fix
+
+- Train ghost performance:
+  - Removed the train ghost GLB/procedural 3D display path to avoid stutter when the ghost event starts.
+  - The train ghost event now uses only the preloaded `eye_scare.png` billboard.
+- Train ghost event timing:
+  - Extended the event duration from 3-6 seconds to 5-10 seconds.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
