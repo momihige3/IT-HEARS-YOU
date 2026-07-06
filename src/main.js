@@ -315,7 +315,7 @@ const coinItems = [];
 const fakeOfudaItems = [];
 let shop = null;
 const selectedMapCache = {
-  school: { ready: true, generatedAt: performance.now() },
+  school: { ready: false, generatedAt: 0 },
   mansion: { ready: false, generatedAt: 0 },
 };
 const CELL = 4;
@@ -3617,11 +3617,14 @@ scene.add(lockerViewLight.target);
 
 // Procedural spatial audio.
 let audio = null;
+const MAX_SE_VOLUME = 150;
 let seVolume = 80;
 try {
   const storedVolume = localStorage.getItem('soundEffectVolume');
   const savedVolume = Number(storedVolume);
-  if (storedVolume !== null && savedVolume >= 0 && savedVolume <= 100) seVolume = savedVolume;
+  if (storedVolume !== null && Number.isFinite(savedVolume)) {
+    seVolume = THREE.MathUtils.clamp(savedVolume, 0, MAX_SE_VOLUME);
+  }
 } catch { /* Use default volume. */ }
 
 function initAudio() {
@@ -5561,12 +5564,6 @@ async function prepareSelectedMapCache(mode) {
 
 async function startGame(mode = 'school') {
   if (state.loading || state.started) return;
-  if (mode === 'school' && schoolFloorMeshes.length === 0) {
-    sessionStorage.setItem('pendingMapStart', 'school');
-    state.allowExit = true;
-    location.reload();
-    return;
-  }
   tuneInitialResolutionForViewport();
   setLoading(true, mode === 'mansion' ? '屋敷マップを生成しています...' : '学校マップを準備しています...');
   await nextFrame();

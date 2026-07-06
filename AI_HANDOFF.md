@@ -1545,6 +1545,20 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Title UI / SE Volume / Lazy School Start
+
+- Title map button descriptions now render on a second line consistently for school, mansion, and train.
+- Train stage subtitle on the title screen is now grey like the other descriptions and displays `？？？`.
+- Title screen hides in-game HUD/radar/prompt/mobile gameplay UI while no game is running.
+- SE volume slider range was increased to 150% and saved values are clamped to the same range.
+- School map cache now starts as not ready, so the school preparation path is entered only after pressing the school start button.
+- Removed the old school-start reload fallback so map preparation stays within the selected start flow.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:
