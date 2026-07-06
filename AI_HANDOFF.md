@@ -1654,3 +1654,27 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Train Daruma Face Rework
+
+- Daruma model:
+  - Replaced the protruding face/eye mesh parts with a flat canvas-textured face panel.
+  - Removed the red mouth-area bulge so the silhouette reads more clearly as a traditional Daruma.
+  - Face panel now uses beige paper texture, large black eyes, black brush patterns, red nose strokes, and a thin dark mouth line.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
+## 2026-07-06 Train Stage Count 13
+
+- Train stage length:
+  - Increased the Daruma train stage count from 11 to 13.
+  - Stages after the 10th car reuse the same 3-second noise/reset presentation that was previously used for stage 11.
+  - Clear banners now use the total `13`; late-stage banners highlight the `13` in red.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

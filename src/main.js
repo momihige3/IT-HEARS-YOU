@@ -263,6 +263,7 @@ const TRAIN_OFFSET_X = -120;
 const TRAIN_START_Z = 18;
 const TRAIN_CAR_LENGTH = 36;
 const TRAIN_CAR_COUNT = 10;
+const TRAIN_FINAL_STAGE = 13;
 const TRAIN_WIDTH = 4.2;
 const trainRuntimeObjects = [];
 const darumaState = {
@@ -5048,31 +5049,86 @@ function makeDarumaMonster() {
     emissive: 0x250000,
     emissiveIntensity: 0.16,
   });
-  const faceMat = new THREE.MeshStandardMaterial({ color: 0xe0c1a1, roughness: 0.72, metalness: 0.0 });
-  const blackMat = new THREE.MeshStandardMaterial({ color: 0x070000, roughness: 0.46, metalness: 0.05 });
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xa57a20, roughness: 0.5, metalness: 0.35, emissive: 0x2c1500, emissiveIntensity: 0.18 });
+  const faceCanvas = document.createElement('canvas');
+  faceCanvas.width = 768;
+  faceCanvas.height = 420;
+  const faceCtx = faceCanvas.getContext('2d');
+  faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+  faceCtx.save();
+  faceCtx.beginPath();
+  faceCtx.roundRect(36, 30, 696, 330, 78);
+  faceCtx.clip();
+  const faceGrad = faceCtx.createRadialGradient(384, 180, 40, 384, 190, 460);
+  faceGrad.addColorStop(0, '#ead6ba');
+  faceGrad.addColorStop(0.66, '#d1ad86');
+  faceGrad.addColorStop(1, '#7a4b32');
+  faceCtx.fillStyle = faceGrad;
+  faceCtx.fillRect(0, 0, faceCanvas.width, faceCanvas.height);
+  faceCtx.fillStyle = 'rgba(60,28,12,.16)';
+  for (let i = 0; i < 180; i += 1) {
+    faceCtx.beginPath();
+    faceCtx.arc(55 + Math.random() * 660, 42 + Math.random() * 305, 0.6 + Math.random() * 2.2, 0, Math.PI * 2);
+    faceCtx.fill();
+  }
+  faceCtx.fillStyle = '#050202';
+  for (const sx of [-1, 1]) {
+    const cx = 384 + sx * 145;
+    faceCtx.beginPath();
+    faceCtx.ellipse(cx, 158, 58, 72, sx * -0.1, 0, Math.PI * 2);
+    faceCtx.fill();
+    faceCtx.save();
+    faceCtx.translate(cx + sx * 5, 86);
+    faceCtx.rotate(sx * 0.08);
+    for (let i = 0; i < 6; i += 1) {
+      faceCtx.beginPath();
+      faceCtx.ellipse(sx * (36 + i * 12), i * 12, 62 - i * 5, 10, sx * -0.42, 0, Math.PI * 1.25);
+      faceCtx.lineWidth = 9 - i * 0.7;
+      faceCtx.strokeStyle = '#060202';
+      faceCtx.stroke();
+    }
+    faceCtx.restore();
+    faceCtx.save();
+    faceCtx.translate(cx + sx * 50, 246);
+    for (let i = 0; i < 5; i += 1) {
+      faceCtx.beginPath();
+      faceCtx.ellipse(sx * (20 + i * 14), -i * 4, 70 - i * 4, 12, sx * 0.3, 0, Math.PI * 1.2);
+      faceCtx.lineWidth = 9 - i * 0.6;
+      faceCtx.strokeStyle = '#060202';
+      faceCtx.stroke();
+    }
+    faceCtx.restore();
+  }
+  faceCtx.strokeStyle = '#9d0b0b';
+  faceCtx.lineWidth = 14;
+  faceCtx.lineCap = 'round';
+  for (const sx of [-1, 1]) {
+    faceCtx.beginPath();
+    faceCtx.arc(384 + sx * 48, 242, 34, Math.PI * 1.08, Math.PI * 1.82, sx > 0);
+    faceCtx.stroke();
+  }
+  faceCtx.strokeStyle = '#220606';
+  faceCtx.lineWidth = 10;
+  faceCtx.beginPath();
+  faceCtx.moveTo(310, 296);
+  faceCtx.quadraticCurveTo(384, 314, 458, 296);
+  faceCtx.stroke();
+  faceCtx.restore();
+  const faceTex = new THREE.CanvasTexture(faceCanvas);
+  faceTex.colorSpace = THREE.SRGBColorSpace;
+  const facePanelMat = new THREE.MeshBasicMaterial({
+    map: faceTex,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
   const body = new THREE.Mesh(new THREE.SphereGeometry(1.32, 48, 36), redMat);
   body.scale.set(1.08, 1.26, 0.96);
   body.position.y = 1.22;
   group.add(body);
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.82, 36, 18), faceMat);
-  belly.scale.set(0.92, 0.68, 0.12);
-  belly.position.set(0, 0.98, 1.08);
-  group.add(belly);
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.92, 40, 22), faceMat);
-  face.scale.set(1.08, 0.72, 0.16);
-  face.position.set(0, 1.69, 1.02);
-  group.add(face);
-  for (const sx of [-0.33, 0.33]) {
-    const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.24, 28, 16), new THREE.MeshStandardMaterial({ color: 0xf4ead9, roughness: 0.3 }));
-    eyeWhite.scale.set(1, 0.92, 0.2);
-    eyeWhite.position.set(sx, 1.78, 1.16);
-    group.add(eyeWhite);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.13, 18, 12), blackMat);
-    eye.scale.set(1, 1, 0.22);
-    eye.position.set(sx, 1.78, 1.31);
-    group.add(eye);
-  }
+  const facePanel = new THREE.Mesh(new THREE.PlaneGeometry(1.98, 1.08), facePanelMat);
+  facePanel.position.set(0, 1.72, 1.275);
+  group.add(facePanel);
   for (const sx of [-1.18, 1.18]) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.56, 8, 14), redMat);
     arm.position.set(sx, 1.1, 0.12);
@@ -5196,7 +5252,7 @@ function setTrainPhrase() {
     phrase.appendChild(span);
   });
   const car = $('#daruma-car');
-  if (car) car.textContent = `${Math.min(darumaState.game, 10)} / 10`;
+  if (car) car.textContent = `${darumaState.game} / ${TRAIN_FINAL_STAGE}`;
 }
 
 function randomDarumaDelay(slow = false, final = false) {
@@ -5250,17 +5306,17 @@ function startDarumaRound(time = clock.elapsedTime) {
 function showTrainClearBanner(count) {
   const banner = $('#train-clear-banner');
   if (!banner) return;
-  if (count === 10) {
-    banner.innerHTML = `10/<span class="danger">11</span> クリア`;
+  if (count >= TRAIN_CAR_COUNT && count < TRAIN_FINAL_STAGE) {
+    banner.innerHTML = `${count}/<span class="danger">${TRAIN_FINAL_STAGE}</span> クリア`;
   } else {
-    banner.textContent = `${count}/10 クリア`;
+    banner.textContent = `${count}/${TRAIN_FINAL_STAGE} クリア`;
   }
   darumaState.clearBannerUntil = clock.elapsedTime + 3;
   document.body.classList.add('train-clear');
 }
 
 function resetTrainCarPosition() {
-  camera.position.set(TRAIN_OFFSET_X, 1.55, trainCarStartZ(Math.min(darumaState.game, 10)) - 1.0);
+  camera.position.set(TRAIN_OFFSET_X, 1.55, trainCarStartZ(Math.min(darumaState.game, TRAIN_CAR_COUNT)) - 1.0);
   camera.rotation.set(0, 0, 0);
   darumaState.lastX = camera.position.x;
   darumaState.lastZ = camera.position.z;
@@ -5340,27 +5396,25 @@ function restartTrainStageFromGameOver() {
 
 function advanceTrainGame() {
   const time = clock.elapsedTime;
-  showTrainClearBanner(Math.min(darumaState.game, 10));
+  showTrainClearBanner(darumaState.game);
   state.hp = Math.min(100, state.hp + 40);
   updateHUD();
-  if (darumaState.game === 10 && !darumaState.resetUsed) {
-    darumaState.resetUsed = true;
-    document.body.classList.add('train-noise');
-    darumaState.noiseUntil = time + 3;
-    setTimeout(() => document.body.classList.remove('train-noise'), 3000);
-    resetTrainCarPosition();
-    darumaState.game = 11;
-    if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(10);
-    startDarumaRound(time + 3.05);
-    return;
-  }
-  if (darumaState.game >= 11) {
+  if (darumaState.game >= TRAIN_FINAL_STAGE) {
     endGame(true);
     return;
   }
   darumaState.game += 1;
+  if (darumaState.game > TRAIN_CAR_COUNT) {
+    document.body.classList.add('train-noise');
+    darumaState.noiseUntil = time + 3;
+    setTimeout(() => document.body.classList.remove('train-noise'), 3000);
+    resetTrainCarPosition();
+    if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(TRAIN_CAR_COUNT);
+    startDarumaRound(time + 3.05);
+    return;
+  }
   resetTrainCarPosition();
-  if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(Math.min(darumaState.game, 10));
+  if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(Math.min(darumaState.game, TRAIN_CAR_COUNT));
   startDarumaRound(time + 0.45);
 }
 
@@ -6773,8 +6827,9 @@ function updatePlayer(dt) {
       camera.position.y = 1.55;
     }
     camera.position.x = THREE.MathUtils.clamp(camera.position.x, TRAIN_OFFSET_X - 0.72, TRAIN_OFFSET_X + 0.72);
-    const minZ = trainDarumaZ(Math.min(darumaState.game, 10)) + 0.95;
-    const maxZ = trainCarStartZ(Math.min(darumaState.game, 10)) - 0.55;
+    const trainStageIndex = Math.min(darumaState.game, TRAIN_CAR_COUNT);
+    const minZ = trainDarumaZ(trainStageIndex) + 0.95;
+    const maxZ = trainCarStartZ(trainStageIndex) - 0.55;
     camera.position.z = THREE.MathUtils.clamp(camera.position.z, minZ, maxZ);
     if (keys.KeyA || keys.KeyS || keys.KeyD || keys.ShiftLeft || keys.ShiftRight) {
       keys.KeyA = keys.KeyS = keys.KeyD = keys.ShiftLeft = keys.ShiftRight = false;
@@ -6789,7 +6844,7 @@ function updatePlayer(dt) {
     }
     darumaState.lastX = camera.position.x;
     darumaState.lastZ = camera.position.z;
-    if (camera.position.z <= trainDarumaZ(Math.min(darumaState.game, 10)) + 1.08) advanceTrainGame();
+    if (camera.position.z <= trainDarumaZ(trainStageIndex) + 1.08) advanceTrainGame();
     return;
   }
   if (state.hidden) {
