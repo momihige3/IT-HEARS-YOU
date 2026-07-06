@@ -1678,3 +1678,25 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-06 Daruma Horror Model Preview
+
+- Created a non-integrated Daruma model preview for visual review before replacing the in-game enemy.
+- New files:
+  - `tools/create-daruma-horror-model.mjs`
+  - `public/models/daruma_horror_preview.glb`
+  - `daruma_model_preview.html`
+- Direction:
+  - Use the existing Daruma game-over image as the visual reference.
+  - Avoid cute/rounded facial expression.
+  - Remove protruding red mouth-area geometry.
+  - Favor old lacquer, dark hollow eyes, worn gold marks, scratches, and horror lighting.
+- Important:
+  - This preview model is not yet wired into `src/main.js`.
+  - Wait for visual approval/adjustment before replacing the active train enemy model.
+
+### Verification
+
+- `node tools/create-daruma-horror-model.mjs`
+- `node --check tools/create-daruma-horror-model.mjs`
+- `npm run build`
