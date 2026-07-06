@@ -5014,135 +5014,67 @@ function setDarumaFacingPlayer(facingPlayer) {
 
 function makeDarumaMonster() {
   const group = new THREE.Group();
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  const grd = ctx.createRadialGradient(210, 150, 10, 250, 280, 360);
-  grd.addColorStop(0, '#c9261e');
-  grd.addColorStop(0.48, '#8a0808');
-  grd.addColorStop(1, '#260203');
-  ctx.fillStyle = grd;
-  ctx.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 260; i += 1) {
-    ctx.strokeStyle = Math.random() < 0.72 ? 'rgba(255,130,72,.12)' : 'rgba(20,0,0,.28)';
-    ctx.lineWidth = 0.6 + Math.random() * 2.4;
-    const x = Math.random() * 512;
-    ctx.beginPath();
-    ctx.moveTo(x, Math.random() * 512);
-    ctx.bezierCurveTo(x + Math.random() * 80 - 40, 160, x + Math.random() * 140 - 70, 330, x + Math.random() * 90 - 45, 512);
-    ctx.stroke();
-  }
-  ctx.fillStyle = 'rgba(18,0,0,.32)';
-  for (let i = 0; i < 22; i += 1) {
-    ctx.beginPath();
-    ctx.ellipse(256 + (Math.random() - 0.5) * 330, 120 + Math.random() * 300, 22 + Math.random() * 60, 5 + Math.random() * 15, Math.random() * Math.PI, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const darumaTex = new THREE.CanvasTexture(canvas);
-  darumaTex.colorSpace = THREE.SRGBColorSpace;
   const redMat = new THREE.MeshStandardMaterial({
-    color: 0x9b0b08,
-    roughness: 0.52,
+    color: 0xb10f0a,
+    roughness: 0.74,
     metalness: 0.02,
-    map: darumaTex,
-    emissive: 0x250000,
-    emissiveIntensity: 0.16,
+    emissive: 0x260000,
+    emissiveIntensity: 0.14,
   });
-  const goldMat = new THREE.MeshStandardMaterial({ color: 0xa57a20, roughness: 0.5, metalness: 0.35, emissive: 0x2c1500, emissiveIntensity: 0.18 });
-  const faceCanvas = document.createElement('canvas');
-  faceCanvas.width = 768;
-  faceCanvas.height = 420;
-  const faceCtx = faceCanvas.getContext('2d');
-  faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
-  faceCtx.save();
-  faceCtx.beginPath();
-  faceCtx.roundRect(36, 30, 696, 330, 78);
-  faceCtx.clip();
-  const faceGrad = faceCtx.createRadialGradient(384, 180, 40, 384, 190, 460);
-  faceGrad.addColorStop(0, '#ead6ba');
-  faceGrad.addColorStop(0.66, '#d1ad86');
-  faceGrad.addColorStop(1, '#7a4b32');
-  faceCtx.fillStyle = faceGrad;
-  faceCtx.fillRect(0, 0, faceCanvas.width, faceCanvas.height);
-  faceCtx.fillStyle = 'rgba(60,28,12,.16)';
-  for (let i = 0; i < 180; i += 1) {
-    faceCtx.beginPath();
-    faceCtx.arc(55 + Math.random() * 660, 42 + Math.random() * 305, 0.6 + Math.random() * 2.2, 0, Math.PI * 2);
-    faceCtx.fill();
-  }
-  faceCtx.fillStyle = '#050202';
-  for (const sx of [-1, 1]) {
-    const cx = 384 + sx * 145;
-    faceCtx.beginPath();
-    faceCtx.ellipse(cx, 158, 58, 72, sx * -0.1, 0, Math.PI * 2);
-    faceCtx.fill();
-    faceCtx.save();
-    faceCtx.translate(cx + sx * 5, 86);
-    faceCtx.rotate(sx * 0.08);
-    for (let i = 0; i < 6; i += 1) {
-      faceCtx.beginPath();
-      faceCtx.ellipse(sx * (36 + i * 12), i * 12, 62 - i * 5, 10, sx * -0.42, 0, Math.PI * 1.25);
-      faceCtx.lineWidth = 9 - i * 0.7;
-      faceCtx.strokeStyle = '#060202';
-      faceCtx.stroke();
-    }
-    faceCtx.restore();
-    faceCtx.save();
-    faceCtx.translate(cx + sx * 50, 246);
-    for (let i = 0; i < 5; i += 1) {
-      faceCtx.beginPath();
-      faceCtx.ellipse(sx * (20 + i * 14), -i * 4, 70 - i * 4, 12, sx * 0.3, 0, Math.PI * 1.2);
-      faceCtx.lineWidth = 9 - i * 0.6;
-      faceCtx.strokeStyle = '#060202';
-      faceCtx.stroke();
-    }
-    faceCtx.restore();
-  }
-  faceCtx.strokeStyle = '#9d0b0b';
-  faceCtx.lineWidth = 14;
-  faceCtx.lineCap = 'round';
-  for (const sx of [-1, 1]) {
-    faceCtx.beginPath();
-    faceCtx.arc(384 + sx * 48, 242, 34, Math.PI * 1.08, Math.PI * 1.82, sx > 0);
-    faceCtx.stroke();
-  }
-  faceCtx.strokeStyle = '#220606';
-  faceCtx.lineWidth = 10;
-  faceCtx.beginPath();
-  faceCtx.moveTo(310, 296);
-  faceCtx.quadraticCurveTo(384, 314, 458, 296);
-  faceCtx.stroke();
-  faceCtx.restore();
-  const faceTex = new THREE.CanvasTexture(faceCanvas);
-  faceTex.colorSpace = THREE.SRGBColorSpace;
-  const facePanelMat = new THREE.MeshBasicMaterial({
-    map: faceTex,
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = 1024;
+  textureCanvas.height = 1024;
+  const textureCtx = textureCanvas.getContext('2d');
+  const clipDarumaSilhouette = () => {
+    textureCtx.beginPath();
+    textureCtx.moveTo(512, 62);
+    textureCtx.bezierCurveTo(250, 82, 148, 270, 148, 542);
+    textureCtx.bezierCurveTo(148, 825, 292, 958, 512, 958);
+    textureCtx.bezierCurveTo(732, 958, 876, 825, 876, 542);
+    textureCtx.bezierCurveTo(876, 270, 774, 82, 512, 62);
+    textureCtx.closePath();
+  };
+  const darumaImageTexture = new THREE.CanvasTexture(textureCanvas);
+  darumaImageTexture.colorSpace = THREE.SRGBColorSpace;
+  const drawDarumaTexture = (image) => {
+    textureCtx.clearRect(0, 0, textureCanvas.width, textureCanvas.height);
+    textureCtx.save();
+    clipDarumaSilhouette();
+    textureCtx.clip();
+    textureCtx.drawImage(image, 238, 18, 1084, 970, 30, 34, 964, 925);
+    const vignette = textureCtx.createRadialGradient(512, 450, 250, 512, 525, 565);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(0.72, 'rgba(0,0,0,.02)');
+    vignette.addColorStop(1, 'rgba(0,0,0,.34)');
+    textureCtx.fillStyle = vignette;
+    textureCtx.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
+    textureCtx.restore();
+    textureCtx.globalCompositeOperation = 'destination-in';
+    clipDarumaSilhouette();
+    textureCtx.fillStyle = '#fff';
+    textureCtx.fill();
+    textureCtx.globalCompositeOperation = 'source-over';
+    darumaImageTexture.needsUpdate = true;
+  };
+  const image = new Image();
+  image.onload = () => drawDarumaTexture(image);
+  image.src = './images/daruma_gameover.png';
+  const frontMat = new THREE.MeshStandardMaterial({
+    map: darumaImageTexture,
     transparent: true,
+    roughness: 0.62,
+    metalness: 0.01,
     side: THREE.DoubleSide,
-    depthWrite: false,
+    depthWrite: true,
   });
   const body = new THREE.Mesh(new THREE.SphereGeometry(1.32, 48, 36), redMat);
-  body.scale.set(1.08, 1.26, 0.96);
-  body.position.y = 1.22;
+  body.scale.set(1.13, 1.28, 0.74);
+  body.position.y = 1.2;
   group.add(body);
-  const facePanel = new THREE.Mesh(new THREE.PlaneGeometry(1.98, 1.08), facePanelMat);
-  facePanel.position.set(0, 1.72, 1.275);
-  group.add(facePanel);
-  for (const sx of [-1.18, 1.18]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.56, 8, 14), redMat);
-    arm.position.set(sx, 1.1, 0.12);
-    arm.rotation.z = sx < 0 ? -0.38 : 0.38;
-    group.add(arm);
-  }
-  const base = new THREE.Mesh(new THREE.TorusGeometry(1.08, 0.09, 12, 56), goldMat);
-  base.position.y = 0.22;
-  base.rotation.x = Math.PI / 2;
-  group.add(base);
-  const top = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.055, 10, 40), goldMat);
-  top.position.y = 2.46;
-  top.rotation.x = Math.PI / 2;
-  group.add(top);
+  const frontTexture = new THREE.Mesh(new THREE.PlaneGeometry(2.92, 3.0, 24, 24), frontMat);
+  frontTexture.name = 'daruma_gameover_texture_front';
+  frontTexture.position.set(0, 1.3, 1.05);
+  group.add(frontTexture);
   const spotTarget = new THREE.Object3D();
   spotTarget.position.set(0, 1.1, 0.2);
   group.add(spotTarget);

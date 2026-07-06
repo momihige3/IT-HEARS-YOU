@@ -1757,3 +1757,19 @@ Build:
 ### Verification
 
 - Chat screenshot exported from `daruma_model_preview.html`.
+
+## 2026-07-06 Daruma Texture Implemented In Train Stage
+
+- Implemented the approved Daruma preview direction in the actual train-stage enemy.
+- `makeDarumaMonster()` now:
+  - uses `public/images/daruma_gameover.png` as the front texture source,
+  - crops and masks it with the same wider Daruma silhouette logic used in the preview,
+  - removes the old square/flat hand-drawn face panel,
+  - removes the procedural arms/gold torus parts that no longer match the image texture,
+  - uses a rear/side red shell color matched to the source texture.
+- The preview page remains available for visual adjustment, but the in-game train Daruma now uses the same texture approach.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
