@@ -1700,3 +1700,17 @@ Build:
 - `node tools/create-daruma-horror-model.mjs`
 - `node --check tools/create-daruma-horror-model.mjs`
 - `npm run build`
+
+## 2026-07-06 Daruma Preview Page Fix
+
+- Fixed `daruma_model_preview.html` showing black / failing to load:
+  - Added `daruma_model_preview.html` as a Vite build input.
+  - Replaced direct `node_modules` imports with Vite-managed bare imports.
+  - Changed model URL from `./public/models/daruma_horror_preview.glb` to `./models/daruma_horror_preview.glb`.
+  - Added a visible error message if GLB loading fails.
+- Confirmed the preview page renders the Daruma model locally after the fix.
+
+### Verification
+
+- `npm run build`
+- Local preview screenshot check via `http://127.0.0.1:4174/daruma_model_preview.html`
