@@ -1746,12 +1746,13 @@ Build:
 ## 2026-07-06 Daruma Texture Silhouette Crop
 
 - Adjusted the Daruma texture preview after feedback that only a vertical slice was visible.
-- Expanded the texture crop horizontally, then replaced the simple ellipse with a custom Daruma silhouette mask to remove the source image background.
+- Expanded the texture crop horizontally, then replaced the simple ellipse with a wider custom Daruma silhouette mask.
+- Matched the rear/side shell red material closer to the source texture red so side/background bleed is less noticeable.
 - Latest chat/reference screenshot:
-  - `public/images/daruma_texture_preview_silhouette.png`
+  - `public/images/daruma_texture_preview_matched_red.png`
 - Tradeoff:
-  - The current silhouette removes most background bleed, but trims a small amount of the side gold marks.
-  - If the user wants full side marks, widen the mask slightly and accept a small amount of edge cleanup work.
+  - The current version preserves more side width and gold markings.
+  - Some side seam visibility remains because the preview still uses a front image plane plus a rear shell, not a full UV-unwrapped 3D texture.
 
 ### Verification
 

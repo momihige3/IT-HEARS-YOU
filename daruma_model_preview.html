@@ -83,11 +83,11 @@
     const shell = new THREE.Mesh(
       new THREE.SphereGeometry(1.42, 96, 64),
       new THREE.MeshStandardMaterial({
-        color: 0x5c0604,
-        roughness: .86,
+        color: 0xb10f0a,
+        roughness: .74,
         metalness: .02,
-        emissive: 0x120000,
-        emissiveIntensity: .08,
+        emissive: 0x260000,
+        emissiveIntensity: .14,
       }),
     );
     shell.scale.set(1.08, 1.22, .72);
@@ -115,17 +115,17 @@
       ctx.save();
       const clipDarumaSilhouette = () => {
         ctx.beginPath();
-        ctx.moveTo(512, 64);
-        ctx.bezierCurveTo(295, 78, 210, 270, 210, 530);
-        ctx.bezierCurveTo(210, 820, 325, 955, 512, 955);
-        ctx.bezierCurveTo(699, 955, 814, 820, 814, 530);
-        ctx.bezierCurveTo(814, 270, 729, 78, 512, 64);
+        ctx.moveTo(512, 62);
+        ctx.bezierCurveTo(250, 82, 148, 270, 148, 542);
+        ctx.bezierCurveTo(148, 825, 292, 958, 512, 958);
+        ctx.bezierCurveTo(732, 958, 876, 825, 876, 542);
+        ctx.bezierCurveTo(876, 270, 774, 82, 512, 62);
         ctx.closePath();
       };
 
       clipDarumaSilhouette();
       ctx.clip();
-      ctx.drawImage(image, 285, 18, 990, 970, 76, 34, 872, 925);
+      ctx.drawImage(image, 238, 18, 1084, 970, 30, 34, 964, 925);
 
       const vignette = ctx.createRadialGradient(512, 450, 250, 512, 525, 565);
       vignette.addColorStop(0, 'rgba(0,0,0,0)');
@@ -150,7 +150,7 @@
     async function initDarumaTextureModel() {
       const texture = await makeDarumaTexture();
       const frontMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.72, 3.08, 24, 24),
+      new THREE.PlaneGeometry(3.18, 3.08, 24, 24),
         new THREE.MeshStandardMaterial({
           map: texture,
           transparent: true,
