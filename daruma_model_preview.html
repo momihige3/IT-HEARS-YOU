@@ -9,7 +9,7 @@
     body {
       margin: 0;
       height: 100%;
-      background: #181010;
+      background: #120b0b;
       color: #eee;
       font-family: system-ui, sans-serif;
       overflow: hidden;
@@ -21,7 +21,7 @@
       top: 16px;
       z-index: 2;
       padding: 12px 14px;
-      background: rgba(0, 0, 0, .58);
+      background: rgba(0, 0, 0, .62);
       border: 1px solid rgba(255, 255, 255, .18);
       line-height: 1.55;
     }
@@ -39,66 +39,128 @@
 </head>
 <body>
   <div id="info">
-    <b>Daruma Horror Preview</b><br>
-    ゲーム未実装の確認用モデル<br>
+    <b>Daruma Texture Preview</b><br>
+    ゲームオーバー用画像を直接テクスチャ化<br>
     左ドラッグ: 回転 / ホイール: 拡大縮小
   </div>
 
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.55;
+    renderer.toneMappingExposure = 1.18;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x181010);
+    scene.background = new THREE.Color(0x120b0b);
 
-    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
-    camera.position.set(0, 1.58, 6.6);
+    const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(0, 1.42, 6.2);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 1.35, 0);
     controls.enableDamping = true;
 
-    scene.add(new THREE.HemisphereLight(0xffd8c8, 0x3a1010, 2.3));
+    scene.add(new THREE.HemisphereLight(0xffd7c4, 0x170505, 1.9));
 
-    const key = new THREE.SpotLight(0xffd4b8, 16.0, 16, Math.PI / 4.5, 0.55, 0.9);
-    key.position.set(-2.5, 4.5, 4.7);
+    const key = new THREE.SpotLight(0xffc7a5, 7.5, 15, Math.PI / 4.8, 0.62, 1.05);
+    key.position.set(-2.2, 4.3, 4.1);
     scene.add(key);
 
-    const fill = new THREE.PointLight(0xff7d55, 5.0, 9);
-    fill.position.set(2.8, 1.8, 3.8);
-    scene.add(fill);
-
-    const front = new THREE.PointLight(0xffe1c8, 4.6, 8);
-    front.position.set(0, 1.7, 4.4);
+    const front = new THREE.PointLight(0xff765c, 2.4, 7);
+    front.position.set(0, 1.5, 4.0);
     scene.add(front);
 
-    const top = new THREE.DirectionalLight(0xffffff, 2.2);
-    top.position.set(0, 5, 2.5);
-    scene.add(top);
+    const group = new THREE.Group();
+    group.name = 'DARUMA_IMAGE_TEXTURE_MODEL_PREVIEW';
+    scene.add(group);
+
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(1.42, 96, 64),
+      new THREE.MeshStandardMaterial({
+        color: 0x5c0604,
+        roughness: .86,
+        metalness: .02,
+        emissive: 0x120000,
+        emissiveIntensity: .08,
+      }),
+    );
+    shell.scale.set(1.08, 1.22, .72);
+    shell.position.y = 1.18;
+    group.add(shell);
 
     const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(2.4, 96),
-      new THREE.MeshStandardMaterial({ color: 0x241616, roughness: .9 }),
+      new THREE.CircleGeometry(2.5, 96),
+      new THREE.MeshStandardMaterial({ color: 0x2a1714, roughness: .95 }),
     );
     floor.rotation.x = -Math.PI / 2;
-    scene.add(floor);
+    group.add(floor);
 
-    const loader = new GLTFLoader();
-    loader.load('./models/daruma_horror_preview.glb', (gltf) => {
-      scene.add(gltf.scene);
-    }, undefined, (error) => {
+    async function makeDarumaTexture() {
+      const image = new Image();
+      image.src = './images/daruma_gameover.png';
+      await image.decode();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(512, 545, 360, 495, 0, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(image, 325, 18, 890, 970, 88, 34, 848, 925);
+
+      const vignette = ctx.createRadialGradient(512, 450, 250, 512, 525, 565);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(0.72, 'rgba(0,0,0,.02)');
+      vignette.addColorStop(1, 'rgba(0,0,0,.34)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.beginPath();
+      ctx.ellipse(512, 545, 360, 495, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return texture;
+    }
+
+    async function initDarumaTextureModel() {
+      const texture = await makeDarumaTexture();
+      const frontMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.35, 3.08, 24, 24),
+        new THREE.MeshStandardMaterial({
+          map: texture,
+          transparent: true,
+          roughness: .62,
+          metalness: .01,
+          side: THREE.DoubleSide,
+          depthWrite: true,
+        }),
+      );
+      frontMesh.name = 'daruma_gameover_image_texture_front';
+      frontMesh.position.set(0, 1.32, 1.04);
+      group.add(frontMesh);
+    }
+
+    initDarumaTextureModel().catch((error) => {
       const warn = document.createElement('div');
       warn.style.cssText = 'position:fixed;left:18px;bottom:18px;color:#ff7777;background:#220;padding:10px 12px;z-index:3';
-      warn.textContent = `モデル読み込み失敗: ${error?.message || error}`;
+      warn.textContent = `画像テクスチャ読み込み失敗: ${error?.message || error}`;
       document.body.appendChild(warn);
     });
 

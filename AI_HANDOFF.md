@@ -1729,3 +1729,16 @@ Build:
 - `node tools/create-daruma-horror-model.mjs`
 - `npm run build`
 - Local preview screenshot check via `http://127.0.0.1:4174/daruma_model_preview.html`
+
+## 2026-07-06 Daruma Texture Preview Rework
+
+- Reworked `daruma_model_preview.html` after feedback that the square face panel was unacceptable.
+- The preview now uses `public/images/daruma_gameover.png` directly as the front texture.
+- The texture is cropped and masked into a Daruma-shaped oval instead of using a square face plate.
+- Kept a simple dark red ellipsoid behind the image texture only to give the preview volume.
+- This is still a preview-only approach; the active train enemy in `src/main.js` has not been replaced yet.
+
+### Verification
+
+- `npm run build`
+- Chat screenshot exported to `daruma_texture_preview_chat_tight.png`
