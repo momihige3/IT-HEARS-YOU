@@ -25,38 +25,42 @@ const outPath = path.join(outDir, 'daruma_horror_preview.glb');
 const scene = new THREE.Scene();
 
 const redMat = new THREE.MeshStandardMaterial({
-  color: 0x8b0705,
-  roughness: 0.84,
+  color: 0xc01812,
+  roughness: 0.72,
   metalness: 0.02,
-  emissive: 0x190000,
-  emissiveIntensity: 0.08,
+  emissive: 0x300000,
+  emissiveIntensity: 0.16,
 });
 const darkRedMat = new THREE.MeshStandardMaterial({
-  color: 0x260101,
-  roughness: 0.92,
+  color: 0x5a0705,
+  roughness: 0.88,
   metalness: 0,
+  emissive: 0x120000,
+  emissiveIntensity: 0.08,
 });
 const blackMat = new THREE.MeshStandardMaterial({
-  color: 0x030101,
-  roughness: 0.78,
+  color: 0x090303,
+  roughness: 0.68,
   metalness: 0.02,
 });
 const faceMat = new THREE.MeshStandardMaterial({
-  color: 0xc6a07d,
-  roughness: 0.96,
+  color: 0xe1b58d,
+  roughness: 0.9,
   metalness: 0,
+  emissive: 0x1f1208,
+  emissiveIntensity: 0.08,
 });
 const dirtMat = new THREE.MeshStandardMaterial({
-  color: 0x4b2a16,
+  color: 0x744323,
   roughness: 1,
   metalness: 0,
 });
 const goldMat = new THREE.MeshStandardMaterial({
-  color: 0x8d681e,
-  roughness: 0.82,
+  color: 0xc29135,
+  roughness: 0.74,
   metalness: 0.08,
-  emissive: 0x130900,
-  emissiveIntensity: 0.08,
+  emissive: 0x2a1500,
+  emissiveIntensity: 0.12,
 });
 
 const rootGroup = new THREE.Group();

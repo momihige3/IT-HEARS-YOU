@@ -1714,3 +1714,18 @@ Build:
 
 - `npm run build`
 - Local preview screenshot check via `http://127.0.0.1:4174/daruma_model_preview.html`
+
+## 2026-07-06 Daruma Preview Brightness Fix
+
+- Fixed the Daruma preview still appearing too black:
+  - Brightened the preview background from near-black to a dark brown inspection backdrop.
+  - Increased exposure and added stronger front/top lights for shape review.
+  - Brightened the preview GLB materials so the red shell, beige face plate, and gold marks do not crush into black.
+  - Regenerated `public/models/daruma_horror_preview.glb`.
+- This remains a preview-only asset and is not yet wired into the train game enemy.
+
+### Verification
+
+- `node tools/create-daruma-horror-model.mjs`
+- `npm run build`
+- Local preview screenshot check via `http://127.0.0.1:4174/daruma_model_preview.html`

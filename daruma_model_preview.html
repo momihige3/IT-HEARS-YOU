@@ -9,7 +9,7 @@
     body {
       margin: 0;
       height: 100%;
-      background: #050202;
+      background: #181010;
       color: #eee;
       font-family: system-ui, sans-serif;
       overflow: hidden;
@@ -54,12 +54,11 @@
     renderer.setSize(innerWidth, innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.55;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050202);
-    scene.fog = new THREE.Fog(0x050202, 7.5, 16);
+    scene.background = new THREE.Color(0x181010);
 
     const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
     camera.position.set(0, 1.58, 6.6);
@@ -68,23 +67,27 @@
     controls.target.set(0, 1.35, 0);
     controls.enableDamping = true;
 
-    scene.add(new THREE.HemisphereLight(0xa08078, 0x100404, 1.25));
+    scene.add(new THREE.HemisphereLight(0xffd8c8, 0x3a1010, 2.3));
 
-    const key = new THREE.SpotLight(0xffc0a8, 9.0, 14, Math.PI / 4.8, 0.58, 1.0);
-    key.position.set(-2.5, 4.2, 4.2);
+    const key = new THREE.SpotLight(0xffd4b8, 16.0, 16, Math.PI / 4.5, 0.55, 0.9);
+    key.position.set(-2.5, 4.5, 4.7);
     scene.add(key);
 
-    const fill = new THREE.PointLight(0x8a130d, 3.0, 8);
-    fill.position.set(2.8, 1.6, 3.0);
+    const fill = new THREE.PointLight(0xff7d55, 5.0, 9);
+    fill.position.set(2.8, 1.8, 3.8);
     scene.add(fill);
 
-    const front = new THREE.PointLight(0xff6f55, 1.8, 6);
-    front.position.set(0, 1.6, 3.8);
+    const front = new THREE.PointLight(0xffe1c8, 4.6, 8);
+    front.position.set(0, 1.7, 4.4);
     scene.add(front);
+
+    const top = new THREE.DirectionalLight(0xffffff, 2.2);
+    top.position.set(0, 5, 2.5);
+    scene.add(top);
 
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(2.4, 96),
-      new THREE.MeshStandardMaterial({ color: 0x100707, roughness: .95 }),
+      new THREE.MeshStandardMaterial({ color: 0x241616, roughness: .9 }),
     );
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
