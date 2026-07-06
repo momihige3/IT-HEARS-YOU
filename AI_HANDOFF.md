@@ -1742,3 +1742,17 @@ Build:
 
 - `npm run build`
 - Chat screenshot exported to `daruma_texture_preview_chat_tight.png`
+
+## 2026-07-06 Daruma Texture Silhouette Crop
+
+- Adjusted the Daruma texture preview after feedback that only a vertical slice was visible.
+- Expanded the texture crop horizontally, then replaced the simple ellipse with a custom Daruma silhouette mask to remove the source image background.
+- Latest chat/reference screenshot:
+  - `public/images/daruma_texture_preview_silhouette.png`
+- Tradeoff:
+  - The current silhouette removes most background bleed, but trims a small amount of the side gold marks.
+  - If the user wants full side marks, widen the mask slightly and accept a small amount of edge cleanup work.
+
+### Verification
+
+- Chat screenshot exported from `daruma_model_preview.html`.
