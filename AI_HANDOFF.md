@@ -1571,6 +1571,19 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Mobile Game Over Input Freeze Fix
+
+- Raised the game-over message screen above remaining mobile/train overlays so it is always tappable.
+- `stopMobileGameplayInput()` now clears train eyes-closed state and releases active camera swipe pointer capture.
+- Train game-over now forcibly clears eyes-closed/noise/ghost warning overlays, disables gameplay controls, and closes map/breaker overlays.
+- Train continue now re-enables mobile controls after resetting the stage.
+- HP-zero game-over now also disables mobile gameplay controls and closes map/breaker overlays.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:

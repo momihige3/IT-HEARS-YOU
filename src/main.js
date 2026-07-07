@@ -4590,6 +4590,11 @@ function stopMobileGameplayInput() {
   mobileInput.moveX = 0;
   mobileInput.moveY = 0;
   mobileInput.running = false;
+  darumaState.eyesClosed = false;
+  document.body.classList.remove('eyes-closed');
+  try {
+    if (cameraSwipePointer !== null) renderer.domElement.releasePointerCapture(cameraSwipePointer);
+  } catch { /* Already released. */ }
   cameraSwipePointer = null;
   const runButton = $('#mobile-run-toggle');
   runButton?.classList.remove('running');
@@ -5275,6 +5280,12 @@ function initTrainStage() {
 }
 
 function endTrainGameOver(kind = 'daruma') {
+  stopMobileGameplayInput();
+  document.body.classList.remove('eyes-closed', 'train-noise', 'ghost-eye-danger', 'ghost-heartbeat', 'train-clear');
+  $('#mobile-controls')?.classList.add('disabled');
+  $('#mobile-action')?.classList.remove('visible');
+  $('#full-map-screen')?.classList.remove('visible');
+  $('#breaker-game-screen')?.classList.remove('visible');
   if (kind !== 'daruma') {
     Object.values(darumaAudio).forEach((sound) => {
       sound.pause();
@@ -5323,6 +5334,7 @@ function restartTrainStageFromGameOver() {
   document.body.classList.add('game-running', 'train-mode');
   document.body.classList.remove('eyes-closed', 'train-noise');
   document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat', 'train-clear', 'train-gameover-ghost', 'train-gameover-daruma');
+  $('#mobile-controls')?.classList.remove('disabled');
   clearMovementInput();
   initTrainStage();
   updateHUD();
@@ -6035,6 +6047,10 @@ function damagePlayer(amount, reason = 'damage') {
     state.ended = true;
     stopMobileGameplayInput();
     controls.unlock();
+    $('#mobile-controls')?.classList.add('disabled');
+    $('#mobile-action')?.classList.remove('visible');
+    $('#full-map-screen')?.classList.remove('visible');
+    $('#breaker-game-screen')?.classList.remove('visible');
     $('#message-kicker').textContent = reason === 'trap' ? '罠に倒れた' : '力尽きた';
     $('#message-title').textContent = 'GAME OVER';
     $('#message-body').textContent = '意識が闇に沈んでいく……';
