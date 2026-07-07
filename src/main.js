@@ -5437,7 +5437,7 @@ function showTrainClearBanner(count) {
   const banner = $('#train-clear-banner');
   if (!banner) return;
   if (count >= TRAIN_CAR_COUNT && count < TRAIN_FINAL_STAGE) {
-    banner.innerHTML = `${count}/<span class="danger">${TRAIN_CAR_COUNT}</span> クリア`;
+    banner.innerHTML = `<span class="danger">${count}</span>/${TRAIN_CAR_COUNT} クリア`;
   } else {
     banner.textContent = `${count}/${TRAIN_CAR_COUNT} クリア`;
   }
@@ -8368,6 +8368,7 @@ function updateLight(time) {
     if (breakerLight) breakerLight.visible = state.mapMode !== 'mansion' && breakerLight.position.distanceToSquared(camera.position) < 18 * 18;
     if (mansionBreakerLight) mansionBreakerLight.visible = state.mapMode === 'mansion' && mansionBreakerLight.position.distanceToSquared(camera.position) < 18 * 18;
   }
+  if (state.mapMode === 'train') state.flashlight = true;
   flashlight.visible = state.mapMode !== 'train' && state.flashlight && !state.hidden;
   fillLight.visible = flashlight.visible;
   lockerViewLight.visible = state.hidden;
@@ -8404,15 +8405,21 @@ function updateLight(time) {
 }
 
 function updateCeilingLightPulse(time) {
-  const factor = 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(time * 0.72));
   scene.traverse((object) => {
     if (!object?.isLight) return;
     if (object === flashlight || object === fillLight || object === lockerViewLight) return;
     const isCeilingLight = object.position?.y > 2.55 && (object.isPointLight || object.isSpotLight);
     if (!isCeilingLight) return;
+    if (!object.userData.ceilingPulsePeriod) {
+      object.userData.ceilingPulsePeriod = 3 + Math.random() * 7;
+      object.userData.ceilingPulsePhase = Math.random() * Math.PI * 2;
+      object.userData.ceilingPulseDepth = 0.42 + Math.random() * 0.08;
+    }
     const lastFactor = object.userData.ceilingPulseLastFactor || 1;
     const base = object.userData.ceilingPulseBase ?? (object.intensity / lastFactor);
     object.userData.ceilingPulseBase = base;
+    const wave = 0.5 + 0.5 * Math.sin((time / object.userData.ceilingPulsePeriod) * Math.PI * 2 + object.userData.ceilingPulsePhase);
+    const factor = 1 - object.userData.ceilingPulseDepth * wave;
     object.userData.ceilingPulseLastFactor = factor;
     object.intensity = base * factor;
   });

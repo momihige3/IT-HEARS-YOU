@@ -1646,6 +1646,18 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Train Light / Random Ceiling Pulse
+
+- Train mode now keeps the flashlight state logically ON, while still blocking player flashlight toggles and hiding the handheld flashlight beam.
+- Ceiling/overhead lights now pulse independently with randomized periods from 3 to 10 seconds.
+- Pulse depth is randomized per light and only dims to roughly half brightness, never fully dark.
+- Train clear text from 10 onward highlights the numerator in red, e.g. `10/10`, `11/10`, `12/10`.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:
