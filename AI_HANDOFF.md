@@ -1900,3 +1900,16 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-08 Horror Flicker / Train Light Balance
+
+- Reduced the train-stage handheld flashlight intensity to half brightness while keeping it always on.
+- Changed ceiling light flicker from a soft pulse to a horror-style irregular flicker:
+  - brightness now ranges roughly from 5% to 100%,
+  - each light has randomized slow uneven dimming,
+  - lights occasionally enter a short rapid flicker burst.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

@@ -8383,7 +8383,7 @@ function updateLight(time) {
   flashlight.angle = Math.min(Math.PI / 2.75, BASE_FLASHLIGHT_ANGLE * state.lightRangeMultiplier);
   flashlight.target.position.copy(camera.position).addScaledVector(forward, Math.max(12, flashlightReach * 0.18));
   fillLight.position.copy(camera.position);
-  flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1) * (state.mapMode === 'train' ? 1.35 : 1);
+  flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1) * (state.mapMode === 'train' ? 0.5 : 1);
   for (const item of keyItems) {
     const near = !item.collected && item.group.position.distanceToSquared(camera.position) < 20 * 20;
     const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, 20, Math.PI / 2.3);
@@ -8410,10 +8410,25 @@ function ceilingPulseFactor(object, time) {
   if (!object.userData.ceilingPulsePeriod) {
     object.userData.ceilingPulsePeriod = 3 + Math.random() * 7;
     object.userData.ceilingPulsePhase = Math.random() * Math.PI * 2;
-    object.userData.ceilingPulseDepth = 0.46 + Math.random() * 0.08;
+    object.userData.ceilingPulseIrregularPeriod = 1.2 + Math.random() * 2.8;
+    object.userData.ceilingPulseIrregularPhase = Math.random() * Math.PI * 2;
+    object.userData.ceilingFlickerNextAt = time + 3 + Math.random() * 9;
   }
-  const wave = 0.5 + 0.5 * Math.sin((time / object.userData.ceilingPulsePeriod) * Math.PI * 2 + object.userData.ceilingPulsePhase);
-  const factor = 1 - object.userData.ceilingPulseDepth * wave;
+  if (time >= object.userData.ceilingFlickerNextAt) {
+    object.userData.ceilingFlickerUntil = time + 0.18 + Math.random() * 0.62;
+    object.userData.ceilingFlickerNextAt = time + 4 + Math.random() * 11;
+  }
+  const slowWave = 0.5 + 0.5 * Math.sin((time / object.userData.ceilingPulsePeriod) * Math.PI * 2 + object.userData.ceilingPulsePhase);
+  const unevenWave = 0.5 + 0.5 * Math.sin((time / object.userData.ceilingPulseIrregularPeriod) * Math.PI * 2 + object.userData.ceilingPulseIrregularPhase);
+  let factor = 0.05 + 0.95 * THREE.MathUtils.clamp(slowWave * 0.68 + unevenWave * 0.32, 0, 1);
+  if (time < object.userData.ceilingFlickerUntil) {
+    const strobe = 0.5 + 0.5 * Math.sin(time * 82 + object.userData.ceilingPulsePhase * 3);
+    const jitter = 0.5 + 0.5 * Math.sin(time * 147 + object.userData.ceilingPulseIrregularPhase);
+    const flickerFactor = strobe > 0.55
+      ? 0.05 + jitter * 0.18
+      : 0.55 + jitter * 0.45;
+    factor = Math.min(factor, flickerFactor);
+  }
   object.userData.ceilingPulseLastFactor = factor;
   return factor;
 }
