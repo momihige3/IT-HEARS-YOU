@@ -269,6 +269,7 @@ const TRAIN_CAR_COUNT = 10;
 const TRAIN_FINAL_STAGE = 13;
 const TRAIN_WIDTH = 4.2;
 const trainRuntimeObjects = [];
+const trainCeilingLights = [];
 const darumaState = {
   active: false,
   game: 1,
@@ -5193,6 +5194,7 @@ function addTrainObject(object) {
 function clearTrainRuntime() {
   for (const object of trainRuntimeObjects) removeSceneObject(object);
   trainRuntimeObjects.length = 0;
+  trainCeilingLights.length = 0;
   darumaState.monster = null;
   darumaState.ghost = null;
 }
@@ -5352,9 +5354,14 @@ function buildTrainMap() {
     }
     if (i > 0) box(TRAIN_OFFSET_X, 1.55, TRAIN_START_Z - i * TRAIN_CAR_LENGTH, TRAIN_WIDTH, 2.9, 0.08, trim);
     for (const dz of [-TRAIN_CAR_LENGTH * 0.28, 0, TRAIN_CAR_LENGTH * 0.28]) {
-      box(TRAIN_OFFSET_X, 2.86, carCenterZ + dz, 1.05, 0.055, 0.32, new THREE.MeshStandardMaterial({ color: 0xdfefff, emissive: 0xaed7ff, emissiveIntensity: 0.9, roughness: 0.28 }));
+      const fixture = box(TRAIN_OFFSET_X, 2.86, carCenterZ + dz, 1.05, 0.055, 0.32, new THREE.MeshStandardMaterial({ color: 0xdfefff, emissive: 0xaed7ff, emissiveIntensity: 0.9, roughness: 0.28 }));
+      fixture.userData.forceCeilingPulse = true;
+      fixture.userData.ceilingPulseDimsColor = true;
+      trainCeilingLights.push(fixture);
       const lamp = new THREE.PointLight(0xc9e6ff, 0.62, 6.5, 1.6);
       lamp.position.set(TRAIN_OFFSET_X, 2.68, carCenterZ + dz);
+      lamp.userData.forceCeilingPulse = true;
+      trainCeilingLights.push(lamp);
       addTrainObject(lamp);
     }
   }
@@ -8433,29 +8440,44 @@ function ceilingPulseFactor(object, time) {
   return factor;
 }
 
+function applyCeilingLightPulse(object, time) {
+  if (!object) return;
+  if (object.isLight) {
+    if (object === flashlight || object === fillLight || object === lockerViewLight) return;
+    const isCeilingLight = object.userData.forceCeilingPulse || (object.position?.y > 2.55 && (object.isPointLight || object.isSpotLight));
+    if (!isCeilingLight) return;
+    const lastFactor = object.userData.ceilingPulseLastFactor || 1;
+    const base = object.userData.ceilingPulseBase ?? (object.intensity / lastFactor);
+    object.userData.ceilingPulseBase = base;
+    object.intensity = base * ceilingPulseFactor(object, time);
+    return;
+  }
+  const isCeilingMesh = object.userData.forceCeilingPulse || (object.isMesh && object.position?.y > 2.5);
+  if (!object.isMesh || !isCeilingMesh) return;
+  const materials = Array.isArray(object.material) ? object.material : [object.material];
+  const factor = ceilingPulseFactor(object, time);
+  for (const mat of materials) {
+    if (!mat) continue;
+    if (object.userData.ceilingPulseDimsColor && mat.color) {
+      if (!mat.userData.ceilingPulseBaseColor) mat.userData.ceilingPulseBaseColor = mat.color.clone();
+      const colorFactor = 0.08 + factor * 0.92;
+      mat.color.copy(mat.userData.ceilingPulseBaseColor).multiplyScalar(colorFactor);
+    }
+    if (!mat.emissive || (mat.emissiveIntensity || 0) <= 0.05) continue;
+    if (mat.userData.ceilingPulseBaseEmissive == null) {
+      mat.userData.ceilingPulseBaseEmissive = mat.emissiveIntensity || 0;
+    }
+    mat.emissiveIntensity = mat.userData.ceilingPulseBaseEmissive * factor;
+  }
+}
+
 function updateCeilingLightPulse(time) {
+  if (state.mapMode === 'train') {
+    for (const object of trainCeilingLights) applyCeilingLightPulse(object, time);
+    return;
+  }
   scene.traverse((object) => {
-    if (!object) return;
-    if (object.isLight) {
-      if (object === flashlight || object === fillLight || object === lockerViewLight) return;
-      const isCeilingLight = object.position?.y > 2.55 && (object.isPointLight || object.isSpotLight);
-      if (!isCeilingLight) return;
-      const lastFactor = object.userData.ceilingPulseLastFactor || 1;
-      const base = object.userData.ceilingPulseBase ?? (object.intensity / lastFactor);
-      object.userData.ceilingPulseBase = base;
-      object.intensity = base * ceilingPulseFactor(object, time);
-      return;
-    }
-    if (!object.isMesh || object.position?.y <= 2.5) return;
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    const factor = ceilingPulseFactor(object, time);
-    for (const mat of materials) {
-      if (!mat || !mat.emissive || (mat.emissiveIntensity || 0) <= 0.05) continue;
-      if (mat.userData.ceilingPulseBaseEmissive == null) {
-        mat.userData.ceilingPulseBaseEmissive = mat.emissiveIntensity || 0;
-      }
-      mat.emissiveIntensity = mat.userData.ceilingPulseBaseEmissive * factor;
-    }
+    applyCeilingLightPulse(object, time);
   });
 }
 

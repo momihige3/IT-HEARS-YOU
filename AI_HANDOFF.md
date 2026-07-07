@@ -1913,3 +1913,14 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-08 Train Ceiling Flicker Enforcement
+
+- Added a dedicated `trainCeilingLights` runtime list so every train ceiling fixture and its PointLight is explicitly flickered.
+- Train mode now updates only the registered train ceiling lights instead of relying on the generic scene traversal.
+- Train fluorescent fixture meshes also dim their base color, not only emissive intensity, so the flicker is visibly noticeable.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
