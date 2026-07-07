@@ -1631,6 +1631,21 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Train Rules / Mobile End Presentation / Light Pulse
+
+- Train clear banner denominator now stays at 10, so later stages can display like `13/10`.
+- Train stage disables flashlight toggling via F key and mobile flashlight button, and the flashlight is hidden in train mode.
+- Train stage camera is forced forward every frame and mobile camera swipe is disabled in train mode.
+- Game-over states now show a 3-second image/up intro before the continue popup; clear still shows the result popup immediately.
+- Mobile portrait end overlay receives a direct `mobile-landscape-forced` class so it remains landscape-oriented instead of snapping back to portrait.
+- Mobile eye-scare image now uses full-cover sizing instead of contain, preventing small/cropped display.
+- Added slow ceiling-light pulsing across active scene lights, fading to roughly half brightness without going fully dark.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:

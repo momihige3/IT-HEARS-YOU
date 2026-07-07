@@ -179,11 +179,15 @@ h1 em { color:#8f1715; font-style:normal; text-shadow:0 0 26px rgba(146,21,19,.4
 .message-card { max-width:520px;text-align:center; position:relative; z-index:2; }.message-card h2 { font-size:64px; letter-spacing:.12em; margin:8px 0; }.message-card p { color:#8c9690;letter-spacing:.1em; }.message-card button { text-align:center;margin-top:20px; }
 #end-state-overlay { position:fixed; inset:0; z-index:100000; display:none; place-items:center; opacity:0; visibility:hidden; pointer-events:none; background:radial-gradient(circle at 50% 42%, rgba(66,18,16,.45), rgba(0,0,0,.92) 72%); touch-action:none; }
 #end-state-overlay.visible { display:grid; opacity:1; visibility:visible; pointer-events:auto; }
+#end-state-overlay.mobile-landscape-forced { left:0 !important; top:0 !important; width:100svh !important; height:100svw !important; transform:rotate(90deg) translateY(-100%); transform-origin:top left; }
 #end-state-overlay.win { background:radial-gradient(circle at 50% 42%, rgba(40,76,58,.42), rgba(0,0,0,.92) 72%); }
 #end-state-overlay.daruma::before,
-#end-state-overlay.ghost::before { content:""; position:absolute; inset:0; opacity:.78; pointer-events:none; }
+#end-state-overlay.ghost::before,
+#end-state-overlay.school-caught::before { content:""; position:absolute; inset:0; opacity:.78; pointer-events:none; }
 #end-state-overlay.daruma::before { background:linear-gradient(0deg, rgba(0,0,0,.74), rgba(0,0,0,.28) 42%, rgba(0,0,0,.72)), url('../images/daruma_gameover.png') center center / cover no-repeat; filter:saturate(1.16) contrast(1.26) brightness(.58); }
 #end-state-overlay.ghost::before { background:linear-gradient(0deg, rgba(0,0,0,.82), rgba(0,0,0,.2) 48%, rgba(0,0,0,.8)), url('../images/eye_scare.png') center center / cover no-repeat; filter:saturate(.92) contrast(1.28) brightness(.6); }
+#end-state-overlay.school-caught::before { background:radial-gradient(circle at 50% 36%, rgba(180,18,12,.6), rgba(30,0,0,.82) 38%, rgba(0,0,0,.96) 78%); filter:contrast(1.2) brightness(.72); }
+#end-state-overlay.intro .end-state-card { display:none; }
 .end-state-card { position:relative; z-index:1; width:min(560px,86vw); padding:30px 34px; text-align:center; border:1px solid rgba(230,238,232,.26); background:rgba(0,0,0,.72); box-shadow:0 22px 90px rgba(0,0,0,.85); }
 .end-state-card h2 { margin:8px 0; color:#fff; font-size:clamp(42px,9vw,76px); letter-spacing:.12em; text-shadow:0 0 18px #000,0 4px 18px #000; }
 .end-state-card p { color:#f1e8df; letter-spacing:.1em; text-shadow:0 2px 12px #000; }
@@ -242,13 +246,18 @@ body.train-gameover-daruma .message-card p, body.train-gameover-ghost .message-c
 }
 @media (hover:none) and (pointer:coarse) and (orientation:portrait) { #rotate-device { display:none; } }
 @media (hover:none) and (pointer:coarse) {
+  #eye-scare {
+    inset:0 !important;
+    width:100% !important;
+    height:100% !important;
+  }
   #eye-scare i {
-    width:100vw;
-    height:100vh;
+    width:100% !important;
+    height:100% !important;
     background:
       linear-gradient(90deg, rgba(0,0,0,.78), transparent 10%, transparent 90%, rgba(0,0,0,.78)),
       linear-gradient(0deg, rgba(0,0,0,.68), transparent 10%, transparent 90%, rgba(0,0,0,.78)),
-      url('../images/eye_scare.png') center center / contain no-repeat;
+      url('../images/eye_scare.png') center center / cover no-repeat;
     background-color:#020303;
   }
 }

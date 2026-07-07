@@ -200,6 +200,8 @@ const state = {
   loading: false,
   ended: false,
   endOverlayShown: false,
+  endOverlayPendingUntil: 0,
+  endOverlayPending: null,
   caught: false,
   caughtAt: 0,
   hidden: false,
@@ -4395,6 +4397,8 @@ function updateMansionDistanceCulling() {
       object.intensity = object === mansionBreakerLight
         ? THREE.MathUtils.lerp(1.25, 2.6, power)
         : THREE.MathUtils.lerp(0.55, 8.5, power);
+      object.userData.ceilingPulseBase = object.intensity;
+      object.userData.ceilingPulseLastFactor = 1;
       object.distance = object === mansionBreakerLight
         ? 3.6
         : THREE.MathUtils.lerp(7, 18, power);
@@ -4444,6 +4448,8 @@ function updateSchoolLighting(time) {
   for (const light of schoolLights) {
     if (!light.isLight) continue;
     light.intensity = THREE.MathUtils.lerp(2.2, 22.0, power);
+    light.userData.ceilingPulseBase = light.intensity;
+    light.userData.ceilingPulseLastFactor = 1;
     light.distance = THREE.MathUtils.lerp(8, 22, power);
   }
 }
@@ -4851,9 +4857,14 @@ function showEndStateOverlay(kicker, title, body, options = {}) {
   const overlay = ensureEndStateOverlay();
   const isWin = options.win === true;
   state.endOverlayShown = true;
+  state.endOverlayPendingUntil = 0;
+  state.endOverlayPending = null;
   overlay.classList.toggle('win', isWin);
+  overlay.classList.toggle('intro', false);
   overlay.classList.toggle('daruma', options.kind === 'daruma');
   overlay.classList.toggle('ghost', options.kind === 'ghost');
+  overlay.classList.toggle('school-caught', options.kind === 'school' || options.kind === 'mansion');
+  overlay.classList.toggle('mobile-landscape-forced', document.body.classList.contains('mobile-portrait-landscape'));
   overlay.querySelector('#end-state-kicker').textContent = kicker;
   overlay.querySelector('#end-state-title').textContent = title;
   overlay.querySelector('#end-state-body').textContent = body;
@@ -4871,14 +4882,45 @@ function showEndStateOverlay(kicker, title, body, options = {}) {
   forceShowMessageScreen();
 }
 
+function startEndStateSequence(kicker, title, body, options = {}) {
+  if (options.win) {
+    showEndStateOverlay(kicker, title, body, options);
+    return;
+  }
+  const overlay = ensureEndStateOverlay();
+  state.endOverlayShown = false;
+  state.endOverlayPendingUntil = clock.elapsedTime + 3;
+  state.endOverlayPending = { kicker, title, body, options };
+  overlay.classList.remove('visible', 'win');
+  overlay.classList.toggle('daruma', options.kind === 'daruma');
+  overlay.classList.toggle('ghost', options.kind === 'ghost');
+  overlay.classList.toggle('school-caught', options.kind === 'school' || options.kind === 'mansion' || !options.kind);
+  overlay.classList.toggle('mobile-landscape-forced', document.body.classList.contains('mobile-portrait-landscape'));
+  overlay.classList.add('intro');
+  overlay.querySelector('#end-state-kicker').textContent = '';
+  overlay.querySelector('#end-state-title').textContent = '';
+  overlay.querySelector('#end-state-body').textContent = '';
+  overlay.querySelector('#end-state-restart').textContent = 'もう一度';
+  overlay.style.display = 'grid';
+  overlay.style.opacity = '1';
+  overlay.style.visibility = 'visible';
+  overlay.style.pointerEvents = 'none';
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.zIndex = '2147483647';
+  overlay.style.placeItems = 'center';
+}
+
 function hideEndStateOverlay() {
   const overlay = document.getElementById('end-state-overlay');
   if (overlay) {
-    overlay.classList.remove('visible', 'win', 'daruma', 'ghost');
+    overlay.classList.remove('visible', 'win', 'daruma', 'ghost', 'school-caught', 'intro', 'mobile-landscape-forced');
     overlay.style.display = 'none';
     overlay.style.pointerEvents = 'none';
   }
   state.endOverlayShown = false;
+  state.endOverlayPendingUntil = 0;
+  state.endOverlayPending = null;
   document.body.classList.remove('train-clear-finished');
   const screen = $('#message-screen');
   if (screen) {
@@ -4893,6 +4935,13 @@ function hideEndStateOverlay() {
 
 function ensureTerminalOverlayVisible() {
   if (!state.started) return;
+  if (state.ended && state.endOverlayPending) {
+    if (clock.elapsedTime >= state.endOverlayPendingUntil) {
+      const pending = state.endOverlayPending;
+      showEndStateOverlay(pending.kicker, pending.title, pending.body, pending.options);
+    }
+    return;
+  }
   if (state.ended && !state.endOverlayShown) {
     const kicker = $('#message-kicker')?.textContent || (state.hp <= 0 ? '力尽きた' : '終了');
     const title = $('#message-title')?.textContent || (state.hp <= 0 ? 'GAME OVER' : '終了');
@@ -4901,6 +4950,7 @@ function ensureTerminalOverlayVisible() {
   }
   const overlay = document.getElementById('end-state-overlay');
   if (state.ended && overlay) {
+    overlay.classList.toggle('mobile-landscape-forced', document.body.classList.contains('mobile-portrait-landscape'));
     overlay.classList.add('visible');
     overlay.style.display = 'grid';
     overlay.style.opacity = '1';
@@ -4963,7 +5013,8 @@ function endGame(win) {
   $('#message-body').textContent = win
     ? '背後で、まだ何かが扉を叩いている。'
     : '速すぎた。うるさすぎた。もう一度、静かに。';
-  showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { win });
+  const endKind = win ? undefined : state.mapMode === 'train' ? 'daruma' : state.mapMode === 'mansion' ? 'mansion' : 'school';
+  startEndStateSequence($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { win, kind: endKind });
   $('#full-map-screen')?.classList.remove('visible');
   $('#breaker-game-screen')?.classList.remove('visible');
 }
@@ -5386,9 +5437,9 @@ function showTrainClearBanner(count) {
   const banner = $('#train-clear-banner');
   if (!banner) return;
   if (count >= TRAIN_CAR_COUNT && count < TRAIN_FINAL_STAGE) {
-    banner.innerHTML = `${count}/<span class="danger">${TRAIN_FINAL_STAGE}</span> クリア`;
+    banner.innerHTML = `${count}/<span class="danger">${TRAIN_CAR_COUNT}</span> クリア`;
   } else {
-    banner.textContent = `${count}/${TRAIN_FINAL_STAGE} クリア`;
+    banner.textContent = `${count}/${TRAIN_CAR_COUNT} クリア`;
   }
   darumaState.clearBannerUntil = clock.elapsedTime + 3;
   document.body.classList.add('train-clear');
@@ -5449,7 +5500,7 @@ function endTrainGameOver(kind = 'daruma') {
     state.ended = true;
     state.allowExit = true;
     controls.unlock();
-    showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: 'ghost' });
+    startEndStateSequence($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: 'ghost' });
     return;
   }
   document.body.classList.add('train-gameover-daruma');
@@ -5459,7 +5510,7 @@ function endTrainGameOver(kind = 'daruma') {
   state.ended = true;
   state.allowExit = true;
   controls.unlock();
-  showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: 'daruma' });
+  startEndStateSequence($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: 'daruma' });
 }
 function restartTrainStageFromGameOver() {
   Object.values(darumaAudio).forEach((sound) => {
@@ -5942,7 +5993,7 @@ addEventListener('keydown', (event) => {
   }
   if (state.settingsOpen || state.shopOpen || state.breakerGameOpen || state.fullMapOpen) return;
   if (event.code === 'KeyE' && !event.repeat) interact();
-  if (event.code === 'KeyF' && !event.repeat) {
+  if (event.code === 'KeyF' && !event.repeat && state.mapMode !== 'train') {
     state.flashlight = !state.flashlight;
     showToast(state.flashlight ? '懐中電灯を点けた' : '懐中電灯を消した');
   }
@@ -6078,6 +6129,7 @@ bindMobileButton('#mobile-run-toggle', () => {
   $('#mobile-run-toggle').textContent = mobileInput.running ? '走行中' : '歩行中';
 });
 bindMobileButton('#mobile-flashlight', () => {
+  if (state.mapMode === 'train') return;
   state.flashlight = !state.flashlight;
   $('#mobile-flashlight').classList.toggle('active', state.flashlight);
 });
@@ -6128,7 +6180,7 @@ let cameraSwipePointer = null;
 let cameraSwipeX = 0;
 let cameraSwipeY = 0;
 renderer.domElement.addEventListener('pointerdown', (event) => {
-  if (!mobileInput.active || !state.started || state.caught || state.settingsOpen) return;
+  if (!mobileInput.active || !state.started || state.caught || state.settingsOpen || state.mapMode === 'train') return;
   cameraSwipePointer = event.pointerId;
   cameraSwipeX = event.clientX;
   cameraSwipeY = event.clientY;
@@ -6204,7 +6256,8 @@ function damagePlayer(amount, reason = 'damage') {
     $('#message-kicker').textContent = reason === 'trap' ? '罠に倒れた' : '力尽きた';
     $('#message-title').textContent = 'GAME OVER';
     $('#message-body').textContent = '意識が闇に沈んでいく……';
-    showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent);
+    const damageKind = state.mapMode === 'train' ? 'ghost' : state.mapMode === 'mansion' ? 'mansion' : 'school';
+    startEndStateSequence($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: damageKind });
   }
 }
 
@@ -6923,6 +6976,7 @@ function updatePlayer(dt) {
   const time = clock.elapsedTime;
   if (state.mapMode === 'train') {
     if ((!controls.isLocked && !mobileInput.active) || state.ended || state.caught) return;
+    camera.rotation.set(0, 0, 0);
     const movingForward = keys.KeyW || mobileInput.moveY < -0.25;
     state.moveMode = movingForward ? 'WALKING' : 'WALKING';
     state.noise = 0;
@@ -8314,7 +8368,7 @@ function updateLight(time) {
     if (breakerLight) breakerLight.visible = state.mapMode !== 'mansion' && breakerLight.position.distanceToSquared(camera.position) < 18 * 18;
     if (mansionBreakerLight) mansionBreakerLight.visible = state.mapMode === 'mansion' && mansionBreakerLight.position.distanceToSquared(camera.position) < 18 * 18;
   }
-  flashlight.visible = state.flashlight && !state.hidden;
+  flashlight.visible = state.mapMode !== 'train' && state.flashlight && !state.hidden;
   fillLight.visible = flashlight.visible;
   lockerViewLight.visible = state.hidden;
   lockerViewLight.position.copy(camera.position);
@@ -8347,6 +8401,21 @@ function updateLight(time) {
       item.group.position.y = item.baseY + Math.sin(time * 2.1 + item.phase) * 0.06;
     }
   }
+}
+
+function updateCeilingLightPulse(time) {
+  const factor = 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(time * 0.72));
+  scene.traverse((object) => {
+    if (!object?.isLight) return;
+    if (object === flashlight || object === fillLight || object === lockerViewLight) return;
+    const isCeilingLight = object.position?.y > 2.55 && (object.isPointLight || object.isSpotLight);
+    if (!isCeilingLight) return;
+    const lastFactor = object.userData.ceilingPulseLastFactor || 1;
+    const base = object.userData.ceilingPulseBase ?? (object.intensity / lastFactor);
+    object.userData.ceilingPulseBase = base;
+    object.userData.ceilingPulseLastFactor = factor;
+    object.intensity = base * factor;
+  });
 }
 
 const minimap = $('#minimap');
@@ -8826,6 +8895,7 @@ function animate() {
     }
     updateAudio(time);
   }
+  if (state.started && !state.ended) updateCeilingLightPulse(time);
   radarAccumulator += dt;
   if (radarAccumulator >= 0.25) {
     updateRadar(radarAccumulator, time);
