@@ -4582,6 +4582,11 @@ function startCaughtCutscene() {
   state.noise = 0;
   setBreaker(false, false);
   Object.keys(keys).forEach((key) => { keys[key] = false; });
+  stopMobileGameplayInput();
+  $('#mobile-controls')?.classList.add('disabled');
+  $('#mobile-action')?.classList.remove('visible');
+  $('#full-map-screen')?.classList.remove('visible');
+  $('#breaker-game-screen')?.classList.remove('visible');
   if (controls.isLocked) controls.unlock();
   document.body.classList.add('caught-cutscene');
 }
@@ -4792,15 +4797,20 @@ function updateCaughtCutscene(time) {
   $('#danger-flash').style.opacity = String(0.45 + Math.sin(time * 18) * 0.2);
   if (progress >= 1) {
     $('#danger-flash').style.opacity = '0';
-    respawnPlayer();
+    state.caught = false;
+    document.body.classList.remove('caught-cutscene');
+    endGame(false);
   }
 }
 
 function endGame(win) {
+  state.caught = false;
   state.ended = true;
   state.allowExit = true;
   state.fullMapOpen = false;
   state.breakerGameOpen = false;
+  state.settingsOpen = false;
+  state.shopOpen = false;
   ghostDouble.group.visible = false;
   ghostDouble.active = false;
   $('#eye-scare')?.classList.remove('visible');
@@ -4816,7 +4826,7 @@ function endGame(win) {
   if (!win) setBreaker(false, false);
   if (win) playClearSound();
   controls.unlock();
-  document.body.classList.remove('hidden-in-locker');
+  document.body.classList.remove('hidden-in-locker', 'caught-cutscene');
   $('#mobile-controls')?.classList.add('disabled');
   $('#mobile-action')?.classList.remove('visible');
   $('#message-kicker').textContent = win ? '脱出成功' : '見つかった';
@@ -5286,6 +5296,11 @@ function endTrainGameOver(kind = 'daruma') {
   $('#mobile-action')?.classList.remove('visible');
   $('#full-map-screen')?.classList.remove('visible');
   $('#breaker-game-screen')?.classList.remove('visible');
+  state.caught = false;
+  state.settingsOpen = false;
+  state.shopOpen = false;
+  state.fullMapOpen = false;
+  state.breakerGameOpen = false;
   if (kind !== 'daruma') {
     Object.values(darumaAudio).forEach((sound) => {
       sound.pause();
@@ -5991,6 +6006,11 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
 });
 renderer.domElement.addEventListener('pointermove', (event) => {
   if (event.pointerId !== cameraSwipePointer) return;
+  if (state.ended || state.caught || state.loading || state.settingsOpen || state.shopOpen || state.fullMapOpen || state.breakerGameOpen) {
+    try { renderer.domElement.releasePointerCapture(cameraSwipePointer); } catch { /* Already released. */ }
+    cameraSwipePointer = null;
+    return;
+  }
   event.preventDefault();
   const rawDelta = toLandscapeInputDelta(event.clientX - cameraSwipeX, event.clientY - cameraSwipeY);
   const deltaX = rawDelta.x;

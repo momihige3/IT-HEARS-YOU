@@ -1584,6 +1584,20 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Mobile End-State Transition Fix
+
+- Fixed a deeper mobile freeze where capture state did not transition to the game-over message screen.
+- School/mansion capture cutscene now ends with `endGame(false)` instead of immediately respawning.
+- Capture start now stops mobile input, closes gameplay overlays, disables mobile controls, and unlocks pointer state.
+- End-game state now clears `caught`, settings/shop/map/breaker flags, and removes the caught-cutscene class.
+- Mobile camera swipe pointer-move now self-cancels if the game has ended, is caught, loading, or an overlay is open.
+- Train game-over now also normalizes modal flags before showing the message screen.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:
