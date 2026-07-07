@@ -199,6 +199,7 @@ const state = {
   started: false,
   loading: false,
   ended: false,
+  endOverlayShown: false,
   caught: false,
   caughtAt: 0,
   hidden: false,
@@ -4816,7 +4817,7 @@ function ensureEndStateOverlay() {
       <button id="end-state-restart" type="button">もう一度</button>
     </div>
   `;
-  document.body.appendChild(overlay);
+  document.documentElement.appendChild(overlay);
   overlay.querySelector('#end-state-restart')?.addEventListener('pointerup', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -4849,6 +4850,7 @@ function forceShowMessageScreen() {
 function showEndStateOverlay(kicker, title, body, options = {}) {
   const overlay = ensureEndStateOverlay();
   const isWin = options.win === true;
+  state.endOverlayShown = true;
   overlay.classList.toggle('win', isWin);
   overlay.classList.toggle('daruma', options.kind === 'daruma');
   overlay.classList.toggle('ghost', options.kind === 'ghost');
@@ -4861,6 +4863,10 @@ function showEndStateOverlay(kicker, title, body, options = {}) {
   overlay.style.opacity = '1';
   overlay.style.visibility = 'visible';
   overlay.style.pointerEvents = 'auto';
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.zIndex = '2147483647';
+  overlay.style.placeItems = 'center';
   document.body.classList.toggle('train-clear-finished', isWin && state.mapMode === 'train');
   forceShowMessageScreen();
 }
@@ -4872,6 +4878,7 @@ function hideEndStateOverlay() {
     overlay.style.display = 'none';
     overlay.style.pointerEvents = 'none';
   }
+  state.endOverlayShown = false;
   document.body.classList.remove('train-clear-finished');
   const screen = $('#message-screen');
   if (screen) {
@@ -4882,6 +4889,47 @@ function hideEndStateOverlay() {
     screen.style.display = '';
     screen.style.zIndex = '';
   }
+}
+
+function ensureTerminalOverlayVisible() {
+  if (!state.started) return;
+  if (state.ended && !state.endOverlayShown) {
+    const kicker = $('#message-kicker')?.textContent || (state.hp <= 0 ? '力尽きた' : '終了');
+    const title = $('#message-title')?.textContent || (state.hp <= 0 ? 'GAME OVER' : '終了');
+    const body = $('#message-body')?.textContent || (state.hp <= 0 ? '意識が闇に沈んでいく……' : '結果画面を表示しています。');
+    showEndStateOverlay(kicker, title, body, { win: title === '生還' || kicker === '脱出成功' });
+  }
+  const overlay = document.getElementById('end-state-overlay');
+  if (state.ended && overlay) {
+    overlay.classList.add('visible');
+    overlay.style.display = 'grid';
+    overlay.style.opacity = '1';
+    overlay.style.visibility = 'visible';
+    overlay.style.pointerEvents = 'auto';
+    overlay.style.zIndex = '2147483647';
+  }
+}
+
+function recoverStuckTerminalState(time) {
+  if (!state.started) return;
+  if (state.caught && time - state.caughtAt > 2.45) {
+    $('#danger-flash').style.opacity = '0';
+    state.caught = false;
+    document.body.classList.remove('caught-cutscene');
+    endGame(false);
+    return;
+  }
+  if (!state.ended && !state.caught && state.hp <= 0) {
+    if (state.mapMode === 'train') {
+      endTrainGameOver('ghost');
+    } else {
+      $('#message-kicker').textContent = '力尽きた';
+      $('#message-title').textContent = 'GAME OVER';
+      $('#message-body').textContent = '意識が闇に沈んでいく……';
+      endGame(false);
+    }
+  }
+  ensureTerminalOverlayVisible();
 }
 
 function endGame(win) {
@@ -8725,8 +8773,16 @@ function animate() {
     renderer.render(scene, camera);
     return;
   }
+  recoverStuckTerminalState(time);
   if (state.caught) {
-    updateCaughtCutscene(time);
+    try {
+      updateCaughtCutscene(time);
+    } catch (error) {
+      console.error('Caught cutscene failed; forcing game over.', error);
+      state.caught = false;
+      document.body.classList.remove('caught-cutscene');
+      endGame(false);
+    }
   } else if (state.started && !state.ended && !state.settingsOpen && !state.shopOpen && !state.fullMapOpen && !state.breakerGameOpen) {
     updateSonarRoar(time);
     updatePlayer(dt);

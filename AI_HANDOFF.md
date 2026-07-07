@@ -1616,6 +1616,21 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Terminal State Watchdog
+
+- Added `state.endOverlayShown` to track whether the forced end overlay has actually been shown.
+- Moved the forced end overlay under `document.documentElement` and applied inline maximum z-index / fixed positioning when shown.
+- Added `recoverStuckTerminalState(time)` to the main loop:
+  - forces game over if capture cutscene remains active too long,
+  - forces game over if HP reaches 0 without an end transition,
+  - re-shows the forced overlay every frame while `state.ended` is true and the overlay is missing/hidden.
+- Wrapped `updateCaughtCutscene()` in a try/catch so cutscene errors force game over instead of leaving the player in view-only control.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:
