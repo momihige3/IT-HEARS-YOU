@@ -1924,3 +1924,14 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-08 Train Visible Fluorescent Panel Fix
+
+- Removed the long center ceiling rail in the train that looked like an unintended line running into the distance.
+- Added visible underside fluorescent panels for every train ceiling light.
+- Registered those visible panels in `trainCeilingLights` so the square light surface itself flickers, not only the upper fixture/light source.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

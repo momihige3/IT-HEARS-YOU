@@ -5347,7 +5347,6 @@ function buildTrainMap() {
     box(TRAIN_OFFSET_X + 1.9, 1.72, carCenterZ, 0.04, 0.5, TRAIN_CAR_LENGTH - 2.8, windowMat);
     box(TRAIN_OFFSET_X - 1.88, 2.38, carCenterZ - TRAIN_CAR_LENGTH * 0.18, 0.045, 0.32, 1.5, adMat);
     box(TRAIN_OFFSET_X + 1.88, 2.38, carCenterZ + TRAIN_CAR_LENGTH * 0.18, 0.045, 0.32, 1.5, adMat);
-    box(TRAIN_OFFSET_X, 2.22, carCenterZ, 0.08, 0.08, TRAIN_CAR_LENGTH - 2.1, trim);
     for (const dz of [-TRAIN_CAR_LENGTH * 0.28, 0, TRAIN_CAR_LENGTH * 0.28]) {
       box(TRAIN_OFFSET_X - 0.72, 1.42, carCenterZ + dz, 0.055, 2.76, 0.055, trim);
       box(TRAIN_OFFSET_X + 0.72, 1.42, carCenterZ + dz, 0.055, 2.76, 0.055, trim);
@@ -5358,6 +5357,16 @@ function buildTrainMap() {
       fixture.userData.forceCeilingPulse = true;
       fixture.userData.ceilingPulseDimsColor = true;
       trainCeilingLights.push(fixture);
+      const visiblePanel = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.14, 0.38),
+        new THREE.MeshBasicMaterial({ color: 0xe8f7ff, transparent: true, opacity: 0.96, side: THREE.DoubleSide }),
+      );
+      visiblePanel.rotation.x = Math.PI / 2;
+      visiblePanel.position.set(TRAIN_OFFSET_X, 2.825, carCenterZ + dz);
+      visiblePanel.userData.forceCeilingPulse = true;
+      visiblePanel.userData.ceilingPulseDimsColor = true;
+      trainCeilingLights.push(visiblePanel);
+      addTrainObject(visiblePanel);
       const lamp = new THREE.PointLight(0xc9e6ff, 0.62, 6.5, 1.6);
       lamp.position.set(TRAIN_OFFSET_X, 2.68, carCenterZ + dz);
       lamp.userData.forceCeilingPulse = true;
