@@ -4803,6 +4803,87 @@ function updateCaughtCutscene(time) {
   }
 }
 
+function ensureEndStateOverlay() {
+  let overlay = document.getElementById('end-state-overlay');
+  if (overlay) return overlay;
+  overlay = document.createElement('div');
+  overlay.id = 'end-state-overlay';
+  overlay.innerHTML = `
+    <div class="end-state-card">
+      <p id="end-state-kicker"></p>
+      <h2 id="end-state-title"></h2>
+      <p id="end-state-body"></p>
+      <button id="end-state-restart" type="button">もう一度</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#end-state-restart')?.addEventListener('pointerup', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.mapMode === 'train' && !document.body.classList.contains('train-clear-finished')) {
+      hideEndStateOverlay();
+      restartTrainStageFromGameOver();
+      return;
+    }
+    state.allowExit = true;
+    location.reload();
+  }, { passive: false });
+  overlay.querySelector('#end-state-restart')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  return overlay;
+}
+
+function forceShowMessageScreen() {
+  const screen = $('#message-screen');
+  if (!screen) return;
+  screen.classList.add('visible');
+  screen.style.opacity = '1';
+  screen.style.visibility = 'visible';
+  screen.style.pointerEvents = 'auto';
+  screen.style.display = 'grid';
+  screen.style.zIndex = '50000';
+}
+
+function showEndStateOverlay(kicker, title, body, options = {}) {
+  const overlay = ensureEndStateOverlay();
+  const isWin = options.win === true;
+  overlay.classList.toggle('win', isWin);
+  overlay.classList.toggle('daruma', options.kind === 'daruma');
+  overlay.classList.toggle('ghost', options.kind === 'ghost');
+  overlay.querySelector('#end-state-kicker').textContent = kicker;
+  overlay.querySelector('#end-state-title').textContent = title;
+  overlay.querySelector('#end-state-body').textContent = body;
+  overlay.querySelector('#end-state-restart').textContent = isWin ? 'タイトルへ' : 'もう一度';
+  overlay.classList.add('visible');
+  overlay.style.display = 'grid';
+  overlay.style.opacity = '1';
+  overlay.style.visibility = 'visible';
+  overlay.style.pointerEvents = 'auto';
+  document.body.classList.toggle('train-clear-finished', isWin && state.mapMode === 'train');
+  forceShowMessageScreen();
+}
+
+function hideEndStateOverlay() {
+  const overlay = document.getElementById('end-state-overlay');
+  if (overlay) {
+    overlay.classList.remove('visible', 'win', 'daruma', 'ghost');
+    overlay.style.display = 'none';
+    overlay.style.pointerEvents = 'none';
+  }
+  document.body.classList.remove('train-clear-finished');
+  const screen = $('#message-screen');
+  if (screen) {
+    screen.classList.remove('visible');
+    screen.style.opacity = '';
+    screen.style.visibility = '';
+    screen.style.pointerEvents = '';
+    screen.style.display = '';
+    screen.style.zIndex = '';
+  }
+}
+
 function endGame(win) {
   state.caught = false;
   state.ended = true;
@@ -4834,7 +4915,7 @@ function endGame(win) {
   $('#message-body').textContent = win
     ? '背後で、まだ何かが扉を叩いている。'
     : '速すぎた。うるさすぎた。もう一度、静かに。';
-  $('#message-screen').classList.add('visible');
+  showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { win });
   $('#full-map-screen')?.classList.remove('visible');
   $('#breaker-game-screen')?.classList.remove('visible');
 }
@@ -5320,7 +5401,7 @@ function endTrainGameOver(kind = 'daruma') {
     state.ended = true;
     state.allowExit = true;
     controls.unlock();
-    $('#message-screen').classList.add('visible');
+    showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: 'ghost' });
     return;
   }
   document.body.classList.add('train-gameover-daruma');
@@ -5330,7 +5411,7 @@ function endTrainGameOver(kind = 'daruma') {
   state.ended = true;
   state.allowExit = true;
   controls.unlock();
-  $('#message-screen').classList.add('visible');
+  showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent, { kind: 'daruma' });
 }
 function restartTrainStageFromGameOver() {
   Object.values(darumaAudio).forEach((sound) => {
@@ -5344,6 +5425,7 @@ function restartTrainStageFromGameOver() {
   state.fullMapOpen = false;
   state.breakerGameOpen = false;
   state.settingsOpen = false;
+  hideEndStateOverlay();
   $('#message-screen')?.classList.remove('visible');
   $('#settings-screen')?.classList.remove('visible');
   document.body.classList.add('game-running', 'train-mode');
@@ -6074,7 +6156,7 @@ function damagePlayer(amount, reason = 'damage') {
     $('#message-kicker').textContent = reason === 'trap' ? '罠に倒れた' : '力尽きた';
     $('#message-title').textContent = 'GAME OVER';
     $('#message-body').textContent = '意識が闇に沈んでいく……';
-    $('#message-screen').classList.add('visible');
+    showEndStateOverlay($('#message-kicker').textContent, $('#message-title').textContent, $('#message-body').textContent);
   }
 }
 

@@ -1598,6 +1598,24 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Forced Mobile End Overlay
+
+- Added a body-level `#end-state-overlay` as a fail-safe end/clear popup outside the rotated mobile app container.
+- All end states now call `showEndStateOverlay()`:
+  - school/mansion capture game over,
+  - HP-zero game over,
+  - train Daruma game over,
+  - train ghost game over,
+  - normal clear / train clear.
+- The existing `#message-screen` is still populated, but `forceShowMessageScreen()` also applies inline visibility/z-index as a secondary fallback.
+- Train continue hides the fail-safe overlay before restarting the train stage.
+- This avoids relying only on `.screen.visible`, which can fail on mobile portrait/landscape transforms or stale overlay states.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:
