@@ -1886,3 +1886,17 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-08 Ceiling Flicker / Train Flashlight Fix
+
+- Made the train-stage handheld flashlight truly stay on by allowing the shared flashlight beam in train mode.
+- Increased train flashlight reach and intensity slightly so it is visibly on inside the train.
+- Reworked ceiling light flicker so it affects both:
+  - actual ceiling PointLight / SpotLight sources,
+  - emissive ceiling fixture meshes such as school hallway lights and train fluorescent panels.
+- Flicker timing remains randomized per light at roughly 3–10 seconds and dims to around half brightness instead of fully blacking out.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`

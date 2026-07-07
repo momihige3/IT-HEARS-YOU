@@ -8369,19 +8369,21 @@ function updateLight(time) {
     if (mansionBreakerLight) mansionBreakerLight.visible = state.mapMode === 'mansion' && mansionBreakerLight.position.distanceToSquared(camera.position) < 18 * 18;
   }
   if (state.mapMode === 'train') state.flashlight = true;
-  flashlight.visible = state.mapMode !== 'train' && state.flashlight && !state.hidden;
+  flashlight.visible = state.flashlight && !state.hidden;
   fillLight.visible = flashlight.visible;
   lockerViewLight.visible = state.hidden;
   lockerViewLight.position.copy(camera.position);
   camera.getWorldDirection(forward);
   lockerViewLight.target.position.copy(camera.position).addScaledVector(forward, 5);
   flashlight.position.copy(camera.position).addScaledVector(forward, 0.12);
-  const flashlightReach = BASE_FLASHLIGHT_DISTANCE * state.lightRangeMultiplier;
+  const flashlightReach = state.mapMode === 'train'
+    ? Math.max(BASE_FLASHLIGHT_DISTANCE * state.lightRangeMultiplier, 30)
+    : BASE_FLASHLIGHT_DISTANCE * state.lightRangeMultiplier;
   flashlight.distance = flashlightReach;
   flashlight.angle = Math.min(Math.PI / 2.75, BASE_FLASHLIGHT_ANGLE * state.lightRangeMultiplier);
   flashlight.target.position.copy(camera.position).addScaledVector(forward, Math.max(12, flashlightReach * 0.18));
   fillLight.position.copy(camera.position);
-  flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1);
+  flashlight.intensity = 117 * (state.battery < 15 ? 0.68 : 1) * (state.mapMode === 'train' ? 1.35 : 1);
   for (const item of keyItems) {
     const near = !item.collected && item.group.position.distanceToSquared(camera.position) < 20 * 20;
     const inView = near && isPointInPlayerView(item.group.position.x, item.group.position.z, 20, Math.PI / 2.3);
@@ -8404,24 +8406,41 @@ function updateLight(time) {
   }
 }
 
+function ceilingPulseFactor(object, time) {
+  if (!object.userData.ceilingPulsePeriod) {
+    object.userData.ceilingPulsePeriod = 3 + Math.random() * 7;
+    object.userData.ceilingPulsePhase = Math.random() * Math.PI * 2;
+    object.userData.ceilingPulseDepth = 0.46 + Math.random() * 0.08;
+  }
+  const wave = 0.5 + 0.5 * Math.sin((time / object.userData.ceilingPulsePeriod) * Math.PI * 2 + object.userData.ceilingPulsePhase);
+  const factor = 1 - object.userData.ceilingPulseDepth * wave;
+  object.userData.ceilingPulseLastFactor = factor;
+  return factor;
+}
+
 function updateCeilingLightPulse(time) {
   scene.traverse((object) => {
-    if (!object?.isLight) return;
-    if (object === flashlight || object === fillLight || object === lockerViewLight) return;
-    const isCeilingLight = object.position?.y > 2.55 && (object.isPointLight || object.isSpotLight);
-    if (!isCeilingLight) return;
-    if (!object.userData.ceilingPulsePeriod) {
-      object.userData.ceilingPulsePeriod = 3 + Math.random() * 7;
-      object.userData.ceilingPulsePhase = Math.random() * Math.PI * 2;
-      object.userData.ceilingPulseDepth = 0.42 + Math.random() * 0.08;
+    if (!object) return;
+    if (object.isLight) {
+      if (object === flashlight || object === fillLight || object === lockerViewLight) return;
+      const isCeilingLight = object.position?.y > 2.55 && (object.isPointLight || object.isSpotLight);
+      if (!isCeilingLight) return;
+      const lastFactor = object.userData.ceilingPulseLastFactor || 1;
+      const base = object.userData.ceilingPulseBase ?? (object.intensity / lastFactor);
+      object.userData.ceilingPulseBase = base;
+      object.intensity = base * ceilingPulseFactor(object, time);
+      return;
     }
-    const lastFactor = object.userData.ceilingPulseLastFactor || 1;
-    const base = object.userData.ceilingPulseBase ?? (object.intensity / lastFactor);
-    object.userData.ceilingPulseBase = base;
-    const wave = 0.5 + 0.5 * Math.sin((time / object.userData.ceilingPulsePeriod) * Math.PI * 2 + object.userData.ceilingPulsePhase);
-    const factor = 1 - object.userData.ceilingPulseDepth * wave;
-    object.userData.ceilingPulseLastFactor = factor;
-    object.intensity = base * factor;
+    if (!object.isMesh || object.position?.y <= 2.5) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    const factor = ceilingPulseFactor(object, time);
+    for (const mat of materials) {
+      if (!mat || !mat.emissive || (mat.emissiveIntensity || 0) <= 0.05) continue;
+      if (mat.userData.ceilingPulseBaseEmissive == null) {
+        mat.userData.ceilingPulseBaseEmissive = mat.emissiveIntensity || 0;
+      }
+      mat.emissiveIntensity = mat.userData.ceilingPulseBaseEmissive * factor;
+    }
   });
 }
 
