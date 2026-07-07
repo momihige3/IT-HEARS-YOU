@@ -44,11 +44,12 @@ body.hidden-in-locker #crosshair { opacity:0; }
 body.radar-locked #radar-panel { display:none!important; }
 body.train-mode #radar-panel,
 body.train-mode #bottom-hud,
-body.train-mode #mobile-controls,
 body.train-mode #ghost-stun-reticle { display:none!important; }
 body.train-mode #coin-panel,
 body.train-mode #breaker-hud,
 body.train-mode .status-cluster { display:none!important; }
+body.train-mode #mobile-action,
+body.train-mode .mobile-right-buttons { display:none!important; }
 
 #crosshair { position: fixed; z-index: 7; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); opacity: .62; }
 #crosshair i { position:absolute; background:#d8e0db; } #crosshair i:nth-child(1){width:5px;height:1px;left:0;top:10px} #crosshair i:nth-child(2){width:5px;height:1px;right:0;top:10px} #crosshair i:nth-child(3){height:5px;width:1px;top:0;left:10px} #crosshair i:nth-child(4){height:5px;width:1px;bottom:0;left:10px}

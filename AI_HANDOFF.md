@@ -1559,6 +1559,18 @@ Build:
 - `node --check src/main.js`
 - `npm run build`
 
+## 2026-07-07 Train Mobile Multitouch Movement
+
+- Train stage no longer hides the mobile movement controls.
+- Train stage still hides mobile run/map/flashlight/action buttons to preserve the stage rules.
+- Mobile train movement stick now only outputs forward movement; sideways and backward stick input is ignored.
+- Mobile close-eyes button now releases pointer capture explicitly, improving simultaneous move / camera swipe / close-eyes touch handling.
+
+### Verification
+
+- `node --check src/main.js`
+- `npm run build`
+
 ## 2026-07-06 Train Daruma Cleanup / Hidden Invincible
 
 - Daruma model cleanup:

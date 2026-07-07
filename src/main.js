@@ -5827,6 +5827,7 @@ const releaseMobileCloseEyes = (event) => {
   if (state.mapMode !== 'train') return;
   event.preventDefault();
   event.stopPropagation();
+  try { mobileCloseEyesButton.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
   darumaState.eyesClosed = false;
   document.body.classList.remove('eyes-closed');
 };
@@ -5864,8 +5865,18 @@ function setupTouchStick(element, onChange) {
     const scale = Math.min(1, radius / distance);
     const x = rawX * scale;
     const y = rawY * scale;
-    knob.style.transform = `translate(${x}px, ${y}px)`;
-    onChange(x / radius, y / radius);
+    let normalizedX = x / radius;
+    let normalizedY = y / radius;
+    let knobX = x;
+    let knobY = y;
+    if (state.mapMode === 'train' && element.id === 'move-stick') {
+      normalizedX = 0;
+      normalizedY = Math.min(0, normalizedY);
+      knobX = 0;
+      knobY = Math.min(0, y);
+    }
+    knob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+    onChange(normalizedX, normalizedY);
   };
   element.addEventListener('pointerdown', (event) => {
     if (!state.started || state.caught) return;
