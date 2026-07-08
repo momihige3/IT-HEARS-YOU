@@ -1935,3 +1935,13 @@ Build:
 
 - `node --check src/main.js`
 - `npm run build`
+
+## 2026-07-08 Mobile Portrait Train Ghost Overlay Fix
+
+- Fixed train ghost / eye-danger screen overlays using portrait viewport sizing on phones held vertically.
+- In `mobile-portrait-landscape` mode, train eye scare, eyes-closed, and train-noise fixed layers now size to the rotated game area instead of raw portrait `vw/vh`.
+- Adjusted Daruma warning UI placement in portrait-held landscape mode so the ghost warning stays in the forced-landscape coordinate space.
+
+### Verification
+
+- `npm run build`

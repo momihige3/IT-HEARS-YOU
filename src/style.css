@@ -584,6 +584,32 @@ body.mobile-portrait-landscape #radar-panel {
     min-height: min(88px, 10vmax);
     font-size: min(21px, 2.4vmax);
   }
+  body.mobile-portrait-landscape #eye-scare,
+  body.mobile-portrait-landscape #eyes-closed,
+  body.mobile-portrait-landscape #train-noise {
+    left: 0 !important;
+    top: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    transform: none !important;
+  }
+  body.mobile-portrait-landscape #eye-scare i {
+    width: 100% !important;
+    height: 100% !important;
+    background-size: cover !important;
+    background-position: center center !important;
+  }
+  body.mobile-portrait-landscape #daruma-ui {
+    left: var(--safe-left);
+    top: calc(var(--safe-top) + 92px);
+    width: min(520px, calc(100% - var(--safe-left) - var(--safe-right) - 170px));
+  }
+  body.mobile-portrait-landscape #ghost-eye-warning {
+    max-width: 100%;
+    white-space: nowrap;
+  }
 }
 
 .shop-card button.purchased.inactive {
