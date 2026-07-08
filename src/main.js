@@ -4993,7 +4993,7 @@ function endGame(win) {
   state.shopOpen = false;
   ghostDouble.group.visible = false;
   ghostDouble.active = false;
-  $('#eye-scare')?.classList.remove('visible');
+  $('#eye-scare')?.classList.remove('visible', 'train-ghost-overlay');
   if (state.mapMode === 'train') {
     Object.values(darumaAudio).forEach((sound) => {
       sound.pause();
@@ -5309,6 +5309,19 @@ function makeTrainGhost() {
   return group;
 }
 
+function useTrainGhostScreenOverlay() {
+  return touchDevice && document.body.classList.contains('mobile-portrait-landscape');
+}
+
+function setTrainGhostVisualVisible(visible) {
+  const forceScreenOverlay = visible && useTrainGhostScreenOverlay();
+  const useOverlay = forceScreenOverlay && !darumaState.eyesClosed;
+  if (darumaState.ghost) darumaState.ghost.visible = visible && !forceScreenOverlay;
+  eyeScareElement?.classList.toggle('train-ghost-overlay', useOverlay);
+  eyeScareElement?.classList.toggle('visible', useOverlay);
+  if (!visible) eyeScareElement?.classList.remove('train-ghost-overlay');
+}
+
 function buildTrainMap() {
   clearTrainRuntime();
   const floor = new THREE.MeshStandardMaterial({ color: 0x272b2d, roughness: 0.76, metalness: 0.12 });
@@ -5480,7 +5493,7 @@ function initTrainStage() {
   darumaState.noiseUntil = 0;
   resetTrainCarPosition();
   if (darumaState.monster) darumaState.monster.position.z = trainDarumaZ(1);
-  if (darumaState.ghost) darumaState.ghost.visible = false;
+  setTrainGhostVisualVisible(false);
   startDarumaRound(clock.elapsedTime + 0.3);
   setTrainPhrase();
 }
@@ -5507,7 +5520,7 @@ function endTrainGameOver(kind = 'daruma') {
   document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat', 'train-clear', 'train-gameover-ghost', 'train-gameover-daruma');
   darumaState.ghostActive = false;
   darumaState.ghostNextAt = Infinity;
-  if (darumaState.ghost) darumaState.ghost.visible = false;
+  setTrainGhostVisualVisible(false);
   if (kind === 'ghost') {
     document.body.classList.add('train-gameover-ghost');
     $('#message-kicker').textContent = '\u5e7d\u970a\u306b\u6355\u307e\u3063\u305f';
@@ -6918,7 +6931,7 @@ function updateDarumaStage(dt, time) {
     if (darumaState.ghostActive) {
       darumaState.ghostActive = false;
       darumaState.ghostNextAt = time + 10 + Math.random() * 20;
-      if (darumaState.ghost) darumaState.ghost.visible = false;
+      setTrainGhostVisualVisible(false);
     }
     updateHUD();
     return;
@@ -6955,9 +6968,7 @@ function updateDarumaStage(dt, time) {
       darumaState.ghostActive = true;
       darumaState.ghostUntil = time + 5 + Math.random() * 5;
       darumaState.nextGhostDamageAt = time;
-      if (darumaState.ghost) {
-        darumaState.ghost.visible = true;
-      }
+      setTrainGhostVisualVisible(true);
     }
   }
   if (darumaState.ghostActive) {
@@ -6965,9 +6976,10 @@ function updateDarumaStage(dt, time) {
       darumaState.ghostActive = false;
       darumaState.ghostNextAt = time + 10 + Math.random() * 20;
       document.body.classList.remove('ghost-eye-danger', 'ghost-heartbeat');
-      if (darumaState.ghost) darumaState.ghost.visible = false;
+      setTrainGhostVisualVisible(false);
     } else {
-      if (darumaState.ghost) {
+      setTrainGhostVisualVisible(true);
+      if (darumaState.ghost?.visible) {
         camera.getWorldDirection(forward);
         darumaState.ghost.position.copy(camera.position).addScaledVector(forward, 2);
         darumaState.ghost.position.y = 0;

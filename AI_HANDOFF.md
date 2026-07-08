@@ -1941,6 +1941,10 @@ Build:
 - Fixed train ghost / eye-danger screen overlays using portrait viewport sizing on phones held vertically.
 - In `mobile-portrait-landscape` mode, train eye scare, eyes-closed, and train-noise fixed layers now size to the rotated game area instead of raw portrait `vw/vh`.
 - Adjusted Daruma warning UI placement in portrait-held landscape mode so the ghost warning stays in the forced-landscape coordinate space.
+- Follow-up fix:
+  - Phone portrait-held train ghost now disables the 3D ghost eye plane and uses the corrected 2D eye overlay instead.
+  - The overlay is positioned absolutely inside the rotated game area to avoid portrait viewport coordinates.
+  - While eyes are closed, the 2D ghost eye overlay is suppressed so the black eye-closed screen remains clean.
 
 ### Verification
 

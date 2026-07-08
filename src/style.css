@@ -587,6 +587,7 @@ body.mobile-portrait-landscape #radar-panel {
   body.mobile-portrait-landscape #eye-scare,
   body.mobile-portrait-landscape #eyes-closed,
   body.mobile-portrait-landscape #train-noise {
+    position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     right: auto !important;
@@ -595,11 +596,19 @@ body.mobile-portrait-landscape #radar-panel {
     height: 100% !important;
     transform: none !important;
   }
+  body.mobile-portrait-landscape #game {
+    position: relative;
+    overflow: hidden;
+  }
   body.mobile-portrait-landscape #eye-scare i {
     width: 100% !important;
     height: 100% !important;
     background-size: cover !important;
     background-position: center center !important;
+  }
+  body.mobile-portrait-landscape #eye-scare.train-ghost-overlay {
+    display: grid !important;
+    place-items: center;
   }
   body.mobile-portrait-landscape #daruma-ui {
     left: var(--safe-left);
